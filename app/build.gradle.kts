@@ -36,5 +36,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("org.maplibre.gl:android-sdk:11.8.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

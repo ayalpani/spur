@@ -20,9 +20,9 @@ standardmäßig auf dem Gerät.
 - Jetpack Compose und Material 3
 - Android 8.0+ (API 26)
 
-Das Repository enthält zunächst nur eine kleine, startfähige Compose-Shell.
-Room, MapLibre, Foreground Service und CameraX kommen erst mit dem jeweiligen
-vertikalen Produktabschnitt hinzu.
+Die startfähige Compose-App nutzt MapLibre mit OpenStreetMap-Vektorkacheln für
+ihre primäre Kartenansicht. Room, Foreground Service und CameraX kommen mit dem
+jeweiligen vertikalen Produktabschnitt hinzu.
 
 ## Starten
 

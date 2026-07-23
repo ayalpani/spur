@@ -34,7 +34,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -43,22 +45,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import org.maplibre.android.MapLibre
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.maps.MapView
 
 private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
-private val MapLand = Color(0xFFE9E9DF)
-private val MapPark = Color(0xFFD6E2D1)
-private val MapWater = Color(0xFFC9DBDF)
-private val MapRoad = Color(0xFFF9F7F1)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -120,7 +126,7 @@ private fun MapScreen(
     onOpenHistory: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        MapSurface(showRoute = isTourActive)
+        MapSurface()
 
         Surface(
             modifier = Modifier
@@ -189,101 +195,51 @@ private fun MapScreen(
 }
 
 @Composable
-private fun MapSurface(showRoute: Boolean) {
-    Canvas(
+private fun MapSurface() {
+    val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val mapView = remember {
+        MapLibre.getInstance(context)
+        MapView(context).apply {
+            onCreate(null)
+            getMapAsync { map ->
+                map.setStyle("https://tiles.openfreemap.org/styles/liberty")
+                map.cameraPosition = CameraPosition.Builder()
+                    .target(LatLng(52.52, 13.405))
+                    .zoom(13.0)
+                    .build()
+            }
+        }
+    }
+
+    DisposableEffect(lifecycle, mapView) {
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStart()
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onResume()
+
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> mapView.onStart()
+                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_STOP -> mapView.onStop()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
+            mapView.onDestroy()
+        }
+    }
+
+    AndroidView(
+        factory = { mapView },
         modifier = Modifier
             .fillMaxSize()
-            .background(MapLand)
-            .semantics { contentDescription = "Kartenansicht" },
-    ) {
-        drawRect(
-            color = MapWater,
-            topLeft = Offset(size.width * 0.73f, 0f),
-            size = Size(size.width * 0.27f, size.height),
-        )
-        drawOval(
-            color = MapPark,
-            topLeft = Offset(size.width * 0.05f, size.height * 0.12f),
-            size = Size(size.width * 0.33f, size.height * 0.24f),
-        )
-        drawOval(
-            color = MapPark,
-            topLeft = Offset(size.width * 0.45f, size.height * 0.61f),
-            size = Size(size.width * 0.22f, size.height * 0.2f),
-        )
-
-        val roads = listOf(
-            Path().apply {
-                moveTo(-20f, size.height * 0.48f)
-                cubicTo(
-                    size.width * 0.25f,
-                    size.height * 0.4f,
-                    size.width * 0.5f,
-                    size.height * 0.56f,
-                    size.width,
-                    size.height * 0.42f,
-                )
-            },
-            Path().apply {
-                moveTo(size.width * 0.22f, -20f)
-                cubicTo(
-                    size.width * 0.28f,
-                    size.height * 0.28f,
-                    size.width * 0.15f,
-                    size.height * 0.7f,
-                    size.width * 0.36f,
-                    size.height + 20f,
-                )
-            },
-            Path().apply {
-                moveTo(size.width * 0.61f, -20f)
-                lineTo(size.width * 0.52f, size.height + 20f)
-            },
-            Path().apply {
-                moveTo(-20f, size.height * 0.78f)
-                lineTo(size.width * 0.74f, size.height * 0.19f)
-            },
-        )
-        roads.forEach { road ->
-            drawPath(road, Color(0xFFD5D4CA), style = Stroke(18.dp.toPx(), cap = StrokeCap.Round))
-            drawPath(road, MapRoad, style = Stroke(13.dp.toPx(), cap = StrokeCap.Round))
-        }
-
-        repeat(4) { row ->
-            repeat(3) { column ->
-                drawRoundRect(
-                    color = Sand.copy(alpha = 0.62f),
-                    topLeft = Offset(
-                        size.width * (0.4f + column * 0.11f),
-                        size.height * (0.18f + row * 0.1f),
-                    ),
-                    size = Size(size.width * 0.075f, size.height * 0.052f),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(5.dp.toPx()),
-                )
-            }
-        }
-
-        if (showRoute) {
-            val route = Path().apply {
-                moveTo(size.width * 0.27f, size.height * 0.72f)
-                cubicTo(
-                    size.width * 0.2f,
-                    size.height * 0.61f,
-                    size.width * 0.42f,
-                    size.height * 0.52f,
-                    size.width * 0.48f,
-                    size.height * 0.4f,
-                )
-            }
-            drawPath(route, Color.White, style = Stroke(9.dp.toPx(), cap = StrokeCap.Round))
-            drawPath(route, Moss, style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
-        }
-
-        val location = Offset(size.width * 0.27f, size.height * 0.72f)
-        drawCircle(Color.White, radius = 14.dp.toPx(), center = location)
-        drawCircle(Moss, radius = 9.dp.toPx(), center = location)
-        drawCircle(Color.White, radius = 3.dp.toPx(), center = location)
-    }
+            .semantics { contentDescription = "Interaktive Kartenansicht" },
+    )
 }
 
 @Composable
