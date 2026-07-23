@@ -48,9 +48,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.North
-import androidx.compose.material.icons.rounded.SatelliteAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -84,12 +82,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -422,14 +421,7 @@ private fun MapScreen(
                     },
                     onClick = { isSatelliteView = !isSatelliteView },
                 ) {
-                    Icon(
-                        imageVector = if (isSatelliteView) {
-                            Icons.Rounded.Map
-                        } else {
-                            Icons.Rounded.SatelliteAlt
-                        },
-                        contentDescription = null,
-                    )
+                    if (isSatelliteView) LucideMapIcon() else LucideSatelliteIcon()
                 }
                 MapIconButton(
                     contentDescription = "Karte nach Norden ausrichten",
@@ -1350,57 +1342,25 @@ private fun HistoryScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun MenuIcon() {
-    Canvas(modifier = Modifier.size(24.dp)) {
-        val stroke = 2.2.dp.toPx()
-        listOf(6f, 12f, 18f).forEach { y ->
-            drawLine(
-                color = Ink,
-                start = Offset(4.dp.toPx(), y.dp.toPx()),
-                end = Offset(20.dp.toPx(), y.dp.toPx()),
-                strokeWidth = stroke,
-                cap = StrokeCap.Round,
-            )
-        }
-    }
-}
+private fun MenuIcon() = LucideIcon(
+    paths = listOf("M4 5h16", "M4 12h16", "M4 19h16"),
+)
 
 @Composable
-private fun ShareIcon() {
-    Canvas(modifier = Modifier.size(24.dp)) {
-        val left = Offset(6.dp.toPx(), 12.dp.toPx())
-        val upper = Offset(17.dp.toPx(), 6.dp.toPx())
-        val lower = Offset(17.dp.toPx(), 18.dp.toPx())
-        val stroke = 2.dp.toPx()
-        drawLine(Ink, left, upper, stroke, cap = StrokeCap.Round)
-        drawLine(Ink, left, lower, stroke, cap = StrokeCap.Round)
-        listOf(left, upper, lower).forEach { point ->
-            drawCircle(Sand, radius = 3.2.dp.toPx(), center = point)
-            drawCircle(Ink, radius = 3.2.dp.toPx(), center = point, style = Stroke(stroke))
-        }
-    }
-}
+private fun ShareIcon() = LucideIcon(
+    paths = listOf(
+        "M21 5a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+        "M9 12a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+        "M21 19a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+        "M8.59 13.51 15.42 17.49",
+        "M15.41 6.51 8.59 10.49",
+    ),
+)
 
 @Composable
-private fun PlusIcon() {
-    Canvas(modifier = Modifier.size(25.dp)) {
-        val stroke = 2.4.dp.toPx()
-        drawLine(
-            color = Ink,
-            start = Offset(center.x, 4.dp.toPx()),
-            end = Offset(center.x, 21.dp.toPx()),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = Ink,
-            start = Offset(4.dp.toPx(), center.y),
-            end = Offset(21.dp.toPx(), center.y),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
-    }
-}
+private fun PlusIcon() = LucideIcon(
+    paths = listOf("M5 12h14", "M12 5v14"),
+)
 
 @Composable
 private fun CompassIcon(
@@ -1438,39 +1398,68 @@ private fun CompassIcon(
 }
 
 @Composable
-private fun RecenterIcon() {
-    Canvas(modifier = Modifier.size(25.dp)) {
-        val stroke = 2.dp.toPx()
-        drawCircle(Ink, radius = 6.dp.toPx(), center = center, style = Stroke(stroke))
-        drawCircle(Ink, radius = 2.dp.toPx(), center = center)
-        drawLine(Ink, Offset(center.x, 1.dp.toPx()), Offset(center.x, 5.dp.toPx()), stroke)
-        drawLine(Ink, Offset(center.x, 20.dp.toPx()), Offset(center.x, 24.dp.toPx()), stroke)
-        drawLine(Ink, Offset(1.dp.toPx(), center.y), Offset(5.dp.toPx(), center.y), stroke)
-        drawLine(Ink, Offset(20.dp.toPx(), center.y), Offset(24.dp.toPx(), center.y), stroke)
-    }
-}
+private fun RecenterIcon() = LucideIcon(
+    paths = listOf(
+        "M2 12h3",
+        "M19 12h3",
+        "M12 2v3",
+        "M12 19v3",
+        "M19 12a7 7 0 1 1-14 0 7 7 0 1 1 14 0",
+        "M15 12a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+    ),
+)
 
 @Composable
-private fun HistoryIcon() {
-    Canvas(
-        modifier = Modifier
-            .size(25.dp)
-            .semantics { contentDescription = "Tour-History öffnen" },
-    ) {
-        val stroke = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round)
-        drawArc(
-            color = Ink,
-            startAngle = -55f,
-            sweepAngle = 285f,
-            useCenter = false,
-            topLeft = Offset(3.dp.toPx(), 3.dp.toPx()),
-            size = Size(19.dp.toPx(), 19.dp.toPx()),
-            style = stroke,
-        )
-        drawLine(Ink, Offset(3.dp.toPx(), 7.dp.toPx()), Offset(3.dp.toPx(), 3.dp.toPx()), stroke.width)
-        drawLine(Ink, Offset(3.dp.toPx(), 3.dp.toPx()), Offset(7.dp.toPx(), 3.dp.toPx()), stroke.width)
-        drawLine(Ink, center, Offset(center.x, center.y - 5.dp.toPx()), stroke.width)
-        drawLine(Ink, center, Offset(center.x + 4.dp.toPx(), center.y + 2.dp.toPx()), stroke.width)
+private fun HistoryIcon() = LucideIcon(
+    paths = listOf(
+        "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
+        "M3 3v5h5",
+        "M12 7v5l4 2",
+    ),
+)
+
+@Composable
+private fun LucideSatelliteIcon() = LucideIcon(
+    paths = listOf(
+        "m13.5 6.5-3.148-3.148a1.205 1.205 0 0 0-1.704 0L6.352 5.648a1.205 1.205 0 0 0 0 1.704L9.5 10.5",
+        "M16.5 7.5 19 5",
+        "m17.5 10.5 3.148 3.148a1.205 1.205 0 0 1 0 1.704l-2.296 2.296a1.205 1.205 0 0 1-1.704 0L13.5 14.5",
+        "M9 21a6 6 0 0 0-6-6",
+        "M9.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l4.296-4.296a1.205 1.205 0 0 0 0-1.704l-2.296-2.296a1.205 1.205 0 0 0-1.704 0z",
+    ),
+)
+
+@Composable
+private fun LucideMapIcon() = LucideIcon(
+    paths = listOf(
+        "M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z",
+        "M15 5.764v15",
+        "M9 3.236v15",
+    ),
+)
+
+@Composable
+private fun LucideIcon(paths: List<String>) {
+    val parsedPaths = paths.map { path ->
+        remember(path) { PathParser().parsePathString(path).toPath() }
+    }
+    Canvas(modifier = Modifier.size(32.dp)) {
+        val scale = size.minDimension / 24f
+        withTransform({
+            scale(scaleX = scale, scaleY = scale, pivot = Offset.Zero)
+        }) {
+            parsedPaths.forEach { path ->
+                drawPath(
+                    path = path,
+                    color = Ink,
+                    style = Stroke(
+                        width = 2f,
+                        cap = StrokeCap.Round,
+                        join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                    ),
+                )
+            }
+        }
     }
 }
 
