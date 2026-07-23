@@ -16,6 +16,13 @@ Eine Person startet unten mit einem Daumentipp eine Tour, zeichnet ihren Weg
 zuverlässig im Hintergrund auf, setzt unterwegs Text-, Emoji- oder Fotomarker
 und findet später alles ausschließlich lokal wieder.
 
+## Primäre Navigation
+
+Spur startet immer auf der Karte. Dort liegen unten der primäre
+**„Tour starten“**-Button und direkt daneben ein kompakter History-Button.
+Beim Start einer Tour bleibt die Karte sichtbar. Die History ist eine
+sekundäre Ebene und gleitet von rechts über die Karte herein.
+
 ## Erste vertikale Schnitte
 
 1. **Tracking:** Tour starten, im Hintergrund aufzeichnen, pausieren,
