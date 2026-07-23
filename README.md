@@ -21,8 +21,10 @@ standardmäßig auf dem Gerät.
 - Android 8.0+ (API 26)
 
 Die startfähige Compose-App nutzt MapLibre mit OpenStreetMap-Vektorkacheln für
-ihre primäre Kartenansicht. Room, Foreground Service und CameraX kommen mit dem
-jeweiligen vertikalen Produktabschnitt hinzu.
+ihre primäre Kartenansicht. Ein kurzes Standort-Onboarding führt zur
+Android-Freigabe; danach folgt die Karte Position und Gerätekompass. Room,
+Foreground Service und CameraX kommen mit dem jeweiligen vertikalen
+Produktabschnitt hinzu.
 
 ## Starten
 

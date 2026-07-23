@@ -23,6 +23,12 @@ Spur startet immer auf der Karte. Dort liegen unten der primäre
 Beim Start einer Tour bleibt die Karte sichtbar. Die History ist eine
 sekundäre Ebene und gleitet von rechts über die Karte herein.
 
+Beim ersten Start erklärt Spur die lokale Standortnutzung und fragt danach die
+Android-Freigabe für den Standort während der Nutzung an. Erst anschließend
+öffnet sich die Karte am tatsächlichen Gerätestandort. Die zusätzliche
+Hintergrundfreigabe wird separat beim ersten Tourstart erklärt und angefragt,
+sobald die Hintergrundaufzeichnung implementiert ist.
+
 ## Erste vertikale Schnitte
 
 1. **Tracking:** Tour starten, im Hintergrund aufzeichnen, pausieren,

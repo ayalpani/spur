@@ -1,10 +1,17 @@
 package app.spur
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.Gravity
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
@@ -58,9 +65,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.maplibre.android.MapLibre
-import org.maplibre.android.camera.CameraPosition
-import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.location.LocationComponentActivationOptions
+import org.maplibre.android.location.LocationComponentOptions
+import org.maplibre.android.location.modes.CameraMode
+import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.Style
 
 private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
@@ -76,8 +86,18 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun SpurApp() {
+    val context = LocalContext.current
     var isTourActive by rememberSaveable { mutableStateOf(false) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
+    var permissionRequested by rememberSaveable { mutableStateOf(false) }
+    var hasLocationPermission by rememberSaveable {
+        mutableStateOf(context.hasLocationPermission())
+    }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        hasLocationPermission = context.hasLocationPermission()
+    }
 
     BackHandler(enabled = showHistory) { showHistory = false }
 
@@ -92,29 +112,109 @@ private fun SpurApp() {
         ),
     ) {
         Surface(modifier = Modifier.fillMaxSize()) {
-            AnimatedContent(
-                targetState = showHistory,
-                transitionSpec = {
-                    val direction = if (targetState) {
-                        AnimatedContentTransitionScope.SlideDirection.Left
+            if (!hasLocationPermission) {
+                LocationOnboarding(
+                    permissionRequested = permissionRequested,
+                    onRequestLocation = {
+                        permissionRequested = true
+                        locationPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                            ),
+                        )
+                    },
+                )
+            } else {
+                AnimatedContent(
+                    targetState = showHistory,
+                    transitionSpec = {
+                        val direction = if (targetState) {
+                            AnimatedContentTransitionScope.SlideDirection.Left
+                        } else {
+                            AnimatedContentTransitionScope.SlideDirection.Right
+                        }
+                        slideIntoContainer(direction, tween(340)) togetherWith
+                            slideOutOfContainer(direction, tween(340))
+                    },
+                    label = "History navigation",
+                ) { historyVisible ->
+                    if (historyVisible) {
+                        HistoryScreen(onBack = { showHistory = false })
                     } else {
-                        AnimatedContentTransitionScope.SlideDirection.Right
+                        MapScreen(
+                            isTourActive = isTourActive,
+                            onTourAction = { isTourActive = !isTourActive },
+                            onOpenHistory = { showHistory = true },
+                        )
                     }
-                    slideIntoContainer(direction, tween(340)) togetherWith
-                        slideOutOfContainer(direction, tween(340))
-                },
-                label = "History navigation",
-            ) { historyVisible ->
-                if (historyVisible) {
-                    HistoryScreen(onBack = { showHistory = false })
-                } else {
-                    MapScreen(
-                        isTourActive = isTourActive,
-                        onTourAction = { isTourActive = !isTourActive },
-                        onOpenHistory = { showHistory = true },
-                    )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LocationOnboarding(
+    permissionRequested: Boolean,
+    onRequestLocation: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Sand)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 20.dp),
+    ) {
+        Text(
+            text = "Spur",
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = if (permissionRequested) {
+                    "Ohne Standort fehlt deine Spur."
+                } else {
+                    "Deine Spur beginnt dort, wo du bist."
+                },
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "Spur nutzt deinen Standort, um die Karte bei dir zu öffnen und deine Tour aufzuzeichnen.",
+                modifier = Modifier.padding(top = 14.dp),
+                color = Ink.copy(alpha = 0.68f),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                text = "Deine Standortdaten bleiben auf diesem Gerät.",
+                modifier = Modifier.padding(top = 10.dp),
+                color = Moss,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+
+        Button(
+            onClick = onRequestLocation,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Moss),
+        ) {
+            Text(
+                text = if (permissionRequested) "Erneut erlauben" else "Standort erlauben",
+                style = MaterialTheme.typography.titleMedium,
+            )
         }
     }
 }
@@ -203,11 +303,12 @@ private fun MapSurface() {
         MapView(context).apply {
             onCreate(null)
             getMapAsync { map ->
-                map.setStyle("https://tiles.openfreemap.org/styles/liberty")
-                map.cameraPosition = CameraPosition.Builder()
-                    .target(LatLng(52.52, 13.405))
-                    .zoom(13.0)
-                    .build()
+                val density = context.resources.displayMetrics.density
+                map.uiSettings.setCompassGravity(Gravity.BOTTOM or Gravity.END)
+                map.uiSettings.setCompassMargins(0, 0, (18 * density).toInt(), (104 * density).toInt())
+                map.setStyle("https://tiles.openfreemap.org/styles/liberty") { style ->
+                    enableLocationTracking(context, map.locationComponent, style)
+                }
             }
         }
     }
@@ -241,6 +342,39 @@ private fun MapSurface() {
             .semantics { contentDescription = "Interaktive Kartenansicht" },
     )
 }
+
+@SuppressLint("MissingPermission")
+private fun enableLocationTracking(
+    context: Context,
+    locationComponent: org.maplibre.android.location.LocationComponent,
+    style: Style,
+) {
+    if (!context.hasLocationPermission()) return
+
+    val options = LocationComponentOptions.builder(context)
+        .pulseEnabled(true)
+        .build()
+    locationComponent.activateLocationComponent(
+        LocationComponentActivationOptions.builder(context, style)
+            .locationComponentOptions(options)
+            .useDefaultLocationEngine(true)
+            .build(),
+    )
+    locationComponent.isLocationComponentEnabled = true
+    locationComponent.renderMode = RenderMode.COMPASS
+    locationComponent.setCameraMode(
+        CameraMode.TRACKING_COMPASS,
+        750L,
+        16.0,
+        null,
+        null,
+        null,
+    )
+}
+
+private fun Context.hasLocationPermission(): Boolean =
+    checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+        checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
 @Composable
 private fun HistoryScreen(onBack: () -> Unit) {
@@ -340,4 +474,10 @@ private fun ActiveTourScreenPreview() {
 @Composable
 private fun HistoryScreenPreview() {
     HistoryScreen(onBack = {})
+}
+
+@Preview(showBackground = true, widthDp = 412, heightDp = 915)
+@Composable
+private fun LocationOnboardingPreview() {
+    LocationOnboarding(permissionRequested = false, onRequestLocation = {})
 }
