@@ -573,7 +573,9 @@ private fun MapSurface(
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
     val renderedMomentIds = remember { mutableSetOf<String>() }
-    val markerIcons = remember(context) { mutableMapOf<MomentType, org.maplibre.android.annotations.Icon>() }
+    val mapMarkers = remember { mutableMapOf<String, org.maplibre.android.annotations.Marker>() }
+    val markerIcons = remember(context) { mutableMapOf<String, org.maplibre.android.annotations.Icon>() }
+    val selectedMomentId = remember { mutableStateOf<String?>(null) }
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply {
@@ -681,20 +683,41 @@ private fun MapSurface(
                 .filterNot { it.id in renderedMomentIds }
                 .forEach { moment ->
                     runCatching {
-                        map.addMarker(
+                        val marker = map.addMarker(
                             MarkerOptions()
                                 .position(LatLng(moment.latitude, moment.longitude))
-                                .title(moment.type.markerTitle)
                                 .icon(
-                                    markerIcons.getOrPut(moment.type) {
-                                        createMomentMarkerIcon(context, moment.type)
+                                    markerIcons.getOrPut("${moment.id}:false") {
+                                        createMomentMarkerIcon(context, moment, selected = false)
                                     },
                                 ),
                         )
+                        mapMarkers[moment.id] = marker
                     }.onSuccess {
                         renderedMomentIds += moment.id
                     }
                 }
+            map.setOnMarkerClickListener { marker ->
+                val momentId = mapMarkers.entries
+                    .firstOrNull { it.value.id == marker.id }
+                    ?.key
+                    ?: return@setOnMarkerClickListener false
+                selectedMomentId.value = if (selectedMomentId.value == momentId) {
+                    null
+                } else {
+                    momentId
+                }
+                true
+            }
+        }
+    }
+
+    LaunchedEffect(selectedMomentId.value, mapMoments) {
+        mapMoments.forEach { moment ->
+            val selected = moment.id == selectedMomentId.value
+            mapMarkers[moment.id]?.icon = markerIcons.getOrPut("${moment.id}:$selected") {
+                createMomentMarkerIcon(context, moment, selected)
+            }
         }
     }
 
@@ -767,35 +790,116 @@ private fun Context.saveMapMoments(moments: List<MapMoment>) {
         .apply()
 }
 
-private val MomentType.markerTitle: String
-    get() = when (this) {
-        MomentType.PHOTO -> "Foto"
-        MomentType.VIDEO -> "Video"
-        MomentType.VOICE -> "Sprachnachricht"
-        MomentType.EMOJI -> "Emoji"
-    }
-
-private fun createMomentMarkerIcon(context: Context, type: MomentType) =
+private fun createMomentMarkerIcon(
+    context: Context,
+    moment: MapMoment,
+    selected: Boolean,
+) =
     IconFactory.getInstance(context).fromBitmap(
         android.graphics.Bitmap.createBitmap(
             (52 * context.resources.displayMetrics.density).toInt(),
-            (52 * context.resources.displayMetrics.density).toInt(),
+            (68 * context.resources.displayMetrics.density).toInt(),
             android.graphics.Bitmap.Config.ARGB_8888,
         ).also { bitmap ->
             val scale = context.resources.displayMetrics.density
             val canvas = android.graphics.Canvas(bitmap)
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-
-            paint.color = android.graphics.Color.WHITE
-            paint.style = android.graphics.Paint.Style.FILL
-            canvas.drawCircle(26 * scale, 26 * scale, 23 * scale, paint)
             paint.color = android.graphics.Color.rgb(24, 32, 28)
             paint.style = android.graphics.Paint.Style.STROKE
-            paint.strokeWidth = 2 * scale
-            canvas.drawCircle(26 * scale, 26 * scale, 23 * scale, paint)
-            drawMomentGlyph(canvas, paint, scale, type)
+            paint.strokeWidth = 1.5f * scale
+            canvas.drawLine(26 * scale, 43 * scale, 26 * scale, 66.5f * scale, paint)
+            paint.style = android.graphics.Paint.Style.FILL
+            canvas.drawCircle(26 * scale, 66.5f * scale, 1.5f * scale, paint)
+
+            if (selected) {
+                canvas.drawRoundRect(
+                    3 * scale,
+                    0f,
+                    49 * scale,
+                    47 * scale,
+                    10 * scale,
+                    10 * scale,
+                    paint,
+                )
+            }
+
+            val flag = android.graphics.RectF(
+                6 * scale,
+                3 * scale,
+                46 * scale,
+                43 * scale,
+            )
+            paint.color = android.graphics.Color.WHITE
+            paint.style = android.graphics.Paint.Style.FILL
+            canvas.drawRoundRect(flag, 8 * scale, 8 * scale, paint)
+
+            val photo = if (moment.type == MomentType.PHOTO) {
+                decodeMarkerPhoto(moment.payload)
+            } else {
+                null
+            }
+            if (photo != null) {
+                drawMarkerPhoto(canvas, paint, flag, photo, scale)
+                photo.recycle()
+            } else {
+                paint.color = android.graphics.Color.rgb(24, 32, 28)
+                paint.style = android.graphics.Paint.Style.STROKE
+                paint.strokeWidth = 2 * scale
+                drawMomentGlyph(canvas, paint, scale, moment.type)
+            }
+
+            paint.color = android.graphics.Color.rgb(24, 32, 28)
+            paint.style = android.graphics.Paint.Style.STROKE
+            paint.strokeWidth = 1.5f * scale
+            canvas.drawRoundRect(flag, 8 * scale, 8 * scale, paint)
         },
     )
+
+private fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
+    runCatching {
+        val file = File(path)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            android.graphics.ImageDecoder.decodeBitmap(
+                android.graphics.ImageDecoder.createSource(file),
+            ) { decoder, info, _ ->
+                val side = minOf(info.size.width, info.size.height)
+                val scale = minOf(1f, 240f / side)
+                decoder.setTargetSize(
+                    (info.size.width * scale).toInt(),
+                    (info.size.height * scale).toInt(),
+                )
+            }
+        } else {
+            android.graphics.BitmapFactory.decodeFile(
+                path,
+                android.graphics.BitmapFactory.Options().apply { inSampleSize = 8 },
+            )
+        }
+    }.getOrNull()
+
+private fun drawMarkerPhoto(
+    canvas: android.graphics.Canvas,
+    paint: android.graphics.Paint,
+    destination: android.graphics.RectF,
+    photo: android.graphics.Bitmap,
+    scale: Float,
+) {
+    val side = minOf(photo.width, photo.height)
+    val source = android.graphics.Rect(
+        (photo.width - side) / 2,
+        (photo.height - side) / 2,
+        (photo.width + side) / 2,
+        (photo.height + side) / 2,
+    )
+    val clip = android.graphics.Path().apply {
+        addRoundRect(destination, 8 * scale, 8 * scale, android.graphics.Path.Direction.CW)
+    }
+    canvas.save()
+    canvas.clipPath(clip)
+    paint.style = android.graphics.Paint.Style.FILL
+    canvas.drawBitmap(photo, source, destination, paint)
+    canvas.restore()
+}
 
 private fun drawMomentGlyph(
     canvas: android.graphics.Canvas,

@@ -53,6 +53,10 @@ ausschließlich über seinen Button.
 Alle abgelegten Momente nutzen dasselbe erweiterbare Marker-Modell aus
 Position, Typ und Inhalt. Die gemeinsame Markerform bleibt konsistent; Foto,
 Video, Sprachnachricht und Emoji unterscheiden sich durch ihr inneres Symbol.
+Ein Marker besteht aus einem kleinen Ankerpunkt auf der exakten Koordinate,
+einer dünnen senkrechten Linie und einer etwa 40 × 40 dp großen Flagge. Fotos
+erscheinen als Vorschaubild in der Flagge. Marker sind antippbar; die gewählte
+Flagge erhält einen klaren dunklen Auswahlhintergrund.
 
 ## Erste vertikale Schnitte
 
