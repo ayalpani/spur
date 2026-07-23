@@ -968,10 +968,14 @@ private fun createMomentMarkerBitmap(
             val canvas = android.graphics.Canvas(bitmap)
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
             paint.color = android.graphics.Color.rgb(24, 32, 28)
-            paint.style = android.graphics.Paint.Style.STROKE
-            paint.strokeWidth = MomentMarkerStroke * scale
-            canvas.drawLine(26 * scale, 43 * scale, 26 * scale, 90 * scale, paint)
             paint.style = android.graphics.Paint.Style.FILL
+            canvas.drawRect(
+                (26 - MomentMarkerStroke / 2) * scale,
+                43 * scale,
+                (26 + MomentMarkerStroke / 2) * scale,
+                90 * scale,
+                paint,
+            )
             canvas.drawCircle(26 * scale, 90 * scale, 1.5f * scale, paint)
 
             if (selected) {
@@ -992,9 +996,13 @@ private fun createMomentMarkerBitmap(
                 46 * scale,
                 43 * scale,
             )
+            canvas.drawRoundRect(flag, 8 * scale, 8 * scale, paint)
+            val content = android.graphics.RectF(flag).apply {
+                inset(MomentMarkerStroke * scale, MomentMarkerStroke * scale)
+            }
             paint.color = android.graphics.Color.WHITE
             paint.style = android.graphics.Paint.Style.FILL
-            canvas.drawRoundRect(flag, 8 * scale, 8 * scale, paint)
+            canvas.drawRoundRect(content, 6.5f * scale, 6.5f * scale, paint)
 
             val photo = if (moment.type == MomentType.PHOTO) {
                 decodeMarkerPhoto(moment.payload)
@@ -1002,7 +1010,7 @@ private fun createMomentMarkerBitmap(
                 null
             }
             if (photo != null) {
-                drawMarkerPhoto(canvas, paint, flag, photo, scale)
+                drawMarkerPhoto(canvas, paint, content, photo, scale)
                 photo.recycle()
             } else {
                 paint.color = android.graphics.Color.rgb(24, 32, 28)
@@ -1010,11 +1018,6 @@ private fun createMomentMarkerBitmap(
                 paint.strokeWidth = 2 * scale
                 drawMomentGlyph(canvas, paint, scale, moment.type)
             }
-
-            paint.color = android.graphics.Color.rgb(24, 32, 28)
-            paint.style = android.graphics.Paint.Style.STROKE
-            paint.strokeWidth = MomentMarkerStroke * scale
-            canvas.drawRoundRect(flag, 8 * scale, 8 * scale, paint)
         }
 
 private fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
@@ -1055,7 +1058,7 @@ private fun drawMarkerPhoto(
         (photo.height + side) / 2,
     )
     val clip = android.graphics.Path().apply {
-        addRoundRect(destination, 8 * scale, 8 * scale, android.graphics.Path.Direction.CW)
+        addRoundRect(destination, 6.5f * scale, 6.5f * scale, android.graphics.Path.Direction.CW)
     }
     canvas.save()
     canvas.clipPath(clip)
