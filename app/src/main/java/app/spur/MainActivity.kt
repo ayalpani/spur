@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -37,12 +38,15 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -232,6 +236,7 @@ private fun LocationOnboarding(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun MapScreen(
     isTourActive: Boolean,
     onTourAction: () -> Unit,
@@ -243,6 +248,7 @@ private fun MapScreen(
     var recenterRequest by rememberSaveable { mutableStateOf(0) }
     var resetNorthRequest by rememberSaveable { mutableStateOf(0) }
     var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
+    var showMomentSheet by rememberSaveable { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -315,7 +321,7 @@ private fun MapScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
-                    .padding(end = 18.dp, bottom = 92.dp),
+                    .padding(end = 18.dp, bottom = 86.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 MapIconButton(
@@ -342,6 +348,16 @@ private fun MapScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                IconButton(
+                    onClick = { showMomentSheet = true },
+                    modifier = Modifier.size(60.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = Color.White,
+                        contentColor = Ink,
+                    ),
+                ) {
+                    PlusIcon()
+                }
                 Button(
                     onClick = {
                         if (isTourActive) showStopConfirmation = true else onTourAction()
@@ -398,6 +414,56 @@ private fun MapScreen(
                 )
             }
         }
+    }
+
+    if (showMomentSheet) {
+        ModalBottomSheet(onDismissRequest = { showMomentSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = "Auf der Karte ablegen",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Was möchtest du an dieser Stelle festhalten?",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                MomentOption(label = "Text") {
+                    Toast.makeText(context, "Textmarker kommt als Nächstes.", Toast.LENGTH_SHORT)
+                        .show()
+                }
+                MomentOption(label = "Emoji") {
+                    Toast.makeText(context, "Emojimarker kommt als Nächstes.", Toast.LENGTH_SHORT)
+                        .show()
+                }
+                MomentOption(label = "Foto") {
+                    Toast.makeText(context, "Fotomarker kommt als Nächstes.", Toast.LENGTH_SHORT)
+                        .show()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MomentOption(
+    label: String,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        shape = CircleShape,
+    ) {
+        Text(label, style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -610,6 +676,27 @@ private fun ShareIcon() {
             drawCircle(Sand, radius = 3.2.dp.toPx(), center = point)
             drawCircle(Ink, radius = 3.2.dp.toPx(), center = point, style = Stroke(stroke))
         }
+    }
+}
+
+@Composable
+private fun PlusIcon() {
+    Canvas(modifier = Modifier.size(25.dp)) {
+        val stroke = 2.4.dp.toPx()
+        drawLine(
+            color = Ink,
+            start = Offset(center.x, 4.dp.toPx()),
+            end = Offset(center.x, 21.dp.toPx()),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = Ink,
+            start = Offset(4.dp.toPx(), center.y),
+            end = Offset(21.dp.toPx(), center.y),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
     }
 }
 

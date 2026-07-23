@@ -31,10 +31,13 @@ sobald die Hintergrundaufzeichnung implementiert ist.
 
 Die Kartensteuerung folgt einer festen Ordnung: oben stehen Hauptmenü und –
 nur bei einer laufenden Tour – Teilen. Rechts auf der Karte liegen Kompass und
-Standortzentrierung übereinander. Unten bleiben der Tour-Button und der Zugang
-zur History. Der Kompass richtet die aktuelle Ansicht nach Norden aus; die
-Standorttaste zentriert und aktiviert wieder die bewegungsabhängige
-Kartenausrichtung. „Tour starten“ ist eine schwarze, groß beschriftete Pille.
+Standortzentrierung übereinander. Unten stehen der Plus-Button zum Ablegen
+eines Moments, der Tour-Button und der Zugang zur History. Der Plus-Button
+öffnet ein Bottom Sheet für Text-, Emoji- und Fotomarker. Alle benachbarten
+Kartenbuttons verwenden denselben Abstand. Der Kompass richtet die aktuelle
+Ansicht nach Norden aus; die Standorttaste zentriert und aktiviert wieder die
+bewegungsabhängige Kartenausrichtung. „Tour starten“ ist eine schwarze, groß
+beschriftete Pille.
 Während der Aufzeichnung wird daraus eine rote Stop-Aktion; vor dem Beenden
 muss die Person ausdrücklich bestätigen. Ein zusätzlicher Status-Chip ist
 nicht nötig. Alle Icon-Buttons sind gleich groß und reinweiß. Als primäres
