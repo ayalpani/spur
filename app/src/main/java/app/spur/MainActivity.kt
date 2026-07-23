@@ -269,6 +269,7 @@ private fun MapScreen(
     val drawerState = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val deviceHeading = rememberDeviceHeading()
+    var mapBearing by remember { mutableDoubleStateOf(0.0) }
     var recenterRequest by rememberSaveable { mutableStateOf(0) }
     var resetNorthRequest by rememberSaveable { mutableStateOf(0) }
     var resetZoomRequest by rememberSaveable { mutableStateOf(0) }
@@ -334,6 +335,7 @@ private fun MapScreen(
                 resetZoomRequest = resetZoomRequest,
                 mapMoments = mapMoments,
                 photoToPlace = pendingPhoto,
+                onMapBearingChanged = { mapBearing = it },
                 onMomentPlaced = { moment ->
                     val updatedMoments = mapMoments + moment
                     context.saveMapMoments(updatedMoments)
@@ -390,7 +392,10 @@ private fun MapScreen(
                     contentDescription = "Karte nach Norden ausrichten",
                     onClick = { resetNorthRequest++ },
                 ) {
-                    CompassIcon(heading = deviceHeading)
+                    CompassIcon(
+                        mapBearing = mapBearing,
+                        deviceHeading = deviceHeading,
+                    )
                 }
                 MapIconButton(
                     contentDescription = "Normale Zoomstufe wiederherstellen",
@@ -589,11 +594,13 @@ private fun MapSurface(
     resetZoomRequest: Int,
     mapMoments: List<MapMoment>,
     photoToPlace: File?,
+    onMapBearingChanged: (Double) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onPhotoPlacementFailed: (File) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val currentOnMapBearingChanged by rememberUpdatedState(onMapBearingChanged)
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
     val renderedMomentIds = remember { mutableSetOf<String>() }
@@ -632,6 +639,43 @@ private fun MapSurface(
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
             mapView.onDestroy()
+        }
+    }
+
+    DisposableEffect(mapView) {
+        var map: MapLibreMap? = null
+        var lastPublishedAt = 0L
+        var unwrappedBearing = 0.0
+
+        fun publishBearing(force: Boolean) {
+            val nextBearing = map?.cameraPosition?.bearing ?: return
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (lastPublishedAt == 0L || force || now - lastPublishedAt >= 1_000L) {
+                unwrappedBearing = if (lastPublishedAt == 0L) {
+                    nextBearing
+                } else {
+                    unwrapHeading(unwrappedBearing, nextBearing)
+                }
+                currentOnMapBearingChanged(unwrappedBearing)
+                lastPublishedAt = now
+            }
+        }
+
+        val moveListener = MapLibreMap.OnCameraMoveListener {
+            publishBearing(force = false)
+        }
+        val idleListener = MapLibreMap.OnCameraIdleListener {
+            publishBearing(force = true)
+        }
+        mapView.getMapAsync { readyMap ->
+            map = readyMap
+            readyMap.addOnCameraMoveListener(moveListener)
+            readyMap.addOnCameraIdleListener(idleListener)
+            publishBearing(force = true)
+        }
+        onDispose {
+            map?.removeOnCameraMoveListener(moveListener)
+            map?.removeOnCameraIdleListener(idleListener)
         }
     }
 
@@ -1160,20 +1204,38 @@ private fun PlusIcon() {
 }
 
 @Composable
-private fun CompassIcon(heading: Double) {
-    val animatedRotation by animateFloatAsState(
-        targetValue = -heading.toFloat(),
+private fun CompassIcon(
+    mapBearing: Double,
+    deviceHeading: Double,
+) {
+    val animatedMapRotation by animateFloatAsState(
+        targetValue = -mapBearing.toFloat(),
         animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
-        label = "Compass heading",
+        label = "Map north",
     )
-    Icon(
-        imageVector = Icons.Rounded.North,
-        contentDescription = null,
-        tint = Ink,
-        modifier = Modifier
-            .size(48.dp)
-            .graphicsLayer { rotationZ = animatedRotation },
+    val animatedDeviceRotation by animateFloatAsState(
+        targetValue = -deviceHeading.toFloat(),
+        animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+        label = "Device north",
     )
+    Box(modifier = Modifier.size(48.dp)) {
+        Icon(
+            imageVector = Icons.Rounded.North,
+            contentDescription = null,
+            tint = Color.Black.copy(alpha = 0.5f),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { rotationZ = animatedMapRotation },
+        )
+        Icon(
+            imageVector = Icons.Rounded.North,
+            contentDescription = null,
+            tint = Color(0xFF1565C0).copy(alpha = 0.5f),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { rotationZ = animatedDeviceRotation },
+        )
+    }
 }
 
 @Composable

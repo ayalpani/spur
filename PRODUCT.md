@@ -39,7 +39,9 @@ zwischen Front- und Rückkamera. Nach dem Knipsen kann das Bild verworfen oder
 lokal verwendet werden. Ein verwendetes Bild erhält die aktuelle Position,
 erscheint sofort als Foto-Marker auf der Karte und bleibt nach einem Neustart
 erhalten. Alle benachbarten Kartenbuttons verwenden denselben Abstand. Der
-eigene Kompass reagiert mit seiner Nadel auf die Geräteausrichtung. Ein Tipp
+Kompass überlagert zwei gleich große Nordpfeile mit jeweils 50 % Deckkraft:
+Schwarz zeigt Norden relativ zur gedrehten Karte, Blau zeigt Norden relativ
+zur Geräteausrichtung. Beide bewegen sich verzögert und weich. Ein Tipp
 richtet ausschließlich die bestehende Ansicht nach Norden aus und verändert
 weder Mittelpunkt noch Zoom. Eine separate 100-%-Taste stellt die normale
 Zoomstufe wieder her. Die Standorttaste verwendet das etablierte Fadenkreuz
