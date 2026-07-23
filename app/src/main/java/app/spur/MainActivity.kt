@@ -41,11 +41,14 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.North
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -1143,31 +1146,14 @@ private fun PlusIcon() {
 
 @Composable
 private fun CompassIcon(heading: Double) {
-    Canvas(
+    Icon(
+        imageVector = Icons.Rounded.North,
+        contentDescription = null,
+        tint = Ink,
         modifier = Modifier
-            .size(25.dp)
+            .size(48.dp)
             .graphicsLayer { rotationZ = -heading.toFloat() },
-    ) {
-        val stroke = 2.dp.toPx()
-        drawCircle(Ink, radius = 10.dp.toPx(), center = center, style = Stroke(stroke))
-        val north = Offset(center.x, 5.dp.toPx())
-        val south = Offset(center.x, 19.dp.toPx())
-        drawLine(Ink, south, north, stroke, cap = StrokeCap.Round)
-        drawLine(
-            Ink,
-            north,
-            Offset(8.5.dp.toPx(), 10.dp.toPx()),
-            stroke,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            Ink,
-            north,
-            Offset(16.5.dp.toPx(), 10.dp.toPx()),
-            stroke,
-            cap = StrokeCap.Round,
-        )
-    }
+    )
 }
 
 @Composable
