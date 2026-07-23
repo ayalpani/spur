@@ -41,4 +41,5 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("org.maplibre.gl:android-sdk:11.8.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation("junit:junit:4.13.2")
 }

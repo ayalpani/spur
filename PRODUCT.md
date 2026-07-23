@@ -36,8 +36,10 @@ eines Moments, der Tour-Button und der Zugang zur History. Der Plus-Button
 öffnet ein Bottom Sheet in der Reihenfolge Sprachnachricht, Emoji, Video und
 Foto. „Foto“ öffnet eine bildschirmfüllende Kamera mit Auslöser und Wechsel
 zwischen Front- und Rückkamera. Nach dem Knipsen kann das Bild verworfen oder
-lokal verwendet werden. Alle benachbarten Kartenbuttons verwenden denselben
-Abstand. Der eigene Kompass dreht sich mit der Karte und richtet die Ansicht
+lokal verwendet werden. Ein verwendetes Bild erhält die aktuelle Position,
+erscheint sofort als Foto-Marker auf der Karte und bleibt nach einem Neustart
+erhalten. Alle benachbarten Kartenbuttons verwenden denselben Abstand. Der
+eigene Kompass dreht sich mit der Karte und richtet die Ansicht
 bei einem Tipp einmalig nach Norden aus. Die Standorttaste zentriert die Karte
 genau einmal auf den aktuellen Standort, ohne einen nachlaufenden Kamera- oder
 Rotationsmodus zu aktivieren. „Tour starten“ ist eine schwarze, groß
@@ -47,6 +49,10 @@ muss die Person ausdrücklich bestätigen. Ein zusätzlicher Status-Chip ist
 nicht nötig. Alle Icon-Buttons sind gleich groß und reinweiß. Als primäres
 Werkzeug behält die Karte sämtliche Wischgesten; das Hauptmenü öffnet
 ausschließlich über seinen Button.
+
+Alle abgelegten Momente nutzen dasselbe erweiterbare Marker-Modell aus
+Position, Typ und Inhalt. Die gemeinsame Markerform bleibt konsistent; Foto,
+Video, Sprachnachricht und Emoji unterscheiden sich durch ihr inneres Symbol.
 
 ## Erste vertikale Schnitte
 

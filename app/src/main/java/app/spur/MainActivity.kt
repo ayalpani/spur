@@ -82,6 +82,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.maplibre.android.MapLibre
+import org.maplibre.android.annotations.IconFactory
+import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.LocationComponentOptions
@@ -92,6 +94,7 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import kotlinx.coroutines.launch
+import java.io.File
 
 private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
@@ -257,6 +260,8 @@ private fun MapScreen(
     var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
+    var pendingPhoto by remember { mutableStateOf<File?>(null) }
+    var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -311,7 +316,26 @@ private fun MapScreen(
             MapSurface(
                 recenterRequest = recenterRequest,
                 resetNorthRequest = resetNorthRequest,
+                mapMoments = mapMoments,
+                photoToPlace = pendingPhoto,
                 onBearingChanged = { mapBearing = it },
+                onMomentPlaced = { moment ->
+                    val updatedMoments = mapMoments + moment
+                    context.saveMapMoments(updatedMoments)
+                    mapMoments = updatedMoments
+                    pendingPhoto = null
+                    Toast.makeText(context, "Foto auf der Karte abgelegt.", Toast.LENGTH_SHORT)
+                        .show()
+                },
+                onPhotoPlacementFailed = { photo ->
+                    photo.delete()
+                    pendingPhoto = null
+                    Toast.makeText(
+                        context,
+                        "Der Standort ist noch nicht verfügbar.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                },
             )
 
             Row(
@@ -490,9 +514,9 @@ private fun MapScreen(
     if (showCamera) {
         CameraScreen(
             onClose = { showCamera = false },
-            onPhotoAccepted = {
+            onPhotoAccepted = { photo ->
                 showCamera = false
-                Toast.makeText(context, "Foto lokal gespeichert.", Toast.LENGTH_SHORT).show()
+                pendingPhoto = photo
             },
         )
     }
@@ -537,11 +561,19 @@ private fun MapIconButton(
 private fun MapSurface(
     recenterRequest: Int,
     resetNorthRequest: Int,
+    mapMoments: List<MapMoment>,
+    photoToPlace: File?,
     onBearingChanged: (Double) -> Unit,
+    onMomentPlaced: (MapMoment) -> Unit,
+    onPhotoPlacementFailed: (File) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentOnBearingChanged by rememberUpdatedState(onBearingChanged)
+    val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
+    val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
+    val renderedMomentIds = remember { mutableSetOf<String>() }
+    val markerIcons = remember(context) { mutableMapOf<MomentType, org.maplibre.android.annotations.Icon>() }
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply {
@@ -619,6 +651,53 @@ private fun MapSurface(
         }
     }
 
+    LaunchedEffect(photoToPlace) {
+        val photo = photoToPlace ?: return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            val location = if (map.locationComponent.isLocationComponentActivated) {
+                map.locationComponent.lastKnownLocation
+            } else {
+                null
+            }
+            if (location == null) {
+                currentOnPhotoPlacementFailed(photo)
+            } else {
+                currentOnMomentPlaced(
+                    MapMoment(
+                        id = photo.nameWithoutExtension,
+                        type = MomentType.PHOTO,
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        payload = photo.absolutePath,
+                    ),
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(mapMoments) {
+        mapView.getMapAsync { map ->
+            mapMoments
+                .filterNot { it.id in renderedMomentIds }
+                .forEach { moment ->
+                    runCatching {
+                        map.addMarker(
+                            MarkerOptions()
+                                .position(LatLng(moment.latitude, moment.longitude))
+                                .title(moment.type.markerTitle)
+                                .icon(
+                                    markerIcons.getOrPut(moment.type) {
+                                        createMomentMarkerIcon(context, moment.type)
+                                    },
+                                ),
+                        )
+                    }.onSuccess {
+                        renderedMomentIds += moment.id
+                    }
+                }
+        }
+    }
+
     AndroidView(
         factory = { mapView },
         modifier = Modifier
@@ -670,6 +749,112 @@ private fun Context.hasLocationPermission(): Boolean =
 
 private fun Context.hasCameraPermission(): Boolean =
     checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+private const val MapMomentPreferences = "map-moments"
+private const val MapMomentEntries = "entries"
+
+private fun Context.loadMapMoments(): List<MapMoment> =
+    getSharedPreferences(MapMomentPreferences, Context.MODE_PRIVATE)
+        .getStringSet(MapMomentEntries, emptySet())
+        .orEmpty()
+        .mapNotNull(::decodeMapMoment)
+        .filter { it.type == MomentType.EMOJI || File(it.payload).isFile }
+
+private fun Context.saveMapMoments(moments: List<MapMoment>) {
+    getSharedPreferences(MapMomentPreferences, Context.MODE_PRIVATE)
+        .edit()
+        .putStringSet(MapMomentEntries, moments.map(::encodeMapMoment).toSet())
+        .apply()
+}
+
+private val MomentType.markerTitle: String
+    get() = when (this) {
+        MomentType.PHOTO -> "Foto"
+        MomentType.VIDEO -> "Video"
+        MomentType.VOICE -> "Sprachnachricht"
+        MomentType.EMOJI -> "Emoji"
+    }
+
+private fun createMomentMarkerIcon(context: Context, type: MomentType) =
+    IconFactory.getInstance(context).fromBitmap(
+        android.graphics.Bitmap.createBitmap(
+            (52 * context.resources.displayMetrics.density).toInt(),
+            (52 * context.resources.displayMetrics.density).toInt(),
+            android.graphics.Bitmap.Config.ARGB_8888,
+        ).also { bitmap ->
+            val scale = context.resources.displayMetrics.density
+            val canvas = android.graphics.Canvas(bitmap)
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+
+            paint.color = android.graphics.Color.WHITE
+            paint.style = android.graphics.Paint.Style.FILL
+            canvas.drawCircle(26 * scale, 26 * scale, 23 * scale, paint)
+            paint.color = android.graphics.Color.rgb(24, 32, 28)
+            paint.style = android.graphics.Paint.Style.STROKE
+            paint.strokeWidth = 2 * scale
+            canvas.drawCircle(26 * scale, 26 * scale, 23 * scale, paint)
+            drawMomentGlyph(canvas, paint, scale, type)
+        },
+    )
+
+private fun drawMomentGlyph(
+    canvas: android.graphics.Canvas,
+    paint: android.graphics.Paint,
+    scale: Float,
+    type: MomentType,
+) {
+    when (type) {
+        MomentType.PHOTO -> {
+            canvas.drawRoundRect(
+                14 * scale,
+                20 * scale,
+                38 * scale,
+                35 * scale,
+                3 * scale,
+                3 * scale,
+                paint,
+            )
+            canvas.drawCircle(26 * scale, 27.5f * scale, 4.5f * scale, paint)
+            canvas.drawLine(19 * scale, 20 * scale, 22 * scale, 16 * scale, paint)
+            canvas.drawLine(22 * scale, 16 * scale, 30 * scale, 16 * scale, paint)
+            canvas.drawLine(30 * scale, 16 * scale, 33 * scale, 20 * scale, paint)
+        }
+        MomentType.VIDEO -> {
+            val path = android.graphics.Path().apply {
+                moveTo(21 * scale, 18 * scale)
+                lineTo(36 * scale, 26 * scale)
+                lineTo(21 * scale, 34 * scale)
+                close()
+            }
+            canvas.drawPath(path, paint)
+        }
+        MomentType.VOICE -> {
+            listOf(20f to 5f, 26f to 10f, 32f to 5f).forEach { (x, halfHeight) ->
+                canvas.drawLine(
+                    x * scale,
+                    (26 - halfHeight) * scale,
+                    x * scale,
+                    (26 + halfHeight) * scale,
+                    paint,
+                )
+            }
+        }
+        MomentType.EMOJI -> {
+            canvas.drawCircle(20 * scale, 22 * scale, 1.5f * scale, paint)
+            canvas.drawCircle(32 * scale, 22 * scale, 1.5f * scale, paint)
+            canvas.drawArc(
+                19 * scale,
+                21 * scale,
+                33 * scale,
+                34 * scale,
+                20f,
+                140f,
+                false,
+                paint,
+            )
+        }
+    }
+}
 
 @Composable
 private fun HistoryScreen(onBack: () -> Unit) {
