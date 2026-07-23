@@ -1150,10 +1150,23 @@ private fun CompassIcon(heading: Double) {
     ) {
         val stroke = 2.dp.toPx()
         drawCircle(Ink, radius = 10.dp.toPx(), center = center, style = Stroke(stroke))
-        val north = Offset(center.x + 3.dp.toPx(), center.y - 7.dp.toPx())
-        val south = Offset(center.x - 3.dp.toPx(), center.y + 7.dp.toPx())
+        val north = Offset(center.x, 5.dp.toPx())
+        val south = Offset(center.x, 19.dp.toPx())
         drawLine(Ink, south, north, stroke, cap = StrokeCap.Round)
-        drawCircle(Ink, radius = 2.dp.toPx(), center = north)
+        drawLine(
+            Ink,
+            north,
+            Offset(8.5.dp.toPx(), 10.dp.toPx()),
+            stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            Ink,
+            north,
+            Offset(16.5.dp.toPx(), 10.dp.toPx()),
+            stroke,
+            cap = StrokeCap.Round,
+        )
     }
 }
 
