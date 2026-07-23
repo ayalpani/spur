@@ -250,7 +250,21 @@ private fun MapScreen(
     var resetNorthRequest by rememberSaveable { mutableStateOf(0) }
     var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
+    var showCamera by rememberSaveable { mutableStateOf(false) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            showCamera = true
+        } else {
+            Toast.makeText(
+                context,
+                "Für Fotos braucht Spur Zugriff auf die Kamera.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -455,11 +469,25 @@ private fun MapScreen(
                         .show()
                 }
                 MomentOption(label = "Foto") {
-                    Toast.makeText(context, "Fotomarker kommt als Nächstes.", Toast.LENGTH_SHORT)
-                        .show()
+                    showMomentSheet = false
+                    if (context.hasCameraPermission()) {
+                        showCamera = true
+                    } else {
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
                 }
             }
         }
+    }
+
+    if (showCamera) {
+        CameraScreen(
+            onClose = { showCamera = false },
+            onPhotoAccepted = {
+                showCamera = false
+                Toast.makeText(context, "Foto lokal gespeichert.", Toast.LENGTH_SHORT).show()
+            },
+        )
     }
 }
 
@@ -614,6 +642,9 @@ private fun enableLocationTracking(
 private fun Context.hasLocationPermission(): Boolean =
     checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
         checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+private fun Context.hasCameraPermission(): Boolean =
+    checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
 @Composable
 private fun HistoryScreen(onBack: () -> Unit) {
