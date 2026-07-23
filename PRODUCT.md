@@ -35,7 +35,9 @@ liegen Kompass und Standortzentrierung übereinander. Unten bleiben der
 Tour-Button und der Zugang zur History. Der Kompass richtet die aktuelle
 Ansicht nach Norden aus; die Standorttaste zentriert und aktiviert wieder die
 bewegungsabhängige Kartenausrichtung. Die Hauptaktion ist eine schwarze,
-groß beschriftete Pille; alle Icon-Buttons sind gleich groß und reinweiß.
+groß beschriftete Pille; alle Icon-Buttons sind gleich groß und reinweiß. Als
+primäres Werkzeug behält die Karte sämtliche Wischgesten; das Hauptmenü öffnet
+ausschließlich über seinen Button.
 
 ## Erste vertikale Schnitte
 
