@@ -5,6 +5,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationManager
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -68,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -75,6 +78,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -100,6 +104,7 @@ private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
 private val StopRed = Color(0xFFB3261E)
+private const val DefaultMapZoom = 18.5
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -256,6 +261,7 @@ private fun MapScreen(
     val scope = rememberCoroutineScope()
     var recenterRequest by rememberSaveable { mutableStateOf(0) }
     var resetNorthRequest by rememberSaveable { mutableStateOf(0) }
+    var resetZoomRequest by rememberSaveable { mutableStateOf(0) }
     var mapBearing by remember { mutableDoubleStateOf(0.0) }
     var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
@@ -316,6 +322,7 @@ private fun MapScreen(
             MapSurface(
                 recenterRequest = recenterRequest,
                 resetNorthRequest = resetNorthRequest,
+                resetZoomRequest = resetZoomRequest,
                 mapMoments = mapMoments,
                 photoToPlace = pendingPhoto,
                 onBearingChanged = { mapBearing = it },
@@ -378,10 +385,20 @@ private fun MapScreen(
                     CompassIcon(bearing = mapBearing)
                 }
                 MapIconButton(
+                    contentDescription = "Normale Zoomstufe wiederherstellen",
+                    onClick = { resetZoomRequest++ },
+                ) {
+                    Text(
+                        text = "100%",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                MapIconButton(
                     contentDescription = "Auf eigenen Standort zentrieren",
                     onClick = { recenterRequest++ },
                 ) {
-                    RecenterIcon()
+                    LocationIcon()
                 }
             }
 
@@ -561,6 +578,7 @@ private fun MapIconButton(
 private fun MapSurface(
     recenterRequest: Int,
     resetNorthRequest: Int,
+    resetZoomRequest: Int,
     mapMoments: List<MapMoment>,
     photoToPlace: File?,
     onBearingChanged: (Double) -> Unit,
@@ -583,7 +601,7 @@ private fun MapSurface(
             getMapAsync { map ->
                 map.uiSettings.isCompassEnabled = false
                 map.setStyle("https://tiles.openfreemap.org/styles/liberty") { style ->
-                    enableLocationTracking(context, map.locationComponent, style)
+                    enableLocationTracking(context, map, style)
                 }
             }
         }
@@ -631,15 +649,27 @@ private fun MapSurface(
         mapView.getMapAsync { map ->
             if (map.locationComponent.isLocationComponentActivated) {
                 val location = map.locationComponent.lastKnownLocation
+                    ?: context.bestLastKnownLocation()
                 map.locationComponent.cameraMode = CameraMode.NONE
                 if (location == null) return@getMapAsync
                 map.animateCamera(
-                    CameraUpdateFactory.newLatLng(
+                    CameraUpdateFactory.newLatLngZoom(
                         LatLng(location.latitude, location.longitude),
+                        DefaultMapZoom,
                     ),
                     500,
                 )
             }
+        }
+    }
+
+    LaunchedEffect(resetZoomRequest) {
+        if (resetZoomRequest == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            if (map.locationComponent.isLocationComponentActivated) {
+                map.locationComponent.cameraMode = CameraMode.NONE
+            }
+            map.animateCamera(CameraUpdateFactory.zoomTo(DefaultMapZoom), 500)
         }
     }
 
@@ -740,11 +770,12 @@ private fun shareActiveTour(context: Context) {
 @SuppressLint("MissingPermission")
 private fun enableLocationTracking(
     context: Context,
-    locationComponent: org.maplibre.android.location.LocationComponent,
+    map: MapLibreMap,
     style: Style,
 ) {
     if (!context.hasLocationPermission()) return
 
+    val locationComponent = map.locationComponent
     val options = LocationComponentOptions.builder(context)
         .pulseEnabled(true)
         .build()
@@ -755,15 +786,18 @@ private fun enableLocationTracking(
             .build(),
     )
     locationComponent.isLocationComponentEnabled = true
-    locationComponent.renderMode = RenderMode.COMPASS
-    locationComponent.setCameraMode(
-        CameraMode.TRACKING_COMPASS,
-        750L,
-        16.0,
-        null,
-        null,
-        null,
-    )
+    locationComponent.renderMode = RenderMode.NORMAL
+    locationComponent.cameraMode = CameraMode.NONE
+
+    val location = locationComponent.lastKnownLocation ?: context.bestLastKnownLocation()
+    if (location != null) {
+        map.moveCamera(
+            CameraUpdateFactory.newLatLngZoom(
+                LatLng(location.latitude, location.longitude),
+                DefaultMapZoom,
+            ),
+        )
+    }
 }
 
 private fun Context.hasLocationPermission(): Boolean =
@@ -772,6 +806,16 @@ private fun Context.hasLocationPermission(): Boolean =
 
 private fun Context.hasCameraPermission(): Boolean =
     checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+@SuppressLint("MissingPermission")
+private fun Context.bestLastKnownLocation(): Location? {
+    val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    return locationManager.getProviders(true)
+        .mapNotNull { provider ->
+            runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
+        }
+        .maxByOrNull(Location::getTime)
+}
 
 private const val MapMomentPreferences = "map-moments"
 private const val MapMomentEntries = "entries"
@@ -1074,15 +1118,16 @@ private fun CompassIcon(bearing: Double) {
 }
 
 @Composable
-private fun RecenterIcon() {
+private fun LocationIcon() {
     Canvas(modifier = Modifier.size(25.dp)) {
-        val stroke = 2.dp.toPx()
-        drawCircle(Ink, radius = 6.dp.toPx(), center = center, style = Stroke(stroke))
-        drawCircle(Ink, radius = 2.dp.toPx(), center = center)
-        drawLine(Ink, Offset(center.x, 1.dp.toPx()), Offset(center.x, 5.dp.toPx()), stroke)
-        drawLine(Ink, Offset(center.x, 20.dp.toPx()), Offset(center.x, 24.dp.toPx()), stroke)
-        drawLine(Ink, Offset(1.dp.toPx(), center.y), Offset(5.dp.toPx(), center.y), stroke)
-        drawLine(Ink, Offset(20.dp.toPx(), center.y), Offset(24.dp.toPx(), center.y), stroke)
+        val pointer = Path().apply {
+            moveTo(4.dp.toPx(), 11.dp.toPx())
+            lineTo(21.dp.toPx(), 4.dp.toPx())
+            lineTo(14.dp.toPx(), 21.dp.toPx())
+            lineTo(11.dp.toPx(), 14.dp.toPx())
+            close()
+        }
+        drawPath(pointer, color = Ink)
     }
 }
 

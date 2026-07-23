@@ -39,11 +39,13 @@ zwischen Front- und Rückkamera. Nach dem Knipsen kann das Bild verworfen oder
 lokal verwendet werden. Ein verwendetes Bild erhält die aktuelle Position,
 erscheint sofort als Foto-Marker auf der Karte und bleibt nach einem Neustart
 erhalten. Alle benachbarten Kartenbuttons verwenden denselben Abstand. Der
-eigene Kompass dreht sich mit der Karte und richtet die Ansicht
-bei einem Tipp einmalig nach Norden aus. Die Standorttaste zentriert die Karte
-genau einmal auf den aktuellen Standort, ohne einen nachlaufenden Kamera- oder
-Rotationsmodus zu aktivieren. „Tour starten“ ist eine schwarze, groß
-beschriftete Pille.
+eigene Kompass dreht sich mit der Karte und richtet die Ansicht bei einem Tipp
+einmalig nach Norden aus. Eine separate 100-%-Taste stellt die normale
+Zoomstufe wieder her. Die Standorttaste verwendet einen eindeutigen
+Standortpfeil und zentriert die Karte einmalig auf den aktuellen Standort mit
+dieser normalen Zoomstufe. Die Karte aktiviert weder beim Start noch durch
+eine dieser Aktionen einen nachlaufenden Kamera-, Kompass- oder Gyroskopmodus.
+„Tour starten“ ist eine schwarze, groß beschriftete Pille.
 Während der Aufzeichnung wird daraus eine rote Stop-Aktion; vor dem Beenden
 muss die Person ausdrücklich bestätigen. Ein zusätzlicher Status-Chip ist
 nicht nötig. Alle Icon-Buttons sind gleich groß und reinweiß. Als primäres
