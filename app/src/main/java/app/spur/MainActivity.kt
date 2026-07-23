@@ -27,7 +27,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -81,12 +84,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
@@ -95,8 +101,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.maplibre.android.MapLibre
-import org.maplibre.android.annotations.IconFactory
-import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.LocationComponentOptions
@@ -108,6 +112,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.roundToInt
 
 private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
@@ -603,10 +608,11 @@ private fun MapSurface(
     val currentOnMapBearingChanged by rememberUpdatedState(onMapBearingChanged)
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
-    val renderedMomentIds = remember { mutableSetOf<String>() }
-    val mapMarkers = remember { mutableMapOf<String, org.maplibre.android.annotations.Marker>() }
-    val markerIcons = remember(context) { mutableMapOf<String, org.maplibre.android.annotations.Icon>() }
-    val selectedMomentId = remember { mutableStateOf<String?>(null) }
+    val currentMapMoments by rememberUpdatedState(mapMoments)
+    var selectedMomentId by remember { mutableStateOf<String?>(null) }
+    var markerPositions by remember {
+        mutableStateOf<Map<String, android.graphics.PointF>>(emptyMap())
+    }
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply {
@@ -647,6 +653,15 @@ private fun MapSurface(
         var lastPublishedAt = 0L
         var unwrappedBearing = 0.0
 
+        fun publishMarkerPositions() {
+            val readyMap = map ?: return
+            markerPositions = currentMapMoments.associate { moment ->
+                moment.id to readyMap.projection.toScreenLocation(
+                    LatLng(moment.latitude, moment.longitude),
+                )
+            }
+        }
+
         fun publishBearing(force: Boolean) {
             val nextBearing = map?.cameraPosition?.bearing ?: return
             val now = android.os.SystemClock.elapsedRealtime()
@@ -663,15 +678,18 @@ private fun MapSurface(
 
         val moveListener = MapLibreMap.OnCameraMoveListener {
             publishBearing(force = false)
+            publishMarkerPositions()
         }
         val idleListener = MapLibreMap.OnCameraIdleListener {
             publishBearing(force = true)
+            publishMarkerPositions()
         }
         mapView.getMapAsync { readyMap ->
             map = readyMap
             readyMap.addOnCameraMoveListener(moveListener)
             readyMap.addOnCameraIdleListener(idleListener)
             publishBearing(force = true)
+            publishMarkerPositions()
         }
         onDispose {
             map?.removeOnCameraMoveListener(moveListener)
@@ -755,54 +773,48 @@ private fun MapSurface(
 
     LaunchedEffect(mapMoments) {
         mapView.getMapAsync { map ->
-            mapMoments
-                .filterNot { it.id in renderedMomentIds }
-                .forEach { moment ->
-                    runCatching {
-                        val marker = map.addMarker(
-                            MarkerOptions()
-                                .position(LatLng(moment.latitude, moment.longitude))
-                                .icon(
-                                    markerIcons.getOrPut("${moment.id}:false") {
-                                        createMomentMarkerIcon(context, moment, selected = false)
-                                    },
-                                ),
-                        )
-                        mapMarkers[moment.id] = marker
-                    }.onSuccess {
-                        renderedMomentIds += moment.id
-                    }
-                }
-            map.setOnMarkerClickListener { marker ->
-                val momentId = mapMarkers.entries
-                    .firstOrNull { it.value.id == marker.id }
-                    ?.key
-                    ?: return@setOnMarkerClickListener false
-                selectedMomentId.value = if (selectedMomentId.value == momentId) {
-                    null
-                } else {
-                    momentId
-                }
-                true
+            markerPositions = mapMoments.associate { moment ->
+                moment.id to map.projection.toScreenLocation(
+                    LatLng(moment.latitude, moment.longitude),
+                )
             }
         }
     }
 
-    LaunchedEffect(selectedMomentId.value, mapMoments) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(
+            factory = { mapView },
+            modifier = Modifier
+                .fillMaxSize()
+                .semantics { contentDescription = "Interaktive Kartenansicht" },
+        )
+
+        val density = LocalDensity.current
+        val markerWidthPx = with(density) { 52.dp.roundToPx() }
+        val markerHeightPx = with(density) { 68.dp.roundToPx() }
         mapMoments.forEach { moment ->
-            val selected = moment.id == selectedMomentId.value
-            mapMarkers[moment.id]?.icon = markerIcons.getOrPut("${moment.id}:$selected") {
-                createMomentMarkerIcon(context, moment, selected)
+            val position = markerPositions[moment.id] ?: return@forEach
+            val selected = selectedMomentId == moment.id
+            val marker = remember(moment, selected) {
+                createMomentMarkerBitmap(context, moment, selected).asImageBitmap()
             }
+            Image(
+                bitmap = marker,
+                contentDescription = "Abgelegtes Foto auf der Karte",
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = position.x.roundToInt() - markerWidthPx / 2,
+                            y = position.y.roundToInt() - markerHeightPx,
+                        )
+                    }
+                    .size(width = 52.dp, height = 68.dp)
+                    .clickable {
+                        selectedMomentId = if (selected) null else moment.id
+                    },
+            )
         }
     }
-
-    AndroidView(
-        factory = { mapView },
-        modifier = Modifier
-            .fillMaxSize()
-            .semantics { contentDescription = "Interaktive Kartenansicht" },
-    )
 }
 
 private fun shareActiveTour(context: Context) {
@@ -936,13 +948,12 @@ private fun Context.saveMapMoments(moments: List<MapMoment>) {
         .apply()
 }
 
-private fun createMomentMarkerIcon(
+private fun createMomentMarkerBitmap(
     context: Context,
     moment: MapMoment,
     selected: Boolean,
 ) =
-    IconFactory.getInstance(context).fromBitmap(
-        android.graphics.Bitmap.createBitmap(
+    android.graphics.Bitmap.createBitmap(
             (52 * context.resources.displayMetrics.density).toInt(),
             (68 * context.resources.displayMetrics.density).toInt(),
             android.graphics.Bitmap.Config.ARGB_8888,
@@ -998,8 +1009,7 @@ private fun createMomentMarkerIcon(
             paint.style = android.graphics.Paint.Style.STROKE
             paint.strokeWidth = 1.5f * scale
             canvas.drawRoundRect(flag, 8 * scale, 8 * scale, paint)
-        },
-    )
+        }
 
 private fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
     runCatching {
