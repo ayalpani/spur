@@ -13,8 +13,8 @@ Marken-, Store- und Domainverfügbarkeit sind noch nicht geprüft.
 ## MVP in einem Satz
 
 Eine Person startet unten mit einem Daumentipp eine Tour, zeichnet ihren Weg
-zuverlässig im Hintergrund auf, setzt unterwegs Text-, Emoji- oder Fotomarker
-und findet später alles ausschließlich lokal wieder.
+zuverlässig im Hintergrund auf, setzt unterwegs Sprach-, Emoji-, Video- oder
+Fotomarker und findet später alles ausschließlich lokal wieder.
 
 ## Primäre Navigation
 
@@ -33,11 +33,11 @@ Die Kartensteuerung folgt einer festen Ordnung: oben stehen Hauptmenü und –
 nur bei einer laufenden Tour – Teilen. Rechts auf der Karte liegen Kompass und
 Standortzentrierung übereinander. Unten stehen der Plus-Button zum Ablegen
 eines Moments, der Tour-Button und der Zugang zur History. Der Plus-Button
-öffnet ein Bottom Sheet für Text-, Emoji- und Fotomarker. Alle benachbarten
-Kartenbuttons verwenden denselben Abstand. Der Kompass richtet die aktuelle
-Ansicht nach Norden aus; die Standorttaste zentriert und aktiviert wieder die
-bewegungsabhängige Kartenausrichtung. „Tour starten“ ist eine schwarze, groß
-beschriftete Pille.
+öffnet ein Bottom Sheet in der Reihenfolge Sprachnachricht, Emoji, Video und
+Foto. Alle benachbarten Kartenbuttons verwenden denselben Abstand. Der Kompass
+richtet die aktuelle Ansicht nach Norden aus; die Standorttaste zentriert und
+aktiviert wieder die bewegungsabhängige Kartenausrichtung. „Tour starten“ ist
+eine schwarze, groß beschriftete Pille.
 Während der Aufzeichnung wird daraus eine rote Stop-Aktion; vor dem Beenden
 muss die Person ausdrücklich bestätigen. Ein zusätzlicher Status-Chip ist
 nicht nötig. Alle Icon-Buttons sind gleich groß und reinweiß. Als primäres
@@ -50,12 +50,12 @@ ausschließlich über seinen Button.
    fortsetzen und beenden.
 2. **Wiederfinden:** vergangene Touren und ihre Route lokal anzeigen und
    löschen.
-3. **Momente:** Text- und Emojimarker, danach Fotomarker.
+3. **Momente:** Sprachnachricht, Emoji, Video und Foto lokal an einem Ort
+   ablegen.
 4. **Robustheit:** Onboarding, Berechtigungsfälle, Prozessneustart und große
    Displays.
 
 ## Bewusst später
 
-Video, Audio, Bewegungserkennung, Export, Offline-Karten und Backup. Es gibt
-im MVP keine Accounts, Cloud, Social-Funktionen, Fitnessmetriken oder
-Routenplanung.
+Bewegungserkennung, Export, Offline-Karten und Backup. Es gibt im MVP keine
+Accounts, Cloud, Social-Funktionen, Fitnessmetriken oder Routenplanung.

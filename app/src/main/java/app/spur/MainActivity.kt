@@ -51,6 +51,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -249,6 +250,7 @@ private fun MapScreen(
     var resetNorthRequest by rememberSaveable { mutableStateOf(0) }
     var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
+    val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -417,7 +419,10 @@ private fun MapScreen(
     }
 
     if (showMomentSheet) {
-        ModalBottomSheet(onDismissRequest = { showMomentSheet = false }) {
+        ModalBottomSheet(
+            onDismissRequest = { showMomentSheet = false },
+            sheetState = momentSheetState,
+        ) {
             Column(
                 modifier = Modifier
                     .navigationBarsPadding()
@@ -434,12 +439,19 @@ private fun MapScreen(
                     text = "Was möchtest du an dieser Stelle festhalten?",
                     style = MaterialTheme.typography.bodyLarge,
                 )
-                MomentOption(label = "Text") {
-                    Toast.makeText(context, "Textmarker kommt als Nächstes.", Toast.LENGTH_SHORT)
-                        .show()
+                MomentOption(label = "Sprachnachricht") {
+                    Toast.makeText(
+                        context,
+                        "Sprachaufnahme kommt als Nächstes.",
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 }
                 MomentOption(label = "Emoji") {
                     Toast.makeText(context, "Emojimarker kommt als Nächstes.", Toast.LENGTH_SHORT)
+                        .show()
+                }
+                MomentOption(label = "Video") {
+                    Toast.makeText(context, "Videomarker kommt als Nächstes.", Toast.LENGTH_SHORT)
                         .show()
                 }
                 MomentOption(label = "Foto") {
