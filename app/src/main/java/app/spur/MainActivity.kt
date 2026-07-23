@@ -108,7 +108,7 @@ private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
 private val StopRed = Color(0xFFB3261E)
-private const val DefaultMapZoom = 18.5
+private const val DefaultMapZoom = 17.5
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
