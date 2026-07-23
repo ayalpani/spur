@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spur Control"
+  short_description: "Spur auf dem Android-Gerät steuern"
+  default_prompt: "Nutze $spur-control, um Spur auf meinem Android-Gerät zu bauen, zu installieren und zu starten."

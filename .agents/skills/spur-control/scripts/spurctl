@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly DEVICE_MODEL="SM_A546B"
+readonly LAST_ENDPOINT="192.168.178.162:33439"
+readonly PACKAGE="app.spur"
+readonly LEGACY_PACKAGE="app.spur.debug"
+readonly ACTIVITY="app.spur/.MainActivity"
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+resolve_project_root() {
+    local candidate
+    if candidate="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null)" &&
+        [[ -f "$candidate/.agents/skills/spur-control/SKILL.md" ]]
+    then
+        printf '%s\n' "$candidate"
+        return
+    fi
+
+    cd "$SCRIPT_DIR/../../../.." && pwd
+}
+
+readonly PROJECT_ROOT="$(resolve_project_root)"
+readonly APK="$PROJECT_ROOT/app/build/outputs/apk/debug/app-debug.apk"
+
+find_adb() {
+    local candidate
+    for candidate in \
+        "${ANDROID_HOME:-}/platform-tools/adb" \
+        "${ANDROID_SDK_ROOT:-}/platform-tools/adb" \
+        "/Users/ayalpani/Library/Android/sdk/platform-tools/adb"
+    do
+        if [[ -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+
+    command -v adb || {
+        echo "ADB wurde nicht gefunden." >&2
+        exit 1
+    }
+}
+
+readonly ADB="$(find_adb)"
+
+online_serial() {
+    "$ADB" devices -l |
+        awk -v model="$DEVICE_MODEL" '$2 == "device" && $0 ~ "model:" model { print $1; exit }'
+}
+
+connect_device() {
+    local serial service
+    serial="$(online_serial)"
+    if [[ -n "$serial" ]]; then
+        printf '%s\n' "$serial"
+        return
+    fi
+
+    "$ADB" connect "$LAST_ENDPOINT" >/dev/null 2>&1 || true
+    serial="$(online_serial)"
+    if [[ -n "$serial" ]]; then
+        printf '%s\n' "$serial"
+        return
+    fi
+
+    while read -r service; do
+        [[ -n "$service" ]] || continue
+        "$ADB" connect "$service" >/dev/null 2>&1 || true
+        serial="$(online_serial)"
+        if [[ -n "$serial" ]]; then
+            printf '%s\n' "$serial"
+            return
+        fi
+    done < <("$ADB" mdns services 2>/dev/null | awk '/_adb-tls-connect/ { print $3 }')
+
+    echo "Galaxy A54 nicht erreichbar. WLAN-Debugging am Handy einschalten." >&2
+    exit 1
+}
+
+build() {
+    echo "Baue Spur aus $PROJECT_ROOT." >&2
+    (cd "$PROJECT_ROOT" && ./gradlew :app:assembleDebug)
+}
+
+install() {
+    local serial output
+    build >&2
+    serial="$(connect_device)"
+
+    if "$ADB" -s "$serial" shell pm path "$LEGACY_PACKAGE" >/dev/null 2>&1; then
+        "$ADB" -s "$serial" uninstall "$LEGACY_PACKAGE" >/dev/null
+    fi
+
+    if output="$("$ADB" -s "$serial" install -r "$APK" 2>&1)"; then
+        printf '%s\n' "$serial"
+        return
+    fi
+
+    if [[ "$output" == *"INSTALL_FAILED_UPDATE_INCOMPATIBLE"* ]]; then
+        "$ADB" -s "$serial" uninstall "$PACKAGE" >/dev/null
+        "$ADB" -s "$serial" install "$APK" >/dev/null
+        printf '%s\n' "$serial"
+        return
+    fi
+
+    printf '%s\n' "$output" >&2
+    exit 1
+}
+
+launch() {
+    local serial
+    serial="$(connect_device)"
+    "$ADB" -s "$serial" shell am start -W -n "$ACTIVITY"
+}
+
+stop() {
+    local serial
+    serial="$(connect_device)"
+    "$ADB" -s "$serial" shell am force-stop "$PACKAGE"
+    echo "Spur gestoppt auf $serial."
+}
+
+status() {
+    local serial
+    serial="$(connect_device)"
+    echo "Gerät: $serial ($DEVICE_MODEL)"
+    if "$ADB" -s "$serial" shell pm path "$PACKAGE" >/dev/null 2>&1; then
+        echo "Installation: vorhanden"
+    else
+        echo "Installation: fehlt"
+    fi
+    if "$ADB" -s "$serial" shell pidof "$PACKAGE" >/dev/null 2>&1; then
+        echo "Status: läuft"
+    else
+        echo "Status: gestoppt"
+    fi
+}
+
+case "${1:-}" in
+    build)
+        build
+        ;;
+    install)
+        serial="$(install)"
+        echo "Spur installiert auf $serial."
+        ;;
+    start)
+        serial="$(install)"
+        "$ADB" -s "$serial" shell am force-stop "$PACKAGE"
+        "$ADB" -s "$serial" shell am start -W -n "$ACTIVITY"
+        ;;
+    launch)
+        launch
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        launch
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Verwendung: spurctl {start|build|install|launch|stop|restart|status}" >&2
+        exit 2
+        ;;
+esac
