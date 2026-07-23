@@ -1018,6 +1018,7 @@ private fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
             android.graphics.ImageDecoder.decodeBitmap(
                 android.graphics.ImageDecoder.createSource(file),
             ) { decoder, info, _ ->
+                decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
                 val side = minOf(info.size.width, info.size.height)
                 val scale = minOf(1f, 240f / side)
                 decoder.setTargetSize(
