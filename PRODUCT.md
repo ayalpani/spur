@@ -37,10 +37,11 @@ eines Moments, der Tour-Button und der Zugang zur History. Der Plus-Button
 Foto. „Foto“ öffnet eine bildschirmfüllende Kamera mit Auslöser und Wechsel
 zwischen Front- und Rückkamera. Nach dem Knipsen kann das Bild verworfen oder
 lokal verwendet werden. Alle benachbarten Kartenbuttons verwenden denselben
-Abstand. Der Kompass
-richtet die aktuelle Ansicht nach Norden aus; die Standorttaste zentriert und
-aktiviert wieder die bewegungsabhängige Kartenausrichtung. „Tour starten“ ist
-eine schwarze, groß beschriftete Pille.
+Abstand. Der eigene Kompass dreht sich mit der Karte und richtet die Ansicht
+bei einem Tipp einmalig nach Norden aus. Die Standorttaste zentriert die Karte
+genau einmal auf den aktuellen Standort, ohne einen nachlaufenden Kamera- oder
+Rotationsmodus zu aktivieren. „Tour starten“ ist eine schwarze, groß
+beschriftete Pille.
 Während der Aufzeichnung wird daraus eine rote Stop-Aktion; vor dem Beenden
 muss die Person ausdrücklich bestätigen. Ein zusätzlicher Status-Chip ist
 nicht nötig. Alle Icon-Buttons sind gleich groß und reinweiß. Als primäres

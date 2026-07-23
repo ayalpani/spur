@@ -56,9 +56,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -68,6 +70,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -84,7 +87,9 @@ import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.LocationComponentOptions
 import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
+import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import kotlinx.coroutines.launch
 
@@ -248,6 +253,7 @@ private fun MapScreen(
     val scope = rememberCoroutineScope()
     var recenterRequest by rememberSaveable { mutableStateOf(0) }
     var resetNorthRequest by rememberSaveable { mutableStateOf(0) }
+    var mapBearing by remember { mutableDoubleStateOf(0.0) }
     var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
@@ -305,6 +311,7 @@ private fun MapScreen(
             MapSurface(
                 recenterRequest = recenterRequest,
                 resetNorthRequest = resetNorthRequest,
+                onBearingChanged = { mapBearing = it },
             )
 
             Row(
@@ -344,7 +351,7 @@ private fun MapScreen(
                     contentDescription = "Karte nach Norden ausrichten",
                     onClick = { resetNorthRequest++ },
                 ) {
-                    CompassIcon()
+                    CompassIcon(bearing = mapBearing)
                 }
                 MapIconButton(
                     contentDescription = "Auf eigenen Standort zentrieren",
@@ -530,9 +537,11 @@ private fun MapIconButton(
 private fun MapSurface(
     recenterRequest: Int,
     resetNorthRequest: Int,
+    onBearingChanged: (Double) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val currentOnBearingChanged by rememberUpdatedState(onBearingChanged)
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply {
@@ -568,17 +577,33 @@ private fun MapSurface(
         }
     }
 
+    DisposableEffect(mapView) {
+        var map: MapLibreMap? = null
+        val cameraMoveListener = MapLibreMap.OnCameraMoveListener {
+            map?.cameraPosition?.bearing?.let(currentOnBearingChanged)
+        }
+        mapView.getMapAsync { readyMap ->
+            map = readyMap
+            readyMap.addOnCameraMoveListener(cameraMoveListener)
+            currentOnBearingChanged(readyMap.cameraPosition.bearing)
+        }
+        onDispose {
+            map?.removeOnCameraMoveListener(cameraMoveListener)
+        }
+    }
+
     LaunchedEffect(recenterRequest) {
         if (recenterRequest == 0) return@LaunchedEffect
         mapView.getMapAsync { map ->
             if (map.locationComponent.isLocationComponentActivated) {
-                map.locationComponent.setCameraMode(
-                    CameraMode.TRACKING_COMPASS,
-                    500L,
-                    16.0,
-                    null,
-                    null,
-                    null,
+                val location = map.locationComponent.lastKnownLocation
+                map.locationComponent.cameraMode = CameraMode.NONE
+                if (location == null) return@getMapAsync
+                map.animateCamera(
+                    CameraUpdateFactory.newLatLng(
+                        LatLng(location.latitude, location.longitude),
+                    ),
+                    500,
                 )
             }
         }
@@ -744,8 +769,12 @@ private fun PlusIcon() {
 }
 
 @Composable
-private fun CompassIcon() {
-    Canvas(modifier = Modifier.size(25.dp)) {
+private fun CompassIcon(bearing: Double) {
+    Canvas(
+        modifier = Modifier
+            .size(25.dp)
+            .graphicsLayer { rotationZ = -bearing.toFloat() },
+    ) {
         val stroke = 2.dp.toPx()
         drawCircle(Ink, radius = 10.dp.toPx(), center = center, style = Stroke(stroke))
         val north = Offset(center.x + 3.dp.toPx(), center.y - 7.dp.toPx())
