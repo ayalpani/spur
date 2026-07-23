@@ -48,7 +48,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.North
+import androidx.compose.material.icons.rounded.SatelliteAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -114,6 +116,9 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.RasterLayer
+import org.maplibre.android.style.sources.RasterSource
+import org.maplibre.android.style.sources.TileSet
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.roundToInt
@@ -123,6 +128,9 @@ private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
 private val StopRed = Color(0xFFB3261E)
 private const val DefaultMapZoom = 17.5
+private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
+private const val SatelliteTileUrl =
+    "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 private const val MomentMarkerWidth = 62
 private const val MomentMarkerHeight = 102
 private const val MomentMarkerStroke = 1.5f
@@ -285,6 +293,7 @@ private fun MapScreen(
     var recenterRequest by rememberSaveable { mutableStateOf(0) }
     var resetNorthRequest by rememberSaveable { mutableStateOf(0) }
     var resetZoomRequest by rememberSaveable { mutableStateOf(0) }
+    var isSatelliteView by rememberSaveable { mutableStateOf(false) }
     var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
@@ -346,6 +355,7 @@ private fun MapScreen(
                 recenterRequest = recenterRequest,
                 resetNorthRequest = resetNorthRequest,
                 resetZoomRequest = resetZoomRequest,
+                isSatelliteView = isSatelliteView,
                 mapMoments = mapMoments,
                 photoToPlace = pendingPhoto,
                 onMapBearingChanged = { mapBearing = it },
@@ -404,6 +414,23 @@ private fun MapScreen(
                     .padding(end = 18.dp, bottom = 86.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                MapIconButton(
+                    contentDescription = if (isSatelliteView) {
+                        "Schematische Kartenansicht anzeigen"
+                    } else {
+                        "Satellitenansicht anzeigen"
+                    },
+                    onClick = { isSatelliteView = !isSatelliteView },
+                ) {
+                    Icon(
+                        imageVector = if (isSatelliteView) {
+                            Icons.Rounded.Map
+                        } else {
+                            Icons.Rounded.SatelliteAlt
+                        },
+                        contentDescription = null,
+                    )
+                }
                 MapIconButton(
                     contentDescription = "Karte nach Norden ausrichten",
                     onClick = { resetNorthRequest++ },
@@ -615,6 +642,7 @@ private fun MapSurface(
     recenterRequest: Int,
     resetNorthRequest: Int,
     resetZoomRequest: Int,
+    isSatelliteView: Boolean,
     mapMoments: List<MapMoment>,
     photoToPlace: File?,
     onMapBearingChanged: (Double) -> Unit,
@@ -631,16 +659,24 @@ private fun MapSurface(
     var markerPositions by remember {
         mutableStateOf<Map<String, android.graphics.PointF>>(emptyMap())
     }
+    var hasLoadedMapStyle by remember { mutableStateOf(false) }
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply {
             onCreate(null)
-            getMapAsync { map ->
-                map.uiSettings.isCompassEnabled = false
-                map.setStyle("https://tiles.openfreemap.org/styles/liberty") { style ->
-                    enableLocationTracking(context, map, style)
-                }
-            }
+        }
+    }
+
+    LaunchedEffect(isSatelliteView) {
+        mapView.getMapAsync { map ->
+            map.uiSettings.isCompassEnabled = false
+            setMapStyle(
+                context = context,
+                map = map,
+                satellite = isSatelliteView,
+                centerOnLocation = !hasLoadedMapStyle,
+                onLoaded = { hasLoadedMapStyle = true },
+            )
         }
     }
 
@@ -895,11 +931,48 @@ private fun shareActiveTour(context: Context) {
     context.startActivity(Intent.createChooser(share, "Tour teilen"))
 }
 
+private fun setMapStyle(
+    context: Context,
+    map: MapLibreMap,
+    satellite: Boolean,
+    centerOnLocation: Boolean,
+    onLoaded: () -> Unit,
+) {
+    val cameraPosition = map.cameraPosition
+    val styleLoaded: (Style) -> Unit = { style ->
+        enableLocationTracking(
+            context = context,
+            map = map,
+            style = style,
+            centerOnLocation = centerOnLocation,
+        )
+        if (!centerOnLocation) {
+            map.moveCamera(CameraUpdateFactory.newCameraPosition(cameraPosition))
+        }
+        onLoaded()
+    }
+
+    if (satellite) {
+        val tiles = TileSet("2.2.0", SatelliteTileUrl).apply {
+            attribution = "Esri, Maxar, Earthstar Geographics, and the GIS User Community"
+        }
+        map.setStyle(
+            Style.Builder()
+                .withSource(RasterSource("satellite-source", tiles, 256))
+                .withLayer(RasterLayer("satellite-layer", "satellite-source")),
+            styleLoaded,
+        )
+    } else {
+        map.setStyle(StreetMapStyle, styleLoaded)
+    }
+}
+
 @SuppressLint("MissingPermission")
 private fun enableLocationTracking(
     context: Context,
     map: MapLibreMap,
     style: Style,
+    centerOnLocation: Boolean,
 ) {
     if (!context.hasLocationPermission()) return
 
@@ -918,7 +991,7 @@ private fun enableLocationTracking(
     locationComponent.cameraMode = CameraMode.NONE
 
     val location = locationComponent.lastKnownLocation ?: context.bestLastKnownLocation()
-    if (location != null) {
+    if (centerOnLocation && location != null) {
         map.moveCamera(
             CameraUpdateFactory.newLatLngZoom(
                 LatLng(location.latitude, location.longitude),
