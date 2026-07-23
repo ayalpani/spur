@@ -119,6 +119,9 @@ private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
 private val StopRed = Color(0xFFB3261E)
 private const val DefaultMapZoom = 17.5
+private const val MomentMarkerWidth = 52
+private const val MomentMarkerHeight = 92
+private const val MomentMarkerStroke = 1.5f
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -790,8 +793,8 @@ private fun MapSurface(
         )
 
         val density = LocalDensity.current
-        val markerWidthPx = with(density) { 52.dp.roundToPx() }
-        val markerHeightPx = with(density) { 68.dp.roundToPx() }
+        val markerWidthPx = with(density) { MomentMarkerWidth.dp.roundToPx() }
+        val markerHeightPx = with(density) { MomentMarkerHeight.dp.roundToPx() }
         mapMoments.forEach { moment ->
             val position = markerPositions[moment.id] ?: return@forEach
             val selected = selectedMomentId == moment.id
@@ -808,7 +811,10 @@ private fun MapSurface(
                             y = position.y.roundToInt() - markerHeightPx,
                         )
                     }
-                    .size(width = 52.dp, height = 68.dp)
+                    .size(
+                        width = MomentMarkerWidth.dp,
+                        height = MomentMarkerHeight.dp,
+                    )
                     .clickable {
                         selectedMomentId = if (selected) null else moment.id
                     },
@@ -954,8 +960,8 @@ private fun createMomentMarkerBitmap(
     selected: Boolean,
 ) =
     android.graphics.Bitmap.createBitmap(
-            (52 * context.resources.displayMetrics.density).toInt(),
-            (68 * context.resources.displayMetrics.density).toInt(),
+            (MomentMarkerWidth * context.resources.displayMetrics.density).toInt(),
+            (MomentMarkerHeight * context.resources.displayMetrics.density).toInt(),
             android.graphics.Bitmap.Config.ARGB_8888,
         ).also { bitmap ->
             val scale = context.resources.displayMetrics.density
@@ -963,10 +969,10 @@ private fun createMomentMarkerBitmap(
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
             paint.color = android.graphics.Color.rgb(24, 32, 28)
             paint.style = android.graphics.Paint.Style.STROKE
-            paint.strokeWidth = 1.5f * scale
-            canvas.drawLine(26 * scale, 43 * scale, 26 * scale, 66.5f * scale, paint)
+            paint.strokeWidth = MomentMarkerStroke * scale
+            canvas.drawLine(26 * scale, 43 * scale, 26 * scale, 90 * scale, paint)
             paint.style = android.graphics.Paint.Style.FILL
-            canvas.drawCircle(26 * scale, 66.5f * scale, 1.5f * scale, paint)
+            canvas.drawCircle(26 * scale, 90 * scale, 1.5f * scale, paint)
 
             if (selected) {
                 canvas.drawRoundRect(
@@ -1007,7 +1013,7 @@ private fun createMomentMarkerBitmap(
 
             paint.color = android.graphics.Color.rgb(24, 32, 28)
             paint.style = android.graphics.Paint.Style.STROKE
-            paint.strokeWidth = 1.5f * scale
+            paint.strokeWidth = MomentMarkerStroke * scale
             canvas.drawRoundRect(flag, 8 * scale, 8 * scale, paint)
         }
 
