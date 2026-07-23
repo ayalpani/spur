@@ -31,11 +31,15 @@ state.
 
 - Device: Samsung Galaxy A54, model `SM_A546B`
 - Transport: Wi-Fi ADB
-- Last known endpoint: `192.168.178.162:33439`
+- Static Wi-Fi IP: `192.168.178.162`
+- Last known ADB port: `33439`
 - Application ID: `app.spur`
 - Launcher: `app.spur/.MainActivity`
 
-Prefer an already-online transport for the registered model. Otherwise try the last endpoint, then ADB mDNS discovery. A Wi-Fi debugging port can change; treat the endpoint as a hint, not identity.
+Arash has confirmed that the device IP does not change. Prefer an already-online
+transport for the registered model. Otherwise use the static IP with the last
+known port, then ADB mDNS discovery. Only the Wi-Fi debugging port can change;
+treat the port as a hint, not the IP.
 
 ## Durable rules
 
