@@ -32,7 +32,7 @@ state.
 - Device: Samsung Galaxy A54, model `SM_A546B`
 - Transport: Wi-Fi ADB
 - Static Wi-Fi IP: `192.168.178.162`
-- Last known ADB port: `33439`
+- Last known ADB port: `44017`
 - Application ID: `app.spur`
 - Launcher: `app.spur/.MainActivity`
 
@@ -40,6 +40,12 @@ Arash has confirmed that the device IP does not change. Prefer an already-online
 transport for the registered model. Otherwise use the static IP with the last
 known port, then ADB mDNS discovery. Only the Wi-Fi debugging port can change;
 treat the port as a hint, not the IP.
+
+On this Galaxy A54 running Android 16, the system has been observed disabling
+wireless ADB after a Wi-Fi network-change event, even without a reboot or a
+manual toggle. A static IP does not prevent this. When the ADB listener is off,
+the phone must enable Wireless debugging again before host-side discovery can
+recover.
 
 ## Durable rules
 
