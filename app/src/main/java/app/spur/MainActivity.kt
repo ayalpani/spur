@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.North
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -87,6 +88,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -97,6 +99,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -285,6 +289,7 @@ private fun MapScreen(
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
     var pendingPhoto by remember { mutableStateOf<File?>(null) }
+    var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -360,6 +365,9 @@ private fun MapScreen(
                         "Der Standort ist noch nicht verfügbar.",
                         Toast.LENGTH_LONG,
                     ).show()
+                },
+                onMomentClick = { moment ->
+                    if (moment.type == MomentType.PHOTO) photoDetail = moment
                 },
             )
 
@@ -558,6 +566,13 @@ private fun MapScreen(
             },
         )
     }
+
+    photoDetail?.let { moment ->
+        PhotoDetailDialog(
+            photoPath = moment.payload,
+            onDismiss = { photoDetail = null },
+        )
+    }
 }
 
 @Composable
@@ -605,6 +620,7 @@ private fun MapSurface(
     onMapBearingChanged: (Double) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onPhotoPlacementFailed: (File) -> Unit,
+    onMomentClick: (MapMoment) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -612,7 +628,6 @@ private fun MapSurface(
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
     val currentMapMoments by rememberUpdatedState(mapMoments)
-    var selectedMomentId by remember { mutableStateOf<String?>(null) }
     var markerPositions by remember {
         mutableStateOf<Map<String, android.graphics.PointF>>(emptyMap())
     }
@@ -797,9 +812,8 @@ private fun MapSurface(
         val markerHeightPx = with(density) { MomentMarkerHeight.dp.roundToPx() }
         mapMoments.forEach { moment ->
             val position = markerPositions[moment.id] ?: return@forEach
-            val selected = selectedMomentId == moment.id
-            val marker = remember(moment, selected) {
-                createMomentMarkerBitmap(context, moment, selected).asImageBitmap()
+            val marker = remember(moment) {
+                createMomentMarkerBitmap(context, moment, selected = false).asImageBitmap()
             }
             Image(
                 bitmap = marker,
@@ -815,10 +829,60 @@ private fun MapSurface(
                         width = MomentMarkerWidth.dp,
                         height = MomentMarkerHeight.dp,
                     )
-                    .clickable {
-                        selectedMomentId = if (selected) null else moment.id
-                    },
+                    .clickable { onMomentClick(moment) },
             )
+        }
+    }
+}
+
+@Composable
+private fun PhotoDetailDialog(
+    photoPath: String,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val photo = remember(photoPath) { decodePhotoDetail(context, photoPath) }
+    DisposableEffect(photo) {
+        onDispose { photo?.recycle() }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+        ) {
+            photo?.let {
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = "Foto in Vollbildansicht",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(16.dp)
+                    .size(56.dp),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = Color.White,
+                    contentColor = Ink,
+                ),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "Foto schließen",
+                )
+            }
         }
     }
 }
@@ -1042,6 +1106,45 @@ private fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
             android.graphics.BitmapFactory.decodeFile(
                 path,
                 android.graphics.BitmapFactory.Options().apply { inSampleSize = 8 },
+            )
+        }
+    }.getOrNull()
+
+private fun decodePhotoDetail(context: Context, path: String): android.graphics.Bitmap? =
+    runCatching {
+        val metrics = context.resources.displayMetrics
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            android.graphics.ImageDecoder.decodeBitmap(
+                android.graphics.ImageDecoder.createSource(File(path)),
+            ) { decoder, info, _ ->
+                decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+                val scale = minOf(
+                    1f,
+                    metrics.widthPixels.toFloat() / info.size.width,
+                    metrics.heightPixels.toFloat() / info.size.height,
+                )
+                decoder.setTargetSize(
+                    maxOf(1, (info.size.width * scale).toInt()),
+                    maxOf(1, (info.size.height * scale).toInt()),
+                )
+            }
+        } else {
+            val bounds = android.graphics.BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            android.graphics.BitmapFactory.decodeFile(path, bounds)
+            var sampleSize = 1
+            while (
+                bounds.outWidth / sampleSize > metrics.widthPixels * 2 ||
+                bounds.outHeight / sampleSize > metrics.heightPixels * 2
+            ) {
+                sampleSize *= 2
+            }
+            android.graphics.BitmapFactory.decodeFile(
+                path,
+                android.graphics.BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                },
             )
         }
     }.getOrNull()
