@@ -22,6 +22,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
@@ -825,6 +827,8 @@ private fun rememberDeviceHeading(): Double {
     DisposableEffect(context) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        var lastPublishedAt = 0L
+        var unwrappedHeading = 0.0
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val rotationMatrix = FloatArray(9)
@@ -844,7 +848,18 @@ private fun rememberDeviceHeading(): Double {
                 }
                 SensorManager.remapCoordinateSystem(rotationMatrix, axisX, axisY, screenMatrix)
                 val orientation = SensorManager.getOrientation(screenMatrix, FloatArray(3))
-                heading = (Math.toDegrees(orientation[0].toDouble()) + 360.0) % 360.0
+                val nextHeading =
+                    (Math.toDegrees(orientation[0].toDouble()) + 360.0) % 360.0
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (lastPublishedAt == 0L || now - lastPublishedAt >= 1_000L) {
+                    unwrappedHeading = if (lastPublishedAt == 0L) {
+                        nextHeading
+                    } else {
+                        unwrapHeading(unwrappedHeading, nextHeading)
+                    }
+                    heading = unwrappedHeading
+                    lastPublishedAt = now
+                }
             }
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
@@ -1146,13 +1161,18 @@ private fun PlusIcon() {
 
 @Composable
 private fun CompassIcon(heading: Double) {
+    val animatedRotation by animateFloatAsState(
+        targetValue = -heading.toFloat(),
+        animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+        label = "Compass heading",
+    )
     Icon(
         imageVector = Icons.Rounded.North,
         contentDescription = null,
         tint = Ink,
         modifier = Modifier
             .size(48.dp)
-            .graphicsLayer { rotationZ = -heading.toFloat() },
+            .graphicsLayer { rotationZ = animatedRotation },
     )
 }
 
