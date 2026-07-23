@@ -315,7 +315,7 @@ private fun MapScreen(
                         ShareIcon()
                     }
                 } else {
-                    Spacer(modifier = Modifier.size(52.dp))
+                    Spacer(modifier = Modifier.size(60.dp))
                 }
             }
 
@@ -356,22 +356,23 @@ private fun MapScreen(
                         .weight(1f)
                         .height(60.dp),
                     contentPadding = PaddingValues(vertical = 18.dp),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isTourActive) Ink else Moss,
+                        containerColor = Ink,
                     ),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
                 ) {
                     Text(
                         text = if (isTourActive) "Tour beenden" else "Tour starten",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
                 IconButton(
                     onClick = onOpenHistory,
                     modifier = Modifier.size(60.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = Sand,
+                        containerColor = Color.White,
                         contentColor = Ink,
                     ),
                 ) {
@@ -420,10 +421,10 @@ private fun MapIconButton(
     IconButton(
         onClick = onClick,
         modifier = Modifier
-            .size(52.dp)
+            .size(60.dp)
             .semantics { this.contentDescription = contentDescription },
         colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = Sand.copy(alpha = 0.96f),
+            containerColor = Color.White,
             contentColor = Ink,
         ),
         content = content,

@@ -34,7 +34,8 @@ Tourstatus und – nur bei einer laufenden Tour – Teilen. Rechts auf der Karte
 liegen Kompass und Standortzentrierung übereinander. Unten bleiben der
 Tour-Button und der Zugang zur History. Der Kompass richtet die aktuelle
 Ansicht nach Norden aus; die Standorttaste zentriert und aktiviert wieder die
-bewegungsabhängige Kartenausrichtung.
+bewegungsabhängige Kartenausrichtung. Die Hauptaktion ist eine schwarze,
+groß beschriftete Pille; alle Icon-Buttons sind gleich groß und reinweiß.
 
 ## Erste vertikale Schnitte
 
