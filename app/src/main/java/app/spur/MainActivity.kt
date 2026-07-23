@@ -5,9 +5,14 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.Bundle
+import android.view.Surface
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -70,7 +75,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -259,10 +263,10 @@ private fun MapScreen(
     val context = LocalContext.current
     val drawerState = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val deviceHeading = rememberDeviceHeading()
     var recenterRequest by rememberSaveable { mutableStateOf(0) }
     var resetNorthRequest by rememberSaveable { mutableStateOf(0) }
     var resetZoomRequest by rememberSaveable { mutableStateOf(0) }
-    var mapBearing by remember { mutableDoubleStateOf(0.0) }
     var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
@@ -325,7 +329,6 @@ private fun MapScreen(
                 resetZoomRequest = resetZoomRequest,
                 mapMoments = mapMoments,
                 photoToPlace = pendingPhoto,
-                onBearingChanged = { mapBearing = it },
                 onMomentPlaced = { moment ->
                     val updatedMoments = mapMoments + moment
                     context.saveMapMoments(updatedMoments)
@@ -382,7 +385,7 @@ private fun MapScreen(
                     contentDescription = "Karte nach Norden ausrichten",
                     onClick = { resetNorthRequest++ },
                 ) {
-                    CompassIcon(bearing = mapBearing)
+                    CompassIcon(heading = deviceHeading)
                 }
                 MapIconButton(
                     contentDescription = "Normale Zoomstufe wiederherstellen",
@@ -398,7 +401,7 @@ private fun MapScreen(
                     contentDescription = "Auf eigenen Standort zentrieren",
                     onClick = { recenterRequest++ },
                 ) {
-                    LocationIcon()
+                    RecenterIcon()
                 }
             }
 
@@ -581,13 +584,11 @@ private fun MapSurface(
     resetZoomRequest: Int,
     mapMoments: List<MapMoment>,
     photoToPlace: File?,
-    onBearingChanged: (Double) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onPhotoPlacementFailed: (File) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val currentOnBearingChanged by rememberUpdatedState(onBearingChanged)
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
     val renderedMomentIds = remember { mutableSetOf<String>() }
@@ -629,21 +630,6 @@ private fun MapSurface(
         }
     }
 
-    DisposableEffect(mapView) {
-        var map: MapLibreMap? = null
-        val cameraMoveListener = MapLibreMap.OnCameraMoveListener {
-            map?.cameraPosition?.bearing?.let(currentOnBearingChanged)
-        }
-        mapView.getMapAsync { readyMap ->
-            map = readyMap
-            readyMap.addOnCameraMoveListener(cameraMoveListener)
-            currentOnBearingChanged(readyMap.cameraPosition.bearing)
-        }
-        onDispose {
-            map?.removeOnCameraMoveListener(cameraMoveListener)
-        }
-    }
-
     LaunchedEffect(recenterRequest) {
         if (recenterRequest == 0) return@LaunchedEffect
         mapView.getMapAsync { map ->
@@ -679,7 +665,18 @@ private fun MapSurface(
             if (map.locationComponent.isLocationComponentActivated) {
                 map.locationComponent.cameraMode = CameraMode.NONE
             }
-            map.animateCamera(CameraUpdateFactory.bearingTo(0.0), 500)
+            val current = map.cameraPosition
+            map.animateCamera(
+                CameraUpdateFactory.newCameraPosition(
+                    org.maplibre.android.camera.CameraPosition.Builder()
+                        .target(current.target)
+                        .zoom(current.zoom)
+                        .tilt(current.tilt)
+                        .bearing(0.0)
+                        .build(),
+                ),
+                500,
+            )
         }
     }
 
@@ -815,6 +812,49 @@ private fun Context.bestLastKnownLocation(): Location? {
             runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
         }
         .maxByOrNull(Location::getTime)
+}
+
+@Composable
+private fun rememberDeviceHeading(): Double {
+    val context = LocalContext.current
+    var heading by remember { mutableDoubleStateOf(0.0) }
+
+    DisposableEffect(context) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val rotationMatrix = FloatArray(9)
+                val screenMatrix = FloatArray(9)
+                SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                @Suppress("DEPRECATION")
+                val displayRotation =
+                    (context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager)
+                        .defaultDisplay
+                        .rotation
+                val (axisX, axisY) = when (displayRotation) {
+                    Surface.ROTATION_90 -> SensorManager.AXIS_Y to SensorManager.AXIS_MINUS_X
+                    Surface.ROTATION_180 ->
+                        SensorManager.AXIS_MINUS_X to SensorManager.AXIS_MINUS_Y
+                    Surface.ROTATION_270 -> SensorManager.AXIS_MINUS_Y to SensorManager.AXIS_X
+                    else -> SensorManager.AXIS_X to SensorManager.AXIS_Y
+                }
+                SensorManager.remapCoordinateSystem(rotationMatrix, axisX, axisY, screenMatrix)
+                val orientation = SensorManager.getOrientation(screenMatrix, FloatArray(3))
+                heading = (Math.toDegrees(orientation[0].toDouble()) + 360.0) % 360.0
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+        if (rotationSensor != null) {
+            sensorManager.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
+        }
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
+    }
+
+    return heading
 }
 
 private const val MapMomentPreferences = "map-moments"
@@ -1102,11 +1142,11 @@ private fun PlusIcon() {
 }
 
 @Composable
-private fun CompassIcon(bearing: Double) {
+private fun CompassIcon(heading: Double) {
     Canvas(
         modifier = Modifier
             .size(25.dp)
-            .graphicsLayer { rotationZ = -bearing.toFloat() },
+            .graphicsLayer { rotationZ = -heading.toFloat() },
     ) {
         val stroke = 2.dp.toPx()
         drawCircle(Ink, radius = 10.dp.toPx(), center = center, style = Stroke(stroke))
@@ -1118,16 +1158,15 @@ private fun CompassIcon(bearing: Double) {
 }
 
 @Composable
-private fun LocationIcon() {
+private fun RecenterIcon() {
     Canvas(modifier = Modifier.size(25.dp)) {
-        val pointer = Path().apply {
-            moveTo(4.dp.toPx(), 11.dp.toPx())
-            lineTo(21.dp.toPx(), 4.dp.toPx())
-            lineTo(14.dp.toPx(), 21.dp.toPx())
-            lineTo(11.dp.toPx(), 14.dp.toPx())
-            close()
-        }
-        drawPath(pointer, color = Ink)
+        val stroke = 2.dp.toPx()
+        drawCircle(Ink, radius = 6.dp.toPx(), center = center, style = Stroke(stroke))
+        drawCircle(Ink, radius = 2.dp.toPx(), center = center)
+        drawLine(Ink, Offset(center.x, 1.dp.toPx()), Offset(center.x, 5.dp.toPx()), stroke)
+        drawLine(Ink, Offset(center.x, 20.dp.toPx()), Offset(center.x, 24.dp.toPx()), stroke)
+        drawLine(Ink, Offset(1.dp.toPx(), center.y), Offset(5.dp.toPx(), center.y), stroke)
+        drawLine(Ink, Offset(20.dp.toPx(), center.y), Offset(24.dp.toPx(), center.y), stroke)
     }
 }
 
