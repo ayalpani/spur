@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DrawerValue
@@ -44,6 +45,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -84,6 +86,7 @@ import kotlinx.coroutines.launch
 private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
+private val StopRed = Color(0xFFB3261E)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -239,6 +242,7 @@ private fun MapScreen(
     val scope = rememberCoroutineScope()
     var recenterRequest by rememberSaveable { mutableStateOf(0) }
     var resetNorthRequest by rememberSaveable { mutableStateOf(0) }
+    var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -255,11 +259,6 @@ private fun MapScreen(
                         text = "Spur",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = if (isTourActive) "Tour läuft" else "Keine Tour aktiv",
-                        color = if (isTourActive) Moss else Ink.copy(alpha = 0.62f),
-                        style = MaterialTheme.typography.bodyMedium,
                     )
                     NavigationDrawerItem(
                         label = { Text("Karte") },
@@ -301,12 +300,7 @@ private fun MapScreen(
                 ) {
                     MenuIcon()
                 }
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    TourStatus(isTourActive = isTourActive)
-                }
+                Spacer(modifier = Modifier.weight(1f))
                 if (isTourActive) {
                     MapIconButton(
                         contentDescription = "Tour teilen",
@@ -314,8 +308,6 @@ private fun MapScreen(
                     ) {
                         ShareIcon()
                     }
-                } else {
-                    Spacer(modifier = Modifier.size(60.dp))
                 }
             }
 
@@ -351,13 +343,16 @@ private fun MapScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Button(
-                    onClick = onTourAction,
+                    onClick = {
+                        if (isTourActive) showStopConfirmation = true else onTourAction()
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .height(60.dp),
                     shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Ink,
+                        containerColor = if (isTourActive) StopRed else Ink,
+                        contentColor = Color.White,
                     ),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
                 ) {
@@ -378,35 +373,30 @@ private fun MapScreen(
                     HistoryIcon()
                 }
             }
-        }
-    }
-}
 
-@Composable
-private fun TourStatus(isTourActive: Boolean) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = Sand.copy(alpha = 0.94f),
-        shadowElevation = 3.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(
-                        color = if (isTourActive) Moss else Ink.copy(alpha = 0.38f),
-                        shape = CircleShape,
-                    ),
-            )
-            Text(
-                text = if (isTourActive) "Tour läuft" else "Keine Tour",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Medium,
-            )
+            if (showStopConfirmation) {
+                AlertDialog(
+                    onDismissRequest = { showStopConfirmation = false },
+                    title = { Text("Tour wirklich beenden?") },
+                    text = { Text("Deine Aufzeichnung wird beendet und gespeichert.") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showStopConfirmation = false
+                                onTourAction()
+                            },
+                            colors = ButtonDefaults.textButtonColors(contentColor = StopRed),
+                        ) {
+                            Text("Tour beenden")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showStopConfirmation = false }) {
+                            Text("Weiter aufzeichnen")
+                        }
+                    },
+                )
+            }
         }
     }
 }

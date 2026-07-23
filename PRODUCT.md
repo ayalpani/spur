@@ -29,14 +29,16 @@ Android-Freigabe für den Standort während der Nutzung an. Erst anschließend
 Hintergrundfreigabe wird separat beim ersten Tourstart erklärt und angefragt,
 sobald die Hintergrundaufzeichnung implementiert ist.
 
-Die Kartensteuerung folgt einer festen Ordnung: oben stehen Hauptmenü,
-Tourstatus und – nur bei einer laufenden Tour – Teilen. Rechts auf der Karte
-liegen Kompass und Standortzentrierung übereinander. Unten bleiben der
-Tour-Button und der Zugang zur History. Der Kompass richtet die aktuelle
-Ansicht nach Norden aus; die Standorttaste zentriert und aktiviert wieder die
-bewegungsabhängige Kartenausrichtung. Die Hauptaktion ist eine schwarze,
-groß beschriftete Pille; alle Icon-Buttons sind gleich groß und reinweiß. Als
-primäres Werkzeug behält die Karte sämtliche Wischgesten; das Hauptmenü öffnet
+Die Kartensteuerung folgt einer festen Ordnung: oben stehen Hauptmenü und –
+nur bei einer laufenden Tour – Teilen. Rechts auf der Karte liegen Kompass und
+Standortzentrierung übereinander. Unten bleiben der Tour-Button und der Zugang
+zur History. Der Kompass richtet die aktuelle Ansicht nach Norden aus; die
+Standorttaste zentriert und aktiviert wieder die bewegungsabhängige
+Kartenausrichtung. „Tour starten“ ist eine schwarze, groß beschriftete Pille.
+Während der Aufzeichnung wird daraus eine rote Stop-Aktion; vor dem Beenden
+muss die Person ausdrücklich bestätigen. Ein zusätzlicher Status-Chip ist
+nicht nötig. Alle Icon-Buttons sind gleich groß und reinweiß. Als primäres
+Werkzeug behält die Karte sämtliche Wischgesten; das Hauptmenü öffnet
 ausschließlich über seinen Button.
 
 ## Erste vertikale Schnitte
