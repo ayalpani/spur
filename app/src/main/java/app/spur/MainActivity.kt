@@ -449,17 +449,6 @@ private fun MapScreen(
                         R.drawable.map_preview_satellite
                     },
                 )
-                MapIconButton(
-                    contentDescription = "Auf eigenen Standort zentrieren",
-                    onClick = {
-                        val now = android.os.SystemClock.elapsedRealtime()
-                        recenterNorth = isRecenterNorthTap(lastRecenterTapAt, now)
-                        lastRecenterTapAt = now
-                        recenterRequest++
-                    },
-                ) {
-                    RecenterIcon()
-                }
                 if (manualLocation != null) {
                     MapIconButton(
                         contentDescription = "Simulierten Standort zurücksetzen",
@@ -475,6 +464,12 @@ private fun MapScreen(
                     ) {
                         LucideLocateOffIcon()
                     }
+                }
+                MapIconButton(
+                    contentDescription = "Tour-History öffnen",
+                    onClick = onOpenHistory,
+                ) {
+                    HistoryIcon()
                 }
             }
 
@@ -518,15 +513,16 @@ private fun MapScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
-                IconButton(
-                    onClick = onOpenHistory,
-                    modifier = Modifier.size(60.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = Color.White,
-                        contentColor = Ink,
-                    ),
+                MapIconButton(
+                    contentDescription = "Auf eigenen Standort zentrieren",
+                    onClick = {
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        recenterNorth = isRecenterNorthTap(lastRecenterTapAt, now)
+                        lastRecenterTapAt = now
+                        recenterRequest++
+                    },
                 ) {
-                    HistoryIcon()
+                    RecenterIcon()
                 }
             }
 
