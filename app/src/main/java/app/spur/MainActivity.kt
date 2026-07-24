@@ -77,6 +77,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -111,9 +112,7 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
-import org.maplibre.android.style.layers.RasterLayer
-import org.maplibre.android.style.sources.RasterSource
-import org.maplibre.android.style.sources.TileSet
+import org.maplibre.android.snapshotter.MapSnapshotter
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.roundToInt
@@ -124,11 +123,12 @@ private val Moss = Color(0xFF23614A)
 private val StopRed = Color(0xFFB3261E)
 private const val DefaultMapZoom = 17.5
 private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
-private const val SatelliteTileUrl =
-    "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+private const val SatelliteMapStyleJson =
+    """{"version":8,"sources":{"satellite-source":{"type":"raster","tiles":["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],"tileSize":256,"attribution":"Esri, Maxar, Earthstar Geographics, and the GIS User Community"}},"layers":[{"id":"satellite-layer","type":"raster","source":"satellite-source"}]}"""
 private const val MomentMarkerWidth = 62
 private const val MomentMarkerHeight = 102
 private const val MomentMarkerStroke = 1.5f
+private const val MapPreviewPixels = 180
 internal const val RecenterNorthWindowMillis = 1_000L
 
 internal fun isRecenterNorthTap(previousAt: Long, now: Long): Boolean =
@@ -291,6 +291,7 @@ private fun MapScreen(
     var recenterNorth by remember { mutableStateOf(false) }
     var lastRecenterTapAt by remember { mutableLongStateOf(0L) }
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
+    var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
     var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
@@ -356,6 +357,7 @@ private fun MapScreen(
                 manualLocation = manualLocation,
                 mapMoments = mapMoments,
                 photoToPlace = pendingPhoto,
+                onAlternateMapPreviewChanged = { alternateMapPreview = it },
                 onMomentPlaced = { moment ->
                     val updatedMoments = mapMoments + moment
                     context.saveMapMoments(updatedMoments)
@@ -426,8 +428,12 @@ private fun MapScreen(
                     } else {
                         "Satellitenansicht anzeigen"
                     },
-                    onClick = { isSatelliteView = !isSatelliteView },
-                    preview = if (isSatelliteView) {
+                    onClick = {
+                        alternateMapPreview = null
+                        isSatelliteView = !isSatelliteView
+                    },
+                    preview = alternateMapPreview,
+                    fallbackPreview = if (isSatelliteView) {
                         R.drawable.map_preview_street
                     } else {
                         R.drawable.map_preview_satellite
@@ -644,7 +650,8 @@ private fun MapIconButton(
 @Composable
 private fun MapStyleButton(
     contentDescription: String,
-    preview: Int,
+    preview: ImageBitmap?,
+    fallbackPreview: Int,
     onClick: () -> Unit,
 ) {
     IconButton(
@@ -653,15 +660,25 @@ private fun MapStyleButton(
             .size(60.dp)
             .semantics { this.contentDescription = contentDescription },
     ) {
-        Image(
-            painter = painterResource(preview),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
-                .border(2.dp, Color.White, CircleShape),
-        )
+        val previewModifier = Modifier
+            .fillMaxSize()
+            .clip(CircleShape)
+            .border(2.dp, Color.White, CircleShape)
+        if (preview == null) {
+            Image(
+                painter = painterResource(fallbackPreview),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = previewModifier,
+            )
+        } else {
+            Image(
+                bitmap = preview,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = previewModifier,
+            )
+        }
     }
 }
 
@@ -673,6 +690,7 @@ private fun MapSurface(
     manualLocation: SpurCoordinate?,
     mapMoments: List<MapMoment>,
     photoToPlace: File?,
+    onAlternateMapPreviewChanged: (ImageBitmap) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onPhotoPlacementFailed: (File) -> Unit,
     onMomentClick: (MapMoment) -> Unit,
@@ -683,6 +701,9 @@ private fun MapSurface(
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
+    val currentOnAlternateMapPreviewChanged by rememberUpdatedState(
+        onAlternateMapPreviewChanged,
+    )
     val currentMapMoments by rememberUpdatedState(mapMoments)
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentRecenterRequest by rememberUpdatedState(recenterRequest)
@@ -690,6 +711,9 @@ private fun MapSurface(
         mutableStateOf<Map<String, android.graphics.PointF>>(emptyMap())
     }
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
+    var previewCameraPosition by remember {
+        mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
+    }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
     val mapView = remember {
         MapLibre.getInstance(context)
@@ -707,8 +731,40 @@ private fun MapSurface(
                 satellite = isSatelliteView,
                 centerOnLocation = !hasLoadedMapStyle,
                 manualLocation = manualLocation,
-                onLoaded = { hasLoadedMapStyle = true },
+                onLoaded = {
+                    hasLoadedMapStyle = true
+                    previewCameraPosition = map.cameraPosition
+                },
             )
+        }
+    }
+
+    DisposableEffect(previewCameraPosition, isSatelliteView) {
+        val cameraPosition = previewCameraPosition
+        if (cameraPosition == null) {
+            onDispose {}
+        } else {
+            val options = MapSnapshotter.Options(MapPreviewPixels, MapPreviewPixels)
+                .withCameraPosition(cameraPosition)
+                .withPixelRatio(1f)
+                .withLogo(false)
+                .let { snapshotOptions ->
+                    if (isSatelliteView) {
+                        snapshotOptions.withStyleBuilder(
+                            Style.Builder().fromUri(StreetMapStyle),
+                        )
+                    } else {
+                        snapshotOptions.withStyleBuilder(satelliteStyleBuilder())
+                    }
+                }
+            val snapshotter = MapSnapshotter(context, options)
+            snapshotter.start(
+                { snapshot ->
+                    currentOnAlternateMapPreviewChanged(snapshot.bitmap.asImageBitmap())
+                },
+                { _ -> Unit },
+            )
+            onDispose { snapshotter.cancel() }
         }
     }
 
@@ -756,6 +812,7 @@ private fun MapSurface(
         }
         val idleListener = MapLibreMap.OnCameraIdleListener {
             publishMarkerPositions()
+            previewCameraPosition = map?.cameraPosition
         }
         val longClickListener = MapLibreMap.OnMapLongClickListener { point ->
             mapView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -1008,18 +1065,17 @@ private fun setMapStyle(
     }
 
     if (satellite) {
-        val tiles = TileSet("2.2.0", SatelliteTileUrl).apply {
-            attribution = "Esri, Maxar, Earthstar Geographics, and the GIS User Community"
-        }
         map.setStyle(
-            Style.Builder()
-                .withSource(RasterSource("satellite-source", tiles, 256))
-                .withLayer(RasterLayer("satellite-layer", "satellite-source")),
+            satelliteStyleBuilder(),
             styleLoaded,
         )
     } else {
         map.setStyle(StreetMapStyle, styleLoaded)
     }
+}
+
+private fun satelliteStyleBuilder(): Style.Builder {
+    return Style.Builder().fromJson(SatelliteMapStyleJson)
 }
 
 @SuppressLint("MissingPermission")
