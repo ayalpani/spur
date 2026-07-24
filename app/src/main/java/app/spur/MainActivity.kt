@@ -130,8 +130,8 @@ private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty
 private const val SatelliteMapStyleJson =
     """{"version":8,"sources":{"satellite-source":{"type":"raster","tiles":["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],"tileSize":256,"attribution":"Esri, Maxar, Earthstar Geographics, and the GIS User Community"}},"layers":[{"id":"satellite-layer","type":"raster","source":"satellite-source"}]}"""
 private const val MomentMarkerWidth = 62
-private const val MomentMarkerHeight = 102
-private const val MomentMarkerStroke = 1.5f
+private const val MomentMarkerHeight = 58
+private const val MomentMarkerStroke = 3f
 private const val MapPreviewPixels = 180
 internal const val RecenterNorthWindowMillis = 1_000L
 
@@ -1257,14 +1257,6 @@ private fun createMomentMarkerBitmap(
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
             paint.color = android.graphics.Color.rgb(24, 32, 28)
             paint.style = android.graphics.Paint.Style.FILL
-            canvas.drawRect(
-                (31 - MomentMarkerStroke / 2) * scale,
-                53 * scale,
-                (31 + MomentMarkerStroke / 2) * scale,
-                100 * scale,
-                paint,
-            )
-            canvas.drawCircle(31 * scale, 100 * scale, 1.5f * scale, paint)
 
             if (selected) {
                 canvas.drawRoundRect(
@@ -1280,17 +1272,35 @@ private fun createMomentMarkerBitmap(
 
             val flag = android.graphics.RectF(
                 6 * scale,
-                3 * scale,
+                2 * scale,
                 56 * scale,
-                53 * scale,
+                52 * scale,
             )
             canvas.drawRoundRect(flag, 10 * scale, 10 * scale, paint)
+            canvas.drawPath(
+                android.graphics.Path().apply {
+                    moveTo(26 * scale, 50 * scale)
+                    lineTo(36 * scale, 50 * scale)
+                    lineTo(31 * scale, 57 * scale)
+                    close()
+                },
+                paint,
+            )
             val content = android.graphics.RectF(flag).apply {
                 inset(MomentMarkerStroke * scale, MomentMarkerStroke * scale)
             }
             paint.color = android.graphics.Color.WHITE
             paint.style = android.graphics.Paint.Style.FILL
-            canvas.drawRoundRect(content, 8.5f * scale, 8.5f * scale, paint)
+            canvas.drawRoundRect(content, 7 * scale, 7 * scale, paint)
+            canvas.drawPath(
+                android.graphics.Path().apply {
+                    moveTo(28 * scale, 47 * scale)
+                    lineTo(34 * scale, 47 * scale)
+                    lineTo(31 * scale, 54 * scale)
+                    close()
+                },
+                paint,
+            )
 
             val photo = if (moment.type == MomentType.PHOTO) {
                 decodeMarkerPhoto(moment.payload)
