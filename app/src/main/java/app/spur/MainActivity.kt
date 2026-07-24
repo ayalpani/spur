@@ -12,6 +12,7 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.Surface
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -299,6 +300,7 @@ private fun MapScreen(
     var pendingPhoto by remember { mutableStateOf<File?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
+    var manualLocation by remember { mutableStateOf(context.loadManualLocation()) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -355,6 +357,7 @@ private fun MapScreen(
                 resetNorthRequest = resetNorthRequest,
                 resetZoomRequest = resetZoomRequest,
                 isSatelliteView = isSatelliteView,
+                manualLocation = manualLocation,
                 mapMoments = mapMoments,
                 photoToPlace = pendingPhoto,
                 onMapBearingChanged = { mapBearing = it },
@@ -377,6 +380,15 @@ private fun MapScreen(
                 },
                 onMomentClick = { moment ->
                     if (moment.type == MomentType.PHOTO) photoDetail = moment
+                },
+                onManualLocationChanged = { location ->
+                    context.saveManualLocation(location)
+                    manualLocation = location
+                    Toast.makeText(
+                        context,
+                        "Simulierter Standort gesetzt.",
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 },
             )
 
@@ -447,6 +459,22 @@ private fun MapScreen(
                     onClick = { recenterRequest++ },
                 ) {
                     RecenterIcon()
+                }
+                if (manualLocation != null) {
+                    MapIconButton(
+                        contentDescription = "Simulierten Standort zurücksetzen",
+                        onClick = {
+                            context.saveManualLocation(null)
+                            manualLocation = null
+                            Toast.makeText(
+                                context,
+                                "GPS-Standort wieder aktiv.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                    ) {
+                        LucideLocateOffIcon()
+                    }
                 }
             }
 
@@ -635,22 +663,27 @@ private fun MapSurface(
     resetNorthRequest: Int,
     resetZoomRequest: Int,
     isSatelliteView: Boolean,
+    manualLocation: SpurCoordinate?,
     mapMoments: List<MapMoment>,
     photoToPlace: File?,
     onMapBearingChanged: (Double) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onPhotoPlacementFailed: (File) -> Unit,
     onMomentClick: (MapMoment) -> Unit,
+    onManualLocationChanged: (SpurCoordinate) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentOnMapBearingChanged by rememberUpdatedState(onMapBearingChanged)
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
+    val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentMapMoments by rememberUpdatedState(mapMoments)
+    val currentManualLocation by rememberUpdatedState(manualLocation)
     var markerPositions by remember {
         mutableStateOf<Map<String, android.graphics.PointF>>(emptyMap())
     }
+    var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
     val mapView = remember {
         MapLibre.getInstance(context)
@@ -667,6 +700,7 @@ private fun MapSurface(
                 map = map,
                 satellite = isSatelliteView,
                 centerOnLocation = !hasLoadedMapStyle,
+                manualLocation = manualLocation,
                 onLoaded = { hasLoadedMapStyle = true },
             )
         }
@@ -706,6 +740,11 @@ private fun MapSurface(
                     LatLng(moment.latitude, moment.longitude),
                 )
             }
+            manualLocationPosition = currentManualLocation?.let { location ->
+                readyMap.projection.toScreenLocation(
+                    LatLng(location.latitude, location.longitude),
+                )
+            }
         }
 
         fun publishBearing(force: Boolean) {
@@ -730,35 +769,48 @@ private fun MapSurface(
             publishBearing(force = true)
             publishMarkerPositions()
         }
+        val longClickListener = MapLibreMap.OnMapLongClickListener { point ->
+            mapView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            currentOnManualLocationChanged(
+                SpurCoordinate(
+                    latitude = point.latitude,
+                    longitude = point.longitude,
+                ),
+            )
+            true
+        }
         mapView.getMapAsync { readyMap ->
             map = readyMap
             readyMap.addOnCameraMoveListener(moveListener)
             readyMap.addOnCameraIdleListener(idleListener)
+            readyMap.addOnMapLongClickListener(longClickListener)
             publishBearing(force = true)
             publishMarkerPositions()
         }
         onDispose {
             map?.removeOnCameraMoveListener(moveListener)
             map?.removeOnCameraIdleListener(idleListener)
+            map?.removeOnMapLongClickListener(longClickListener)
         }
     }
 
     LaunchedEffect(recenterRequest) {
         if (recenterRequest == 0) return@LaunchedEffect
         mapView.getMapAsync { map ->
+            val location = map.currentSpurCoordinate(
+                context = context,
+                manual = manualLocation,
+            ) ?: return@getMapAsync
             if (map.locationComponent.isLocationComponentActivated) {
-                val location = map.locationComponent.lastKnownLocation
-                    ?: context.bestLastKnownLocation()
                 map.locationComponent.cameraMode = CameraMode.NONE
-                if (location == null) return@getMapAsync
-                map.animateCamera(
-                    CameraUpdateFactory.newLatLngZoom(
-                        LatLng(location.latitude, location.longitude),
-                        DefaultMapZoom,
-                    ),
-                    500,
-                )
             }
+            map.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    LatLng(location.latitude, location.longitude),
+                    DefaultMapZoom,
+                ),
+                500,
+            )
         }
     }
 
@@ -796,11 +848,10 @@ private fun MapSurface(
     LaunchedEffect(photoToPlace) {
         val photo = photoToPlace ?: return@LaunchedEffect
         mapView.getMapAsync { map ->
-            val location = if (map.locationComponent.isLocationComponentActivated) {
-                map.locationComponent.lastKnownLocation
-            } else {
-                null
-            }
+            val location = map.currentSpurCoordinate(
+                context = context,
+                manual = manualLocation,
+            )
             if (location == null) {
                 currentOnPhotoPlacementFailed(photo)
             } else {
@@ -812,6 +863,20 @@ private fun MapSurface(
                         longitude = location.longitude,
                         payload = photo.absolutePath,
                     ),
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(manualLocation) {
+        mapView.getMapAsync { map ->
+            map.showGpsLocationPuck(
+                context = context,
+                show = manualLocation == null,
+            )
+            manualLocationPosition = manualLocation?.let { location ->
+                map.projection.toScreenLocation(
+                    LatLng(location.latitude, location.longitude),
                 )
             }
         }
@@ -836,8 +901,19 @@ private fun MapSurface(
         )
 
         val density = LocalDensity.current
+        val manualPuckSizePx = with(density) { 52.dp.roundToPx() }
         val markerWidthPx = with(density) { MomentMarkerWidth.dp.roundToPx() }
         val markerHeightPx = with(density) { MomentMarkerHeight.dp.roundToPx() }
+        manualLocationPosition?.let { position ->
+            SimulatedLocationPuck(
+                modifier = Modifier.offset {
+                    IntOffset(
+                        x = position.x.roundToInt() - manualPuckSizePx / 2,
+                        y = position.y.roundToInt() - manualPuckSizePx / 2,
+                    )
+                },
+            )
+        }
         mapMoments.forEach { moment ->
             val position = markerPositions[moment.id] ?: return@forEach
             val marker = remember(moment) {
@@ -860,6 +936,25 @@ private fun MapSurface(
                     .clickable { onMomentClick(moment) },
             )
         }
+    }
+}
+
+@Composable
+private fun SimulatedLocationPuck(modifier: Modifier = Modifier) {
+    Canvas(
+        modifier = modifier
+            .size(52.dp)
+            .semantics { contentDescription = "Simulierter Standort" },
+    ) {
+        val purple = Color(0xFF6D28D9)
+        drawCircle(purple.copy(alpha = 0.2f), radius = size.minDimension / 2)
+        drawCircle(Color.White, radius = 10.dp.toPx())
+        drawCircle(purple, radius = 6.dp.toPx())
+        drawCircle(
+            color = Ink,
+            radius = 10.dp.toPx(),
+            style = Stroke(width = 1.5.dp.toPx()),
+        )
     }
 }
 
@@ -928,6 +1023,7 @@ private fun setMapStyle(
     map: MapLibreMap,
     satellite: Boolean,
     centerOnLocation: Boolean,
+    manualLocation: SpurCoordinate?,
     onLoaded: () -> Unit,
 ) {
     val cameraPosition = map.cameraPosition
@@ -937,6 +1033,7 @@ private fun setMapStyle(
             map = map,
             style = style,
             centerOnLocation = centerOnLocation,
+            manualLocation = manualLocation,
         )
         if (!centerOnLocation) {
             map.moveCamera(CameraUpdateFactory.newCameraPosition(cameraPosition))
@@ -965,6 +1062,7 @@ private fun enableLocationTracking(
     map: MapLibreMap,
     style: Style,
     centerOnLocation: Boolean,
+    manualLocation: SpurCoordinate?,
 ) {
     if (!context.hasLocationPermission()) return
 
@@ -978,11 +1076,14 @@ private fun enableLocationTracking(
             .useDefaultLocationEngine(true)
             .build(),
     )
-    locationComponent.isLocationComponentEnabled = true
+    locationComponent.isLocationComponentEnabled = manualLocation == null
     locationComponent.renderMode = RenderMode.NORMAL
     locationComponent.cameraMode = CameraMode.NONE
 
-    val location = locationComponent.lastKnownLocation ?: context.bestLastKnownLocation()
+    val location = map.currentSpurCoordinate(
+        context = context,
+        manual = manualLocation,
+    )
     if (centerOnLocation && location != null) {
         map.moveCamera(
             CameraUpdateFactory.newLatLngZoom(
@@ -1000,6 +1101,35 @@ private fun Context.hasLocationPermission(): Boolean =
 private fun Context.hasCameraPermission(): Boolean =
     checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
+private fun Location.toSpurCoordinate() =
+    SpurCoordinate(latitude = latitude, longitude = longitude)
+
+@SuppressLint("MissingPermission")
+private fun MapLibreMap.currentSpurCoordinate(
+    context: Context,
+    manual: SpurCoordinate?,
+): SpurCoordinate? {
+    if (manual != null) return manual
+    val gps = if (locationComponent.isLocationComponentActivated) {
+        locationComponent.lastKnownLocation
+    } else {
+        null
+    } ?: context.bestLastKnownLocation()
+    return resolveSpurCoordinate(
+        manual = null,
+        gps = gps?.toSpurCoordinate(),
+    )
+}
+
+@SuppressLint("MissingPermission")
+private fun MapLibreMap.showGpsLocationPuck(
+    context: Context,
+    show: Boolean,
+) {
+    if (!context.hasLocationPermission() || !locationComponent.isLocationComponentActivated) return
+    locationComponent.isLocationComponentEnabled = show
+}
+
 @SuppressLint("MissingPermission")
 private fun Context.bestLastKnownLocation(): Location? {
     val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -1008,6 +1138,36 @@ private fun Context.bestLastKnownLocation(): Location? {
             runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
         }
         .maxByOrNull(Location::getTime)
+}
+
+private const val ManualLocationPreferences = "manual-location"
+private const val ManualLatitude = "latitude"
+private const val ManualLongitude = "longitude"
+
+private fun Context.loadManualLocation(): SpurCoordinate? {
+    val preferences = getSharedPreferences(ManualLocationPreferences, Context.MODE_PRIVATE)
+    if (!preferences.contains(ManualLatitude) || !preferences.contains(ManualLongitude)) {
+        return null
+    }
+    return SpurCoordinate(
+        latitude = Double.fromBits(preferences.getLong(ManualLatitude, 0L)),
+        longitude = Double.fromBits(preferences.getLong(ManualLongitude, 0L)),
+    )
+}
+
+private fun Context.saveManualLocation(location: SpurCoordinate?) {
+    getSharedPreferences(ManualLocationPreferences, Context.MODE_PRIVATE)
+        .edit()
+        .apply {
+            if (location == null) {
+                remove(ManualLatitude)
+                remove(ManualLongitude)
+            } else {
+                putLong(ManualLatitude, location.latitude.toBits())
+                putLong(ManualLongitude, location.longitude.toBits())
+            }
+        }
+        .apply()
 }
 
 @Composable
@@ -1435,6 +1595,19 @@ private fun LucideMapIcon() = LucideIcon(
         "M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z",
         "M15 5.764v15",
         "M9 3.236v15",
+    ),
+)
+
+@Composable
+private fun LucideLocateOffIcon() = LucideIcon(
+    paths = listOf(
+        "M12 19v3",
+        "M12 2v3",
+        "M18.89 13.24a7 7 0 0 0-8.13-8.13",
+        "M19 12h3",
+        "M2 12h3",
+        "m2 2 20 20",
+        "M7.05 7.05a7 7 0 0 0 9.9 9.9",
     ),
 )
 
