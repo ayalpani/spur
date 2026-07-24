@@ -1255,7 +1255,7 @@ private fun createMomentMarkerBitmap(
             val scale = context.resources.displayMetrics.density
             val canvas = android.graphics.Canvas(bitmap)
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-            paint.color = android.graphics.Color.rgb(24, 32, 28)
+            paint.color = android.graphics.Color.YELLOW
             paint.style = android.graphics.Paint.Style.FILL
 
             if (selected) {
