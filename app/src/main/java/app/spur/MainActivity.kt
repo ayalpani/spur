@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,6 +39,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -85,6 +87,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -115,6 +118,7 @@ import org.maplibre.android.maps.Style
 import org.maplibre.android.snapshotter.MapSnapshotter
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.log2
 import kotlin.math.roundToInt
 
 private val Sand = Color(0xFFF7F5F0)
@@ -133,6 +137,13 @@ internal const val RecenterNorthWindowMillis = 1_000L
 
 internal fun isRecenterNorthTap(previousAt: Long, now: Long): Boolean =
     previousAt != 0L && now - previousAt in 0..RecenterNorthWindowMillis
+
+internal fun mapPreviewZoom(
+    mapZoom: Double,
+    mapWidthPixels: Int,
+    density: Float,
+    previewWidthPixels: Int,
+): Double = mapZoom - log2(mapWidthPixels / density / previewWidthPixels)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -654,16 +665,21 @@ private fun MapStyleButton(
     fallbackPreview: Int,
     onClick: () -> Unit,
 ) {
+    val screen = LocalConfiguration.current
+    val aspectRatio = preview?.let { it.width.toFloat() / it.height }
+        ?: screen.screenWidthDp.toFloat() / screen.screenHeightDp
+    val previewShape = RoundedCornerShape(18.dp)
     IconButton(
         onClick = onClick,
         modifier = Modifier
-            .size(60.dp)
+            .width(60.dp)
+            .aspectRatio(aspectRatio)
             .semantics { this.contentDescription = contentDescription },
     ) {
         val previewModifier = Modifier
             .fillMaxSize()
-            .clip(CircleShape)
-            .border(2.dp, Color.White, CircleShape)
+            .clip(previewShape)
+            .border(2.dp, Color.White, previewShape)
         if (preview == null) {
             Image(
                 painter = painterResource(fallbackPreview),
@@ -744,8 +760,29 @@ private fun MapSurface(
         if (cameraPosition == null) {
             onDispose {}
         } else {
-            val options = MapSnapshotter.Options(MapPreviewPixels, MapPreviewPixels)
-                .withCameraPosition(cameraPosition)
+            val hasMapSize = mapView.width > 0 && mapView.height > 0
+            val previewHeight = if (hasMapSize) {
+                (MapPreviewPixels.toFloat() * mapView.height / mapView.width)
+                    .roundToInt()
+            } else {
+                MapPreviewPixels
+            }
+            val previewCameraPosition = if (hasMapSize) {
+                org.maplibre.android.camera.CameraPosition.Builder(cameraPosition)
+                    .zoom(
+                        mapPreviewZoom(
+                            mapZoom = cameraPosition.zoom,
+                            mapWidthPixels = mapView.width,
+                            density = context.resources.displayMetrics.density,
+                            previewWidthPixels = MapPreviewPixels,
+                        ),
+                    )
+                    .build()
+            } else {
+                cameraPosition
+            }
+            val options = MapSnapshotter.Options(MapPreviewPixels, previewHeight)
+                .withCameraPosition(previewCameraPosition)
                 .withPixelRatio(1f)
                 .withLogo(false)
                 .let { snapshotOptions ->
