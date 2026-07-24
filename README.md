@@ -20,9 +20,11 @@ standardmäßig auf dem Gerät.
 - Jetpack Compose und Material 3
 - Android 8.0+ (API 26)
 
-Der erste vertikale Produktschnitt zeichnet Touren über einen Foreground
-Service auf, speichert sie lokal in SQLite und stellt die zurückgelegte Spur
-dar. Kartenhintergrund, Marker und CameraX kommen in späteren Schnitten hinzu.
+Die startfähige Compose-App nutzt MapLibre mit OpenStreetMap-Vektorkacheln für
+ihre primäre Kartenansicht. Ein kurzes Standort-Onboarding führt zur
+Android-Freigabe; danach folgt die Karte Position und Gerätekompass. Touren
+werden über einen Foreground Service aufgezeichnet, lokal in SQLite gespeichert
+und als Route auf der Karte dargestellt. Fotomomente nutzt CameraX.
 
 ## Starten
 

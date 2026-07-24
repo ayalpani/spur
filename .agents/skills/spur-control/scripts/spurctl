@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly DEVICE_MODEL="SM_A546B"
-readonly LAST_ENDPOINT="192.168.178.162:33439"
+readonly LAST_ENDPOINT="192.168.178.162:38049"
 readonly PACKAGE="app.spur"
 readonly LEGACY_PACKAGE="app.spur.debug"
 readonly ACTIVITY="app.spur/.MainActivity"
