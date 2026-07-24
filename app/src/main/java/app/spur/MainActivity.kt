@@ -5,15 +5,11 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
-import android.view.Surface
+import android.view.ViewConfiguration
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -23,13 +19,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,7 +44,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.North
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -73,7 +67,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -88,10 +82,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -101,6 +95,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
@@ -288,11 +283,9 @@ private fun MapScreen(
     val context = LocalContext.current
     val drawerState = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val deviceHeading = rememberDeviceHeading()
-    var mapBearing by remember { mutableDoubleStateOf(0.0) }
     var recenterRequest by rememberSaveable { mutableStateOf(0) }
-    var resetNorthRequest by rememberSaveable { mutableStateOf(0) }
-    var resetZoomRequest by rememberSaveable { mutableStateOf(0) }
+    var recenterNorth by remember { mutableStateOf(false) }
+    var lastRecenterTapAt by remember { mutableLongStateOf(0L) }
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
     var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
@@ -354,13 +347,11 @@ private fun MapScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             MapSurface(
                 recenterRequest = recenterRequest,
-                resetNorthRequest = resetNorthRequest,
-                resetZoomRequest = resetZoomRequest,
+                recenterNorth = recenterNorth,
                 isSatelliteView = isSatelliteView,
                 manualLocation = manualLocation,
                 mapMoments = mapMoments,
                 photoToPlace = pendingPhoto,
-                onMapBearingChanged = { mapBearing = it },
                 onMomentPlaced = { moment ->
                     val updatedMoments = mapMoments + moment
                     context.saveMapMoments(updatedMoments)
@@ -425,38 +416,29 @@ private fun MapScreen(
                     .padding(end = 18.dp, bottom = 86.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                MapIconButton(
+                MapStyleButton(
                     contentDescription = if (isSatelliteView) {
                         "Schematische Kartenansicht anzeigen"
                     } else {
                         "Satellitenansicht anzeigen"
                     },
                     onClick = { isSatelliteView = !isSatelliteView },
-                ) {
-                    if (isSatelliteView) LucideMapIcon() else LucideSatelliteIcon()
-                }
-                MapIconButton(
-                    contentDescription = "Karte nach Norden ausrichten",
-                    onClick = { resetNorthRequest++ },
-                ) {
-                    CompassIcon(
-                        mapBearing = mapBearing,
-                        deviceHeading = deviceHeading,
-                    )
-                }
-                MapIconButton(
-                    contentDescription = "Normale Zoomstufe wiederherstellen",
-                    onClick = { resetZoomRequest++ },
-                ) {
-                    Text(
-                        text = "100%",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
+                    preview = if (isSatelliteView) {
+                        R.drawable.map_preview_street
+                    } else {
+                        R.drawable.map_preview_satellite
+                    },
+                )
                 MapIconButton(
                     contentDescription = "Auf eigenen Standort zentrieren",
-                    onClick = { recenterRequest++ },
+                    onClick = {
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        recenterNorth =
+                            lastRecenterTapAt != 0L &&
+                            now - lastRecenterTapAt <= ViewConfiguration.getDoubleTapTimeout()
+                        lastRecenterTapAt = now
+                        recenterRequest++
+                    },
                 ) {
                     RecenterIcon()
                 }
@@ -658,15 +640,37 @@ private fun MapIconButton(
 }
 
 @Composable
+private fun MapStyleButton(
+    contentDescription: String,
+    preview: Int,
+    onClick: () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(60.dp)
+            .semantics { this.contentDescription = contentDescription },
+    ) {
+        Image(
+            painter = painterResource(preview),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .border(2.dp, Color.White, CircleShape),
+        )
+    }
+}
+
+@Composable
 private fun MapSurface(
     recenterRequest: Int,
-    resetNorthRequest: Int,
-    resetZoomRequest: Int,
+    recenterNorth: Boolean,
     isSatelliteView: Boolean,
     manualLocation: SpurCoordinate?,
     mapMoments: List<MapMoment>,
     photoToPlace: File?,
-    onMapBearingChanged: (Double) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onPhotoPlacementFailed: (File) -> Unit,
     onMomentClick: (MapMoment) -> Unit,
@@ -674,7 +678,6 @@ private fun MapSurface(
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val currentOnMapBearingChanged by rememberUpdatedState(onMapBearingChanged)
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
@@ -730,8 +733,6 @@ private fun MapSurface(
 
     DisposableEffect(mapView) {
         var map: MapLibreMap? = null
-        var lastPublishedAt = 0L
-        var unwrappedBearing = 0.0
 
         fun publishMarkerPositions() {
             val readyMap = map ?: return
@@ -747,26 +748,10 @@ private fun MapSurface(
             }
         }
 
-        fun publishBearing(force: Boolean) {
-            val nextBearing = map?.cameraPosition?.bearing ?: return
-            val now = android.os.SystemClock.elapsedRealtime()
-            if (lastPublishedAt == 0L || force || now - lastPublishedAt >= 1_000L) {
-                unwrappedBearing = if (lastPublishedAt == 0L) {
-                    nextBearing
-                } else {
-                    unwrapHeading(unwrappedBearing, nextBearing)
-                }
-                currentOnMapBearingChanged(unwrappedBearing)
-                lastPublishedAt = now
-            }
-        }
-
         val moveListener = MapLibreMap.OnCameraMoveListener {
-            publishBearing(force = false)
             publishMarkerPositions()
         }
         val idleListener = MapLibreMap.OnCameraIdleListener {
-            publishBearing(force = true)
             publishMarkerPositions()
         }
         val longClickListener = MapLibreMap.OnMapLongClickListener { point ->
@@ -784,7 +769,6 @@ private fun MapSurface(
             readyMap.addOnCameraMoveListener(moveListener)
             readyMap.addOnCameraIdleListener(idleListener)
             readyMap.addOnMapLongClickListener(longClickListener)
-            publishBearing(force = true)
             publishMarkerPositions()
         }
         onDispose {
@@ -804,40 +788,15 @@ private fun MapSurface(
             if (map.locationComponent.isLocationComponentActivated) {
                 map.locationComponent.cameraMode = CameraMode.NONE
             }
-            map.animateCamera(
-                CameraUpdateFactory.newLatLngZoom(
-                    LatLng(location.latitude, location.longitude),
-                    DefaultMapZoom,
-                ),
-                500,
-            )
-        }
-    }
-
-    LaunchedEffect(resetZoomRequest) {
-        if (resetZoomRequest == 0) return@LaunchedEffect
-        mapView.getMapAsync { map ->
-            if (map.locationComponent.isLocationComponentActivated) {
-                map.locationComponent.cameraMode = CameraMode.NONE
-            }
-            map.animateCamera(CameraUpdateFactory.zoomTo(DefaultMapZoom), 500)
-        }
-    }
-
-    LaunchedEffect(resetNorthRequest) {
-        if (resetNorthRequest == 0) return@LaunchedEffect
-        mapView.getMapAsync { map ->
-            if (map.locationComponent.isLocationComponentActivated) {
-                map.locationComponent.cameraMode = CameraMode.NONE
-            }
             val current = map.cameraPosition
             map.animateCamera(
                 CameraUpdateFactory.newCameraPosition(
-                    org.maplibre.android.camera.CameraPosition.Builder()
-                        .target(current.target)
-                        .zoom(current.zoom)
-                        .tilt(current.tilt)
-                        .bearing(0.0)
+                    org.maplibre.android.camera.CameraPosition.Builder(current)
+                        .target(LatLng(location.latitude, location.longitude))
+                        .zoom(DefaultMapZoom)
+                        .apply {
+                            if (recenterNorth) bearing(0.0)
+                        }
                         .build(),
                 ),
                 500,
@@ -1170,62 +1129,6 @@ private fun Context.saveManualLocation(location: SpurCoordinate?) {
         .apply()
 }
 
-@Composable
-private fun rememberDeviceHeading(): Double {
-    val context = LocalContext.current
-    var heading by remember { mutableDoubleStateOf(0.0) }
-
-    DisposableEffect(context) {
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-        var lastPublishedAt = 0L
-        var unwrappedHeading = 0.0
-        val listener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                val rotationMatrix = FloatArray(9)
-                val screenMatrix = FloatArray(9)
-                SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                @Suppress("DEPRECATION")
-                val displayRotation =
-                    (context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager)
-                        .defaultDisplay
-                        .rotation
-                val (axisX, axisY) = when (displayRotation) {
-                    Surface.ROTATION_90 -> SensorManager.AXIS_Y to SensorManager.AXIS_MINUS_X
-                    Surface.ROTATION_180 ->
-                        SensorManager.AXIS_MINUS_X to SensorManager.AXIS_MINUS_Y
-                    Surface.ROTATION_270 -> SensorManager.AXIS_MINUS_Y to SensorManager.AXIS_X
-                    else -> SensorManager.AXIS_X to SensorManager.AXIS_Y
-                }
-                SensorManager.remapCoordinateSystem(rotationMatrix, axisX, axisY, screenMatrix)
-                val orientation = SensorManager.getOrientation(screenMatrix, FloatArray(3))
-                val nextHeading =
-                    (Math.toDegrees(orientation[0].toDouble()) + 360.0) % 360.0
-                val now = android.os.SystemClock.elapsedRealtime()
-                if (lastPublishedAt == 0L || now - lastPublishedAt >= 1_000L) {
-                    unwrappedHeading = if (lastPublishedAt == 0L) {
-                        nextHeading
-                    } else {
-                        unwrapHeading(unwrappedHeading, nextHeading)
-                    }
-                    heading = unwrappedHeading
-                    lastPublishedAt = now
-                }
-            }
-
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-        }
-        if (rotationSensor != null) {
-            sensorManager.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
-        }
-        onDispose {
-            sensorManager.unregisterListener(listener)
-        }
-    }
-
-    return heading
-}
-
 private const val MapMomentPreferences = "map-moments"
 private const val MapMomentEntries = "entries"
 
@@ -1523,41 +1426,6 @@ private fun PlusIcon() = LucideIcon(
 )
 
 @Composable
-private fun CompassIcon(
-    mapBearing: Double,
-    deviceHeading: Double,
-) {
-    val animatedMapRotation by animateFloatAsState(
-        targetValue = -mapBearing.toFloat(),
-        animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
-        label = "Map north",
-    )
-    val animatedDeviceRotation by animateFloatAsState(
-        targetValue = -deviceHeading.toFloat(),
-        animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
-        label = "Device north",
-    )
-    Box(modifier = Modifier.size(48.dp)) {
-        Icon(
-            imageVector = Icons.Rounded.North,
-            contentDescription = null,
-            tint = Color.Black.copy(alpha = 0.5f),
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { rotationZ = animatedMapRotation },
-        )
-        Icon(
-            imageVector = Icons.Rounded.North,
-            contentDescription = null,
-            tint = Color(0xFF1565C0).copy(alpha = 0.5f),
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { rotationZ = animatedDeviceRotation },
-        )
-    }
-}
-
-@Composable
 private fun RecenterIcon() = LucideIcon(
     paths = listOf(
         "M2 12h3",
@@ -1575,26 +1443,6 @@ private fun HistoryIcon() = LucideIcon(
         "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
         "M3 3v5h5",
         "M12 7v5l4 2",
-    ),
-)
-
-@Composable
-private fun LucideSatelliteIcon() = LucideIcon(
-    paths = listOf(
-        "m13.5 6.5-3.148-3.148a1.205 1.205 0 0 0-1.704 0L6.352 5.648a1.205 1.205 0 0 0 0 1.704L9.5 10.5",
-        "M16.5 7.5 19 5",
-        "m17.5 10.5 3.148 3.148a1.205 1.205 0 0 1 0 1.704l-2.296 2.296a1.205 1.205 0 0 1-1.704 0L13.5 14.5",
-        "M9 21a6 6 0 0 0-6-6",
-        "M9.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l4.296-4.296a1.205 1.205 0 0 0 0-1.704l-2.296-2.296a1.205 1.205 0 0 0-1.704 0z",
-    ),
-)
-
-@Composable
-private fun LucideMapIcon() = LucideIcon(
-    paths = listOf(
-        "M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z",
-        "M15 5.764v15",
-        "M9 3.236v15",
     ),
 )
 
