@@ -436,6 +436,13 @@ private fun MapScreen(
                     ) {
                         ShareIcon()
                     }
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
+                MapIconButton(
+                    contentDescription = "Tour-History öffnen",
+                    onClick = onOpenHistory,
+                ) {
+                    HistoryIcon()
                 }
             }
 
@@ -480,12 +487,6 @@ private fun MapScreen(
                     ) {
                         LucideLocateOffIcon()
                     }
-                }
-                MapIconButton(
-                    contentDescription = "Tour-History öffnen",
-                    onClick = onOpenHistory,
-                ) {
-                    HistoryIcon()
                 }
             }
 
