@@ -9,7 +9,6 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
-import android.view.ViewConfiguration
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -130,6 +129,10 @@ private const val SatelliteTileUrl =
 private const val MomentMarkerWidth = 62
 private const val MomentMarkerHeight = 102
 private const val MomentMarkerStroke = 1.5f
+internal const val RecenterNorthWindowMillis = 1_000L
+
+internal fun isRecenterNorthTap(previousAt: Long, now: Long): Boolean =
+    previousAt != 0L && now - previousAt in 0..RecenterNorthWindowMillis
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -434,9 +437,7 @@ private fun MapScreen(
                     contentDescription = "Auf eigenen Standort zentrieren",
                     onClick = {
                         val now = android.os.SystemClock.elapsedRealtime()
-                        recenterNorth =
-                            lastRecenterTapAt != 0L &&
-                            now - lastRecenterTapAt <= ViewConfiguration.getDoubleTapTimeout()
+                        recenterNorth = isRecenterNorthTap(lastRecenterTapAt, now)
                         lastRecenterTapAt = now
                         recenterRequest++
                     },
@@ -684,6 +685,7 @@ private fun MapSurface(
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentMapMoments by rememberUpdatedState(mapMoments)
     val currentManualLocation by rememberUpdatedState(manualLocation)
+    val currentRecenterRequest by rememberUpdatedState(recenterRequest)
     var markerPositions by remember {
         mutableStateOf<Map<String, android.graphics.PointF>>(emptyMap())
     }
@@ -781,7 +783,10 @@ private fun MapSurface(
 
     LaunchedEffect(recenterRequest) {
         if (recenterRequest == 0) return@LaunchedEffect
+        val request = recenterRequest
+        val resetNorth = recenterNorth
         mapView.getMapAsync { map ->
+            if (request != currentRecenterRequest) return@getMapAsync
             val location = map.currentSpurCoordinate(
                 context = context,
                 manual = manualLocation,
@@ -796,11 +801,11 @@ private fun MapSurface(
                         .target(LatLng(location.latitude, location.longitude))
                         .zoom(DefaultMapZoom)
                         .apply {
-                            if (recenterNorth) bearing(0.0)
+                            if (resetNorth) bearing(0.0)
                         }
                         .build(),
                 ),
-                500,
+                if (resetNorth) 300 else 500,
             )
         }
     }
