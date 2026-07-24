@@ -20,6 +20,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -34,8 +35,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -80,6 +85,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -153,6 +159,7 @@ import kotlin.math.roundToInt
 private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
+private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
 private const val SatelliteMapStyleJson =
@@ -174,6 +181,9 @@ internal fun mapPreviewZoom(
     density: Float,
     previewWidthPixels: Int,
 ): Double = mapZoom - log2(mapWidthPixels / density / previewWidthPixels)
+
+internal fun shouldCompleteStopSwipe(offset: Float, maximum: Float): Boolean =
+    maximum > 0f && offset >= maximum * 0.82f
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -642,37 +652,26 @@ private fun MapScreen(
                 ) {
                     PlusIcon()
                 }
-                Button(
-                    onClick = if (isTourActive) onEndTour else onStartTour,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(60.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isTourActive) Color.White else Ink,
-                        contentColor = if (isTourActive) Ink else Color.White,
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
-                ) {
-                    if (isTourActive && tour != null) {
-                        StopIcon()
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = formatKilometers(tour.distanceMeters),
-                                color = Moss,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = "Seit ${formatClock(tour.startedAt)} · ${
-                                    formatDuration(now - tour.startedAt)
-                                }",
-                                color = Ink.copy(alpha = 0.58f),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    } else {
+                if (isTourActive && tour != null) {
+                    ActiveTourStopControl(
+                        tour = tour,
+                        now = now,
+                        onStop = onEndTour,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    Button(
+                        onClick = onStartTour,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(60.dp),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Ink,
+                            contentColor = Color.White,
+                        ),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                    ) {
                         Text(
                             text = "Tour starten",
                             style = MaterialTheme.typography.titleLarge,
@@ -1813,6 +1812,152 @@ private fun HistoryScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ActiveTourStopControl(
+    tour: Tour,
+    now: Long,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var armed by remember(tour.id) { mutableStateOf(false) }
+    var dragOffset by remember(tour.id) { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+
+    Surface(
+        modifier = modifier.height(60.dp),
+        color = Color.White,
+        shape = CircleShape,
+        shadowElevation = 4.dp,
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val handleSize = 52.dp
+            val edgePadding = 4.dp
+            val maximum = with(density) {
+                (maxWidth - handleSize - edgePadding * 2).toPx().coerceAtLeast(0f)
+            }
+            val edgePaddingPixels = with(density) { edgePadding.toPx() }
+            val dragState = rememberDraggableState { delta ->
+                dragOffset = (dragOffset + delta).coerceIn(0f, maximum)
+            }
+
+            AnimatedContent(
+                targetState = armed,
+                transitionSpec = {
+                    fadeIn(tween(160)) togetherWith fadeOut(tween(100))
+                },
+                label = "Stop confirmation",
+                modifier = Modifier.fillMaxSize(),
+            ) { confirmationVisible ->
+                if (confirmationVisible) {
+                    SwipeStopPrompt()
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(start = 68.dp, end = 12.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Column {
+                            Text(
+                                text = formatKilometers(tour.distanceMeters),
+                                color = Moss,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = "Seit ${formatClock(tour.startedAt)} · ${
+                                    formatDuration(now - tour.startedAt)
+                                }",
+                                color = Ink.copy(alpha = 0.58f),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset {
+                        IntOffset(
+                            x = (edgePaddingPixels + dragOffset).roundToInt(),
+                            y = 0,
+                        )
+                    }
+                    .size(handleSize)
+                    .background(Mist, CircleShape)
+                    .semantics {
+                        contentDescription = if (armed) {
+                            "Nach rechts wischen, um die Tour zu beenden"
+                        } else {
+                            "Tour beenden vorbereiten"
+                        }
+                    }
+                    .clickable(enabled = !armed) {
+                        armed = true
+                        dragOffset = 0f
+                    }
+                    .draggable(
+                        enabled = armed,
+                        state = dragState,
+                        orientation = Orientation.Horizontal,
+                        onDragStopped = {
+                            if (shouldCompleteStopSwipe(dragOffset, maximum)) {
+                                dragOffset = maximum
+                                onStop()
+                            } else {
+                                Animatable(dragOffset).animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = tween(180),
+                                ) {
+                                    dragOffset = value
+                                }
+                            }
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                StopIcon()
+            }
+        }
+    }
+}
+
+@Composable
+private fun SwipeStopPrompt() {
+    val transition = rememberInfiniteTransition(label = "Stop arrows")
+    val arrowAlpha by transition.animateFloat(
+        initialValue = 0.28f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(760),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "Stop arrows alpha",
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(start = 66.dp, end = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Zum Stoppen wischen",
+            modifier = Modifier.weight(1f),
+            color = Ink.copy(alpha = 0.68f),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = "›››",
+            color = Moss.copy(alpha = arrowAlpha),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 

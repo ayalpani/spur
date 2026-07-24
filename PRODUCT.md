@@ -49,11 +49,14 @@ und zentriert die Karte einmalig auf den aktuellen Standort mit dieser
 normalen Zoomstufe. Die Karte selbst folgt weder beim Start noch durch diese
 Aktionen automatisch dem Kompass oder Gyroskop. „Tour starten“ ist eine
 schwarze, groß beschriftete Pille.
-Während der Aufzeichnung wird daraus eine weiße Stopp-Fläche mit grünem
-Stopp-Icon, zurückgelegten Kilometern, Startzeit und laufender Dauer. Ein
-zusätzlicher Status-Chip ist nicht nötig. Alle Icon-Buttons sind gleich groß
-und reinweiß. Als primäres Werkzeug behält die Karte sämtliche Wischgesten;
-das Hauptmenü öffnet ausschließlich über seinen Button.
+Während der Aufzeichnung wird daraus eine weiße Fläche mit einem grünen
+Stopp-Griff links sowie zurückgelegten Kilometern, Startzeit und laufender
+Dauer rechts. Ein Tipp auf den Griff ersetzt diese Angaben durch eine
+animierte Wischleiste; erst wenn der Griff weit genug nach rechts gezogen
+wurde, endet die Tour. Ein zusätzlicher Status-Chip ist nicht nötig. Alle
+Icon-Buttons sind gleich groß und reinweiß. Als primäres Werkzeug behält die
+Karte sämtliche Wischgesten; das Hauptmenü öffnet ausschließlich über seinen
+Button.
 
 Alle abgelegten Momente nutzen dasselbe erweiterbare Marker-Modell aus
 Position, Typ und Inhalt. Die gemeinsame Markerform bleibt konsistent; Foto,
