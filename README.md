@@ -20,9 +20,9 @@ standardmäßig auf dem Gerät.
 - Jetpack Compose und Material 3
 - Android 8.0+ (API 26)
 
-Das Repository enthält zunächst nur eine kleine, startfähige Compose-Shell.
-Room, MapLibre, Foreground Service und CameraX kommen erst mit dem jeweiligen
-vertikalen Produktabschnitt hinzu.
+Der erste vertikale Produktschnitt zeichnet Touren über einen Foreground
+Service auf, speichert sie lokal in SQLite und stellt die zurückgelegte Spur
+dar. Kartenhintergrund, Marker und CameraX kommen in späteren Schnitten hinzu.
 
 ## Starten
 
