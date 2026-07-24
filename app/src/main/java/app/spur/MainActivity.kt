@@ -98,6 +98,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -892,6 +893,7 @@ private fun MapSurface(
                         width = MomentMarkerWidth.dp,
                         height = MomentMarkerHeight.dp,
                     )
+                    .zIndex(position.y)
                     .clickable { onMomentClick(moment) },
             )
         }
