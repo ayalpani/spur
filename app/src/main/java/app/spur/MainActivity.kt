@@ -448,9 +448,9 @@ private fun MapScreen(
 
             Column(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
+                    .align(Alignment.BottomStart)
                     .navigationBarsPadding()
-                    .padding(end = 18.dp, bottom = 86.dp),
+                    .padding(start = 18.dp, bottom = 86.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 MapStyleButton(
