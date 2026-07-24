@@ -22,6 +22,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -664,39 +665,31 @@ private fun MapStyleButton(
     val aspectRatio = preview?.let { it.width.toFloat() / it.height }
         ?: screen.screenWidthDp.toFloat() / screen.screenHeightDp
     val previewShape = RoundedCornerShape(18.dp)
-    val mapShape = RoundedCornerShape(15.dp)
-    IconButton(
+    Surface(
         onClick = onClick,
         modifier = Modifier
             .width(60.dp)
             .aspectRatio(aspectRatio)
             .semantics { this.contentDescription = contentDescription },
+        shape = previewShape,
+        color = Color.Transparent,
+        border = BorderStroke(3.dp, Color.White),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(previewShape)
-                .background(Color.White)
-                .padding(3.dp),
-        ) {
-            val previewModifier = Modifier
-                .fillMaxSize()
-                .clip(mapShape)
-            if (preview == null) {
-                Image(
-                    painter = painterResource(fallbackPreview),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = previewModifier,
-                )
-            } else {
-                Image(
-                    bitmap = preview,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = previewModifier,
-                )
-            }
+        val previewModifier = Modifier.fillMaxSize()
+        if (preview == null) {
+            Image(
+                painter = painterResource(fallbackPreview),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = previewModifier,
+            )
+        } else {
+            Image(
+                bitmap = preview,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = previewModifier,
+            )
         }
     }
 }
