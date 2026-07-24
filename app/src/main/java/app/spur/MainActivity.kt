@@ -18,7 +18,15 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -85,6 +93,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
@@ -303,6 +312,7 @@ private fun MapScreen(
     var lastRecenterTapAt by remember { mutableLongStateOf(0L) }
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
     var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
+    var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
     var showStopConfirmation by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
@@ -369,6 +379,9 @@ private fun MapScreen(
                 mapMoments = mapMoments,
                 photoToPlace = pendingPhoto,
                 onAlternateMapPreviewChanged = { alternateMapPreview = it },
+                onAlternateMapPreviewLoadingChanged = {
+                    isAlternateMapPreviewLoading = it
+                },
                 onMomentPlaced = { moment ->
                     val updatedMoments = mapMoments + moment
                     context.saveMapMoments(updatedMoments)
@@ -440,10 +453,12 @@ private fun MapScreen(
                         "Satellitenansicht anzeigen"
                     },
                     onClick = {
+                        isAlternateMapPreviewLoading = true
                         alternateMapPreview = null
                         isSatelliteView = !isSatelliteView
                     },
                     preview = alternateMapPreview,
+                    isLoading = isAlternateMapPreviewLoading,
                     fallbackPreview = if (isSatelliteView) {
                         R.drawable.map_preview_street
                     } else {
@@ -658,6 +673,7 @@ private fun MapIconButton(
 private fun MapStyleButton(
     contentDescription: String,
     preview: ImageBitmap?,
+    isLoading: Boolean,
     fallbackPreview: Int,
     onClick: () -> Unit,
 ) {
@@ -665,6 +681,11 @@ private fun MapStyleButton(
     val aspectRatio = preview?.let { it.width.toFloat() / it.height }
         ?: screen.screenWidthDp.toFloat() / screen.screenHeightDp
     val previewShape = RoundedCornerShape(18.dp)
+    val blurRadius by animateDpAsState(
+        targetValue = if (isLoading) 7.dp else 0.dp,
+        animationSpec = tween(180),
+        label = "Map preview blur",
+    )
     Surface(
         onClick = onClick,
         modifier = Modifier
@@ -675,22 +696,66 @@ private fun MapStyleButton(
         color = Color.Transparent,
         border = BorderStroke(3.dp, Color.White),
     ) {
-        val previewModifier = Modifier.fillMaxSize()
-        if (preview == null) {
-            Image(
-                painter = painterResource(fallbackPreview),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = previewModifier,
-            )
-        } else {
-            Image(
-                bitmap = preview,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = previewModifier,
-            )
+        Box(modifier = Modifier.fillMaxSize()) {
+            val previewModifier = Modifier
+                .fillMaxSize()
+                .blur(blurRadius)
+            if (preview == null) {
+                Image(
+                    painter = painterResource(fallbackPreview),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = previewModifier,
+                )
+            } else {
+                Image(
+                    bitmap = preview,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = previewModifier,
+                )
+            }
+            AnimatedVisibility(
+                visible = isLoading,
+                enter = fadeIn(tween(140)),
+                exit = fadeOut(tween(220)),
+            ) {
+                MapPreviewLoadingOverlay()
+            }
         }
+    }
+}
+
+@Composable
+private fun MapPreviewLoadingOverlay() {
+    val transition = rememberInfiniteTransition(label = "Map preview haze")
+    val drift by transition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1_800),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "Map preview haze drift",
+    )
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        drawRect(Color.White.copy(alpha = 0.5f))
+        drawCircle(
+            color = Color.White.copy(alpha = 0.28f),
+            radius = size.width * 0.9f,
+            center = Offset(
+                x = size.width * drift,
+                y = size.height * (0.25f + drift * 0.35f),
+            ),
+        )
+        drawCircle(
+            color = Color(0xFFD9E9E2).copy(alpha = 0.24f),
+            radius = size.width * 0.75f,
+            center = Offset(
+                x = size.width * (1f - drift),
+                y = size.height * (0.75f - drift * 0.3f),
+            ),
+        )
     }
 }
 
@@ -703,6 +768,7 @@ private fun MapSurface(
     mapMoments: List<MapMoment>,
     photoToPlace: File?,
     onAlternateMapPreviewChanged: (ImageBitmap) -> Unit,
+    onAlternateMapPreviewLoadingChanged: (Boolean) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onPhotoPlacementFailed: (File) -> Unit,
     onMomentClick: (MapMoment) -> Unit,
@@ -715,6 +781,9 @@ private fun MapSurface(
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentOnAlternateMapPreviewChanged by rememberUpdatedState(
         onAlternateMapPreviewChanged,
+    )
+    val currentOnAlternateMapPreviewLoadingChanged by rememberUpdatedState(
+        onAlternateMapPreviewLoadingChanged,
     )
     val currentMapMoments by rememberUpdatedState(mapMoments)
     val currentManualLocation by rememberUpdatedState(manualLocation)
@@ -735,6 +804,7 @@ private fun MapSurface(
     }
 
     LaunchedEffect(isSatelliteView) {
+        currentOnAlternateMapPreviewLoadingChanged(true)
         mapView.getMapAsync { map ->
             map.uiSettings.isCompassEnabled = false
             setMapStyle(
@@ -756,6 +826,7 @@ private fun MapSurface(
         if (cameraPosition == null) {
             onDispose {}
         } else {
+            var disposed = false
             val hasMapSize = mapView.width > 0 && mapView.height > 0
             val previewHeight = if (hasMapSize) {
                 (MapPreviewPixels.toFloat() * mapView.height / mapView.width)
@@ -793,11 +864,19 @@ private fun MapSurface(
             val snapshotter = MapSnapshotter(context, options)
             snapshotter.start(
                 { snapshot ->
-                    currentOnAlternateMapPreviewChanged(snapshot.bitmap.asImageBitmap())
+                    if (!disposed) {
+                        currentOnAlternateMapPreviewChanged(snapshot.bitmap.asImageBitmap())
+                        currentOnAlternateMapPreviewLoadingChanged(false)
+                    }
                 },
-                { _ -> Unit },
+                { _ ->
+                    if (!disposed) currentOnAlternateMapPreviewLoadingChanged(false)
+                },
             )
-            onDispose { snapshotter.cancel() }
+            onDispose {
+                disposed = true
+                snapshotter.cancel()
+            }
         }
     }
 
@@ -843,6 +922,9 @@ private fun MapSurface(
         val moveListener = MapLibreMap.OnCameraMoveListener {
             publishMarkerPositions()
         }
+        val moveStartedListener = MapLibreMap.OnCameraMoveStartedListener {
+            currentOnAlternateMapPreviewLoadingChanged(true)
+        }
         val idleListener = MapLibreMap.OnCameraIdleListener {
             publishMarkerPositions()
             previewCameraPosition = map?.cameraPosition
@@ -859,12 +941,14 @@ private fun MapSurface(
         }
         mapView.getMapAsync { readyMap ->
             map = readyMap
+            readyMap.addOnCameraMoveStartedListener(moveStartedListener)
             readyMap.addOnCameraMoveListener(moveListener)
             readyMap.addOnCameraIdleListener(idleListener)
             readyMap.addOnMapLongClickListener(longClickListener)
             publishMarkerPositions()
         }
         onDispose {
+            map?.removeOnCameraMoveStartedListener(moveStartedListener)
             map?.removeOnCameraMoveListener(moveListener)
             map?.removeOnCameraIdleListener(idleListener)
             map?.removeOnMapLongClickListener(longClickListener)
