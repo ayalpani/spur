@@ -1308,7 +1308,10 @@ private fun createMomentMarkerBitmap(
                 null
             }
             if (photo != null) {
-                drawMarkerPhoto(canvas, paint, content, photo, scale)
+                val photoContent = android.graphics.RectF(content).apply {
+                    inset(2 * scale, 2 * scale)
+                }
+                drawMarkerPhoto(canvas, paint, photoContent, photo, scale)
                 photo.recycle()
             } else {
                 paint.color = android.graphics.Color.rgb(24, 32, 28)
@@ -1398,7 +1401,7 @@ private fun drawMarkerPhoto(
         (photo.height + side) / 2,
     )
     val clip = android.graphics.Path().apply {
-        addRoundRect(destination, 8.5f * scale, 8.5f * scale, android.graphics.Path.Direction.CW)
+        addRoundRect(destination, 5 * scale, 5 * scale, android.graphics.Path.Direction.CW)
     }
     canvas.save()
     canvas.clipPath(clip)
