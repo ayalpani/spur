@@ -24,11 +24,12 @@ internal fun shouldAcceptPoint(
     accuracyMeters: Float,
     distanceMeters: Float?,
     elapsedMillis: Long?,
+    allowFastMovement: Boolean = false,
 ): Boolean {
     if (accuracyMeters > 40f) return false
     if (distanceMeters == null || elapsedMillis == null) return true
     if (elapsedMillis <= 0L) return false
-    if (distanceMeters / (elapsedMillis / 1_000f) > 55f) return false
+    if (!allowFastMovement && distanceMeters / (elapsedMillis / 1_000f) > 55f) return false
     val noiseFloor = (accuracyMeters * 0.5f).coerceIn(4f, 10f)
     return distanceMeters >= noiseFloor
 }
@@ -88,7 +89,11 @@ class TourStore(context: Context) :
     }
 
     @Synchronized
-    fun appendLocation(tourId: Long, location: Location): Boolean {
+    fun appendLocation(
+        tourId: Long,
+        location: Location,
+        allowFastMovement: Boolean = false,
+    ): Boolean {
         val db = writableDatabase
         db.rawQuery(
             """
@@ -113,7 +118,16 @@ class TourStore(context: Context) :
             }
             val distance = previous?.distanceTo(location)
             val elapsed = previous?.let { location.time - it.time }
-            if (!shouldAcceptPoint(location.accuracy, distance, elapsed)) return false
+            if (
+                !shouldAcceptPoint(
+                    accuracyMeters = location.accuracy,
+                    distanceMeters = distance,
+                    elapsedMillis = elapsed,
+                    allowFastMovement = allowFastMovement,
+                )
+            ) {
+                return false
+            }
 
             db.beginTransaction()
             try {
@@ -141,6 +155,21 @@ class TourStore(context: Context) :
         }
         return true
     }
+
+    internal fun appendSimulatedLocation(
+        tourId: Long,
+        coordinate: SpurCoordinate,
+        now: Long = System.currentTimeMillis(),
+    ): Boolean = appendLocation(
+        tourId = tourId,
+        location = Location("spur-simulation").apply {
+            latitude = coordinate.latitude
+            longitude = coordinate.longitude
+            accuracy = 3f
+            time = now
+        },
+        allowFastMovement = true,
+    )
 
     @Synchronized
     fun activeTour(): Tour? =

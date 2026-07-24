@@ -301,7 +301,13 @@ private fun SpurApp() {
                             now = now,
                             onStartTour = {
                                 scope.launch {
-                                    val id = withContext(Dispatchers.IO) { store.startTour() }
+                                    val id = withContext(Dispatchers.IO) {
+                                        store.startTour().also { startedId ->
+                                            context.loadManualLocation()?.let { coordinate ->
+                                                store.appendSimulatedLocation(startedId, coordinate)
+                                            }
+                                        }
+                                    }
                                     ContextCompat.startForegroundService(
                                         context,
                                         Intent(context, TrackingService::class.java)
@@ -312,6 +318,15 @@ private fun SpurApp() {
                                     displayedTour = started
                                     displayedTourId = id
                                     routePoints = emptyList()
+                                    historyRevision++
+                                }
+                            },
+                            onSimulatedLocation = { coordinate ->
+                                val id = activeTour?.id ?: return@MapScreen
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        store.appendSimulatedLocation(id, coordinate)
+                                    }
                                     historyRevision++
                                 }
                             },
@@ -416,6 +431,7 @@ private fun MapScreen(
     routePoints: List<TrackPoint>,
     now: Long,
     onStartTour: () -> Unit,
+    onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
 ) {
@@ -520,6 +536,7 @@ private fun MapScreen(
                 onManualLocationChanged = { location ->
                     context.saveManualLocation(location)
                     manualLocation = location
+                    onSimulatedLocation(location)
                     Toast.makeText(
                         context,
                         "Simulierter Standort gesetzt.",
@@ -1430,7 +1447,7 @@ private const val ManualLocationPreferences = "manual-location"
 private const val ManualLatitude = "latitude"
 private const val ManualLongitude = "longitude"
 
-private fun Context.loadManualLocation(): SpurCoordinate? {
+internal fun Context.loadManualLocation(): SpurCoordinate? {
     val preferences = getSharedPreferences(ManualLocationPreferences, Context.MODE_PRIVATE)
     if (!preferences.contains(ManualLatitude) || !preferences.contains(ManualLongitude)) {
         return null
@@ -1947,6 +1964,7 @@ private fun MapScreenPreview() {
         routePoints = emptyList(),
         now = System.currentTimeMillis(),
         onStartTour = {},
+        onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
     )
@@ -1967,6 +1985,7 @@ private fun ActiveTourScreenPreview() {
         routePoints = emptyList(),
         now = System.currentTimeMillis(),
         onStartTour = {},
+        onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
     )

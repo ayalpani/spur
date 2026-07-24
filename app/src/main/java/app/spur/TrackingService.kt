@@ -93,6 +93,7 @@ class TrackingService : Service() {
     }
 
     private fun recordLocation(location: Location) {
+        if (applicationContext.loadManualLocation() != null) return
         val id = tourId ?: return
         if (store.appendLocation(id, location)) {
             store.tour(id)?.let {
