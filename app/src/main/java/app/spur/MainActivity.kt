@@ -176,6 +176,7 @@ private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
 private val FollowGreen = Color(0xFF43A873)
+private val FollowSignalPink = Color(0xFFD81B60)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
@@ -2592,7 +2593,7 @@ private fun FollowLocationIcon(selected: Boolean) {
                 "M7.753 16.239a6 6 0 0 1 0-8.478",
                 "M14 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
             ),
-            color = if (selected) FollowGreen else Ink,
+            color = if (selected) FollowSignalPink else Ink,
         )
     }
 }
