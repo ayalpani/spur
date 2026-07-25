@@ -1900,7 +1900,7 @@ private fun HistoryScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .combinedClickable(
-                                onClick = { onOpenTour(tour.id) },
+                                onClick = { selectedTour = tour },
                                 onLongClick = { selectedTour = tour },
                             ),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -1958,6 +1958,10 @@ private fun HistoryScreen(
                     color = Ink.copy(alpha = 0.62f),
                     style = MaterialTheme.typography.bodyLarge,
                 )
+                HistoryAction(label = "Öffnen") {
+                    selectedTour = null
+                    onOpenTour(tour.id)
+                }
                 if (tour.endedAt == null) {
                     Text(
                         text = "Eine laufende Tour kannst du nach dem Stoppen bearbeiten.",
