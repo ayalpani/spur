@@ -21,8 +21,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -163,9 +163,6 @@ private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
 private val FollowGreen = Color(0xFF43A873)
 private val Mist = Color(0xFFE8EEE9)
-private val LocationPulseEasing = Easing { progress ->
-    1f - (1f - progress) * (1f - progress)
-}
 private const val DefaultMapZoom = 17.5
 private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
 private const val SatelliteMapStyleJson =
@@ -2087,10 +2084,10 @@ private fun FollowLocationIcon(selected: Boolean) {
         targetValue = if (selected) 1.08f else 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = LocationPulseDurationMillis,
-                easing = LocationPulseEasing,
+                durationMillis = LocationPulseDurationMillis / 2,
+                easing = FastOutSlowInEasing,
             ),
-            repeatMode = RepeatMode.Restart,
+            repeatMode = RepeatMode.Reverse,
         ),
         label = "Location following signal scale",
     )
