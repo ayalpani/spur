@@ -217,6 +217,11 @@ internal enum class MapRotation(val label: String, val bearing: Double) {
 internal fun mapRotationFromStored(value: String?): MapRotation =
     MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH
 
+internal fun shouldRestoreMapSettingsPreview(
+    previewSession: Int?,
+    acceptedSession: Int?,
+): Boolean = previewSession != null && previewSession != acceptedSession
+
 internal fun shouldFitTourRoute(
     tourId: Long?,
     fittedTourId: Long?,
@@ -576,6 +581,10 @@ private fun MapScreen(
     var defaultMapRotation by remember {
         mutableStateOf(context.loadDefaultMapRotation())
     }
+    var draftMapZoom by remember { mutableFloatStateOf(defaultMapZoom) }
+    var draftMapRotation by remember { mutableStateOf(defaultMapRotation) }
+    var mapSettingsPreviewSession by remember { mutableStateOf(0) }
+    var acceptedMapSettingsPreviewSession by remember { mutableStateOf<Int?>(null) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -628,6 +637,9 @@ private fun MapScreen(
                         onClick = {
                             scope.launch {
                                 drawerState.close()
+                                draftMapZoom = defaultMapZoom
+                                draftMapRotation = defaultMapRotation
+                                mapSettingsPreviewSession++
                                 showSettingsSheet = true
                             }
                         },
@@ -645,6 +657,11 @@ private fun MapScreen(
                 manualLocation = manualLocation,
                 defaultMapZoom = defaultMapZoom.toDouble(),
                 defaultMapBearing = defaultMapRotation.bearing,
+                mapSettingsPreviewSession = mapSettingsPreviewSession
+                    .takeIf { showSettingsSheet },
+                acceptedMapSettingsPreviewSession = acceptedMapSettingsPreviewSession,
+                previewMapZoom = draftMapZoom.toDouble(),
+                previewMapBearing = draftMapRotation.bearing,
                 mapMoments = mapMoments,
                 routePoints = routePoints,
                 photoToPlace = pendingPhoto,
@@ -876,8 +893,13 @@ private fun MapScreen(
     }
 
     if (showSettingsSheet) {
+        val cancelSettings = {
+            draftMapZoom = defaultMapZoom
+            draftMapRotation = defaultMapRotation
+            showSettingsSheet = false
+        }
         ModalBottomSheet(
-            onDismissRequest = { showSettingsSheet = false },
+            onDismissRequest = cancelSettings,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {
             Column(
@@ -903,17 +925,16 @@ private fun MapScreen(
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        text = String.format(Locale.GERMANY, "%.1f", defaultMapZoom),
+                        text = String.format(Locale.GERMANY, "%.1f", draftMapZoom),
                         color = Moss,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
                 Slider(
-                    value = defaultMapZoom,
+                    value = draftMapZoom,
                     onValueChange = { value ->
-                        defaultMapZoom = (value * 2).roundToInt() / 2f
-                        context.saveDefaultMapZoom(defaultMapZoom)
+                        draftMapZoom = (value * 2).roundToInt() / 2f
                     },
                     valueRange = MinimumMapZoom..MaximumMapZoom,
                     steps = 15,
@@ -924,29 +945,80 @@ private fun MapScreen(
                     modifier = Modifier.padding(top = 12.dp),
                     style = MaterialTheme.typography.titleMedium,
                 )
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(180.dp)
                         .padding(top = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    Canvas(
+                        modifier = Modifier
+                            .size(84.dp)
+                            .align(Alignment.Center),
+                    ) {
+                        val strokeWidth = 1.5.dp.toPx()
+                        drawCircle(
+                            color = Moss.copy(alpha = 0.3f),
+                            style = Stroke(width = strokeWidth),
+                        )
+                        drawLine(
+                            color = Moss.copy(alpha = 0.22f),
+                            start = Offset(size.width / 2, 0f),
+                            end = Offset(size.width / 2, size.height),
+                            strokeWidth = strokeWidth,
+                        )
+                        drawLine(
+                            color = Moss.copy(alpha = 0.22f),
+                            start = Offset(0f, size.height / 2),
+                            end = Offset(size.width, size.height / 2),
+                            strokeWidth = strokeWidth,
+                        )
+                    }
                     MapRotation.entries.forEach { rotation ->
                         FilterChip(
-                            selected = defaultMapRotation == rotation,
-                            onClick = {
-                                defaultMapRotation = rotation
-                                context.saveDefaultMapRotation(rotation)
-                            },
+                            selected = draftMapRotation == rotation,
+                            onClick = { draftMapRotation = rotation },
                             label = { Text(rotation.label) },
+                            modifier = Modifier.align(
+                                when (rotation) {
+                                    MapRotation.NORTH -> Alignment.TopCenter
+                                    MapRotation.EAST -> Alignment.CenterEnd
+                                    MapRotation.SOUTH -> Alignment.BottomCenter
+                                    MapRotation.WEST -> Alignment.CenterStart
+                                },
+                            ),
                         )
                     }
                 }
                 Text(
                     text = "Wird beim Synchronisieren mit deinem Standort angewendet.",
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier.padding(top = 8.dp),
                     color = Ink.copy(alpha = 0.62f),
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = cancelSettings) {
+                        Text("Abbrechen")
+                    }
+                    Button(
+                        onClick = {
+                            defaultMapZoom = draftMapZoom
+                            defaultMapRotation = draftMapRotation
+                            context.saveDefaultMapZoom(defaultMapZoom)
+                            context.saveDefaultMapRotation(defaultMapRotation)
+                            acceptedMapSettingsPreviewSession = mapSettingsPreviewSession
+                            showSettingsSheet = false
+                        },
+                    ) {
+                        Text("Übernehmen")
+                    }
+                }
             }
         }
     }
@@ -1103,6 +1175,10 @@ private fun MapSurface(
     manualLocation: SpurCoordinate?,
     defaultMapZoom: Double,
     defaultMapBearing: Double,
+    mapSettingsPreviewSession: Int?,
+    acceptedMapSettingsPreviewSession: Int?,
+    previewMapZoom: Double,
+    previewMapBearing: Double,
     mapMoments: List<MapMoment>,
     routePoints: List<TrackPoint>,
     photoToPlace: File?,
@@ -1140,6 +1216,10 @@ private fun MapSurface(
     }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
+    var cameraBeforeMapSettings by remember {
+        mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
+    }
+    var activeMapSettingsPreviewSession by remember { mutableStateOf<Int?>(null) }
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply {
@@ -1149,6 +1229,67 @@ private fun MapSurface(
 
     LaunchedEffect(isFollowingLocation) {
         if (isFollowingLocation) currentOnAlternateMapPreviewLoadingChanged(false)
+    }
+
+    LaunchedEffect(
+        mapSettingsPreviewSession,
+        acceptedMapSettingsPreviewSession,
+        previewMapZoom,
+        previewMapBearing,
+    ) {
+        mapView.getMapAsync { map ->
+            val session = mapSettingsPreviewSession
+            if (session != null) {
+                if (activeMapSettingsPreviewSession != session) {
+                    cameraBeforeMapSettings = map.cameraPosition
+                    activeMapSettingsPreviewSession = session
+                }
+                if (currentIsFollowingLocation) {
+                    map.followLocation(
+                        context = context,
+                        manualLocation = currentManualLocation,
+                        transitionDuration = 0L,
+                        defaultMapZoom = previewMapZoom,
+                        defaultMapBearing = previewMapBearing,
+                    )
+                } else {
+                    map.moveCamera(
+                        CameraUpdateFactory.newCameraPosition(
+                            org.maplibre.android.camera.CameraPosition.Builder(map.cameraPosition)
+                                .zoom(previewMapZoom)
+                                .bearing(previewMapBearing)
+                                .build(),
+                        ),
+                    )
+                }
+            } else {
+                val previewSession = activeMapSettingsPreviewSession
+                val cameraPosition = cameraBeforeMapSettings
+                if (
+                    cameraPosition != null &&
+                    shouldRestoreMapSettingsPreview(
+                        previewSession = previewSession,
+                        acceptedSession = acceptedMapSettingsPreviewSession,
+                    )
+                ) {
+                    if (currentIsFollowingLocation) {
+                        map.followLocation(
+                            context = context,
+                            manualLocation = currentManualLocation,
+                            transitionDuration = 0L,
+                            defaultMapZoom = cameraPosition.zoom,
+                            defaultMapBearing = cameraPosition.bearing,
+                        )
+                    } else {
+                        map.moveCamera(
+                            CameraUpdateFactory.newCameraPosition(cameraPosition),
+                        )
+                    }
+                }
+                cameraBeforeMapSettings = null
+                activeMapSettingsPreviewSession = null
+            }
+        }
     }
 
     LaunchedEffect(isSatelliteView) {

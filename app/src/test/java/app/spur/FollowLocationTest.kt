@@ -58,4 +58,11 @@ class FollowLocationTest {
         assertEquals(MapRotation.NORTH, mapRotationFromStored("invalid"))
         assertEquals(MapRotation.NORTH, mapRotationFromStored(null))
     }
+
+    @Test
+    fun cancelledMapSettingsRestoreThePreviousCamera() {
+        assertTrue(shouldRestoreMapSettingsPreview(previewSession = 3, acceptedSession = null))
+        assertFalse(shouldRestoreMapSettingsPreview(previewSession = 3, acceptedSession = 3))
+        assertFalse(shouldRestoreMapSettingsPreview(previewSession = null, acceptedSession = 3))
+    }
 }
