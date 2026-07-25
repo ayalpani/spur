@@ -159,6 +159,7 @@ import kotlin.math.roundToInt
 private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
+private val FollowGreen = Color(0xFF43A873)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
@@ -683,7 +684,6 @@ private fun MapScreen(
                     } else {
                         "Eigenem Standort folgen"
                     },
-                    selected = isFollowingLocation,
                     onClick = {
                         isFollowingLocation = true
                         followRequest++
@@ -781,7 +781,6 @@ private fun MomentOption(
 @Composable
 private fun MapIconButton(
     contentDescription: String,
-    selected: Boolean = false,
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
@@ -791,8 +790,8 @@ private fun MapIconButton(
             .size(60.dp)
             .semantics { this.contentDescription = contentDescription },
         colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = if (selected) Moss else Color.White,
-            contentColor = if (selected) Color.White else Ink,
+            containerColor = Color.White,
+            contentColor = Ink,
         ),
         content = content,
     )
@@ -2064,7 +2063,7 @@ private fun FollowLocationIcon(selected: Boolean) = LucideIcon(
     paths = listOf(
         "M12 2 19 21 12 17 5 21 12 2",
     ),
-    color = if (selected) Color.White else Ink,
+    color = if (selected) FollowGreen else Ink,
 )
 
 @Composable
