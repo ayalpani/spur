@@ -115,6 +115,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
@@ -176,8 +177,12 @@ import java.io.File
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.log2
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
@@ -249,6 +254,17 @@ internal fun nearestCompassRotation(current: Float, target: Float): Float {
         else -> delta
     }
 }
+
+internal fun mapRotationOptionCenterDistance(
+    circleRadius: Float,
+    gap: Float,
+    halfWidth: Float,
+    halfHeight: Float,
+    angleRadians: Double,
+): Float = circleRadius +
+    gap +
+    abs(cos(angleRadians)).toFloat() * halfWidth +
+    abs(sin(angleRadians)).toFloat() * halfHeight
 
 internal fun shouldFitTourRoute(
     tourId: Long?,
@@ -961,47 +977,14 @@ private fun MapScreen(
                     steps = 15,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Column(
+                MapRotationPicker(
+                    compassRotation = compassRotation.value,
+                    selectedRotation = defaultMapRotation,
+                    onSelect = selectMapRotation,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = MapSettingsSectionGap)
-                        .graphicsLayer { rotationZ = compassRotation.value },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(
-                        MapRotationOptionGap - FilterChipVisualInset,
-                    ),
-                ) {
-                    MapRotationOption(
-                        rotation = MapRotation.NORTH,
-                        selectedRotation = defaultMapRotation,
-                        counterRotation = -compassRotation.value,
-                        onSelect = selectMapRotation,
-                    )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(MapRotationOptionGap),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        MapRotationOption(
-                            rotation = MapRotation.WEST,
-                            selectedRotation = defaultMapRotation,
-                            counterRotation = -compassRotation.value,
-                            onSelect = selectMapRotation,
-                        )
-                        CompassCircle()
-                        MapRotationOption(
-                            rotation = MapRotation.EAST,
-                            selectedRotation = defaultMapRotation,
-                            counterRotation = -compassRotation.value,
-                            onSelect = selectMapRotation,
-                        )
-                    }
-                    MapRotationOption(
-                        rotation = MapRotation.SOUTH,
-                        selectedRotation = defaultMapRotation,
-                        counterRotation = -compassRotation.value,
-                        onSelect = selectMapRotation,
-                    )
-                }
+                        .padding(top = MapSettingsSectionGap),
+                )
             }
         }
     }
@@ -1055,18 +1038,60 @@ private fun MapScreen(
 }
 
 @Composable
-private fun MapRotationOption(
-    rotation: MapRotation,
+private fun MapRotationPicker(
+    compassRotation: Float,
     selectedRotation: MapRotation,
-    counterRotation: Float,
     onSelect: (MapRotation) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    FilterChip(
-        selected = selectedRotation == rotation,
-        onClick = { onSelect(rotation) },
-        label = { Text(rotation.label) },
-        modifier = Modifier.graphicsLayer { rotationZ = counterRotation },
-    )
+    Layout(
+        modifier = modifier,
+        content = {
+            CompassCircle()
+            MapRotation.entries.forEach { rotation ->
+                FilterChip(
+                    selected = selectedRotation == rotation,
+                    onClick = { onSelect(rotation) },
+                    label = { Text(rotation.label) },
+                )
+            }
+        },
+    ) { measurables, constraints ->
+        val childConstraints = constraints.copy(minWidth = 0, minHeight = 0)
+        val circle = measurables.first().measure(childConstraints)
+        val options = measurables.drop(1).map { it.measure(childConstraints) }
+        val gap = MapRotationOptionGap.roundToPx()
+        val visualInset = FilterChipVisualInset.roundToPx()
+        val height = (
+            circle.height + 2 * gap + 2 * (options.maxOf { it.height } - visualInset)
+        ).coerceIn(constraints.minHeight, constraints.maxHeight)
+        val width = constraints.maxWidth
+        val centerX = width / 2f
+        val centerY = height / 2f
+
+        layout(width, height) {
+            circle.placeRelative(
+                x = (centerX - circle.width / 2f).roundToInt(),
+                y = (centerY - circle.height / 2f).roundToInt(),
+            )
+            MapRotation.entries.zip(options).forEach { (rotation, option) ->
+                val angle = (rotation.bearing - 90.0 + compassRotation) * PI / 180.0
+                val radius = mapRotationOptionCenterDistance(
+                    circleRadius = circle.width / 2f,
+                    gap = gap.toFloat(),
+                    halfWidth = option.width / 2f,
+                    halfHeight = (option.height / 2f - visualInset).coerceAtLeast(0f),
+                    angleRadians = angle,
+                )
+                option.placeRelative(
+                    x = (centerX + cos(angle).toFloat() * radius - option.width / 2f)
+                        .roundToInt(),
+                    y = (centerY + sin(angle).toFloat() * radius - option.height / 2f)
+                        .roundToInt(),
+                )
+            }
+        }
+    }
 }
 
 @Composable

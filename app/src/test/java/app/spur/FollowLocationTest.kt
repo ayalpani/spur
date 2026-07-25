@@ -65,4 +65,25 @@ class FollowLocationTest {
         assertEquals(-90f, nearestCompassRotation(current = 0f, target = -90f))
         assertEquals(0f, nearestCompassRotation(current = -90f, target = 0f))
     }
+
+    @Test
+    fun compassOptionGapUsesTheEdgeFacingTheCircle() {
+        val horizontalDistance = mapRotationOptionCenterDistance(
+            circleRadius = 42f,
+            gap = 16f,
+            halfWidth = 50f,
+            halfHeight = 16f,
+            angleRadians = 0.0,
+        )
+        val verticalDistance = mapRotationOptionCenterDistance(
+            circleRadius = 42f,
+            gap = 16f,
+            halfWidth = 50f,
+            halfHeight = 16f,
+            angleRadians = Math.PI / 2,
+        )
+
+        assertEquals(16f, horizontalDistance - 42f - 50f, 0.001f)
+        assertEquals(16f, verticalDistance - 42f - 16f, 0.001f)
+    }
 }
