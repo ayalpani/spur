@@ -21,6 +21,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -110,6 +111,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalDensity
@@ -220,6 +222,15 @@ internal enum class MapRotation(val label: String, val bearing: Double) {
 
 internal fun mapRotationFromStored(value: String?): MapRotation =
     MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH
+
+internal fun nearestCompassRotation(current: Float, target: Float): Float {
+    val delta = (target - current) % 360f
+    return current + when {
+        delta > 180f -> delta - 360f
+        delta <= -180f -> delta + 360f
+        else -> delta
+    }
+}
 
 internal fun shouldFitTourRoute(
     tourId: Long?,
@@ -881,6 +892,18 @@ private fun MapScreen(
     }
 
     if (showSettingsSheet) {
+        val compassRotation = remember {
+            Animatable(-defaultMapRotation.bearing.toFloat())
+        }
+        LaunchedEffect(defaultMapRotation) {
+            compassRotation.animateTo(
+                targetValue = nearestCompassRotation(
+                    current = compassRotation.value,
+                    target = -defaultMapRotation.bearing.toFloat(),
+                ),
+                animationSpec = tween(MapRotationAnimationMillis.toInt()),
+            )
+        }
         val selectMapRotation: (MapRotation) -> Unit = {
             defaultMapRotation = it
             context.saveDefaultMapRotation(it)
@@ -924,7 +947,8 @@ private fun MapScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = MapSettingsSectionGap),
+                        .padding(top = MapSettingsSectionGap)
+                        .graphicsLayer { rotationZ = compassRotation.value },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(
                         MapRotationOptionGap - FilterChipVisualInset,
@@ -933,6 +957,7 @@ private fun MapScreen(
                     MapRotationOption(
                         rotation = MapRotation.NORTH,
                         selectedRotation = defaultMapRotation,
+                        counterRotation = -compassRotation.value,
                         onSelect = selectMapRotation,
                     )
                     Row(
@@ -942,18 +967,21 @@ private fun MapScreen(
                         MapRotationOption(
                             rotation = MapRotation.WEST,
                             selectedRotation = defaultMapRotation,
+                            counterRotation = -compassRotation.value,
                             onSelect = selectMapRotation,
                         )
                         CompassCircle()
                         MapRotationOption(
                             rotation = MapRotation.EAST,
                             selectedRotation = defaultMapRotation,
+                            counterRotation = -compassRotation.value,
                             onSelect = selectMapRotation,
                         )
                     }
                     MapRotationOption(
                         rotation = MapRotation.SOUTH,
                         selectedRotation = defaultMapRotation,
+                        counterRotation = -compassRotation.value,
                         onSelect = selectMapRotation,
                     )
                 }
@@ -983,12 +1011,14 @@ private fun MapScreen(
 private fun MapRotationOption(
     rotation: MapRotation,
     selectedRotation: MapRotation,
+    counterRotation: Float,
     onSelect: (MapRotation) -> Unit,
 ) {
     FilterChip(
         selected = selectedRotation == rotation,
         onClick = { onSelect(rotation) },
         label = { Text(rotation.label) },
+        modifier = Modifier.graphicsLayer { rotationZ = counterRotation },
     )
 }
 

@@ -58,4 +58,11 @@ class FollowLocationTest {
         assertEquals(MapRotation.NORTH, mapRotationFromStored("invalid"))
         assertEquals(MapRotation.NORTH, mapRotationFromStored(null))
     }
+
+    @Test
+    fun compassUsesTheShortestRotation() {
+        assertEquals(-360f, nearestCompassRotation(current = -270f, target = 0f))
+        assertEquals(-90f, nearestCompassRotation(current = 0f, target = -90f))
+        assertEquals(0f, nearestCompassRotation(current = -90f, target = 0f))
+    }
 }
