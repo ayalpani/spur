@@ -10,6 +10,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -20,7 +21,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -38,9 +38,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -101,6 +98,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -114,6 +112,7 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
@@ -2353,6 +2352,7 @@ private fun MapLibreMap.fitTourRoute(
 }
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 private fun ActiveTourStopControl(
     tour: Tour,
     now: Long,
@@ -2361,6 +2361,7 @@ private fun ActiveTourStopControl(
 ) {
     var armed by remember(tour.id) { mutableStateOf(false) }
     var dragOffset by remember(tour.id) { mutableFloatStateOf(0f) }
+    var dragStartX by remember(tour.id) { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
 
     Surface(
@@ -2376,9 +2377,6 @@ private fun ActiveTourStopControl(
                 (maxWidth - handleSize - edgePadding * 2).toPx().coerceAtLeast(0f)
             }
             val edgePaddingPixels = with(density) { edgePadding.toPx() }
-            val dragState = rememberDraggableState { delta ->
-                dragOffset = (dragOffset + delta).coerceIn(0f, maximum)
-            }
 
             AnimatedContent(
                 targetState = armed,
@@ -2434,33 +2432,33 @@ private fun ActiveTourStopControl(
                             "Tour beenden vorbereiten"
                         }
                     }
-                    .clickable(enabled = !armed) {
-                        armed = true
-                        dragOffset = 0f
-                    }
-                    .draggable(
-                        state = dragState,
-                        orientation = Orientation.Horizontal,
-                        onDragStarted = {
-                            if (!armed) {
+                    .pointerInteropFilter { event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
                                 armed = true
                                 dragOffset = 0f
+                                dragStartX = event.rawX
                             }
-                        },
-                        onDragStopped = {
-                            if (shouldCompleteStopSwipe(dragOffset, maximum)) {
-                                dragOffset = maximum
-                                onStop()
-                            } else {
-                                Animatable(dragOffset).animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = tween(180),
-                                ) {
-                                    dragOffset = value
+                            MotionEvent.ACTION_MOVE -> {
+                                dragOffset = (event.rawX - dragStartX)
+                                    .coerceIn(0f, maximum)
+                            }
+                            MotionEvent.ACTION_UP -> {
+                                if (shouldCompleteStopSwipe(dragOffset, maximum)) {
+                                    dragOffset = maximum
+                                    onStop()
+                                } else {
+                                    armed = false
+                                    dragOffset = 0f
                                 }
                             }
-                        },
-                    ),
+                            MotionEvent.ACTION_CANCEL -> {
+                                armed = false
+                                dragOffset = 0f
+                            }
+                        }
+                        true
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 StopIcon()
