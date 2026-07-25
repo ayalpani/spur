@@ -1951,9 +1951,14 @@ private fun ActiveTourStopControl(
                         dragOffset = 0f
                     }
                     .draggable(
-                        enabled = armed,
                         state = dragState,
                         orientation = Orientation.Horizontal,
+                        onDragStarted = {
+                            if (!armed) {
+                                armed = true
+                                dragOffset = 0f
+                            }
+                        },
                         onDragStopped = {
                             if (shouldCompleteStopSwipe(dragOffset, maximum)) {
                                 dragOffset = maximum
