@@ -517,6 +517,9 @@ private fun MapScreen(
     val context = LocalContext.current
     val drawerState = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    BackHandler(enabled = drawerState.isOpen) {
+        scope.launch { drawerState.close() }
+    }
     var followRequest by rememberSaveable { mutableStateOf(0) }
     var isFollowingLocation by rememberSaveable { mutableStateOf(false) }
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
