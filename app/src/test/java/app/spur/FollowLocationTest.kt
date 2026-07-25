@@ -1,5 +1,6 @@
 package app.spur
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -48,5 +49,13 @@ class FollowLocationTest {
                     MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION,
             ),
         )
+    }
+
+    @Test
+    fun storedMapRotationFallsBackToNorth() {
+        assertEquals(MapRotation.WEST, mapRotationFromStored("WEST"))
+        assertEquals(270.0, MapRotation.WEST.bearing, 0.0)
+        assertEquals(MapRotation.NORTH, mapRotationFromStored("invalid"))
+        assertEquals(MapRotation.NORTH, mapRotationFromStored(null))
     }
 }

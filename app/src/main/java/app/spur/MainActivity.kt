@@ -67,6 +67,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -176,6 +177,8 @@ private val FollowGreen = Color(0xFF43A873)
 private val FollowSignalPink = Color(0xFFD81B60)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
+private const val MinimumMapZoom = 12f
+private const val MaximumMapZoom = 20f
 private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
 private const val SatelliteMapStyleJson =
     """{"version":8,"sources":{"satellite-source":{"type":"raster","tiles":["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],"tileSize":256,"attribution":"Esri, Maxar, Earthstar Geographics, and the GIS User Community"}},"layers":[{"id":"satellite-layer","type":"raster","source":"satellite-source"}]}"""
@@ -188,6 +191,16 @@ private const val TourRouteSource = "tour-route-source"
 private const val TourRouteLayer = "tour-route-layer"
 private const val SelectedTrackPointSource = "selected-track-point-source"
 private const val SelectedTrackPointLayer = "selected-track-point-layer"
+
+internal enum class MapRotation(val label: String, val bearing: Double) {
+    NORTH("Norden", 0.0),
+    EAST("Osten", 90.0),
+    SOUTH("Süden", 180.0),
+    WEST("Westen", 270.0),
+}
+
+internal fun mapRotationFromStored(value: String?): MapRotation =
+    MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH
 internal fun shouldStopFollowing(cameraMoveReason: Int): Boolean =
     cameraMoveReason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE
 
@@ -502,11 +515,18 @@ private fun MapScreen(
     var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
     var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
+    var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
     var pendingPhoto by remember { mutableStateOf<File?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
     var manualLocation by remember { mutableStateOf(context.loadManualLocation()) }
+    var defaultMapZoom by remember {
+        mutableFloatStateOf(context.loadDefaultMapZoom())
+    }
+    var defaultMapRotation by remember {
+        mutableStateOf(context.loadDefaultMapRotation())
+    }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -553,6 +573,16 @@ private fun MapScreen(
                             }
                         },
                     )
+                    NavigationDrawerItem(
+                        label = { Text("Einstellungen") },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                showSettingsSheet = true
+                            }
+                        },
+                    )
                 }
             }
         },
@@ -563,6 +593,8 @@ private fun MapScreen(
                 isFollowingLocation = isFollowingLocation,
                 isSatelliteView = isSatelliteView,
                 manualLocation = manualLocation,
+                defaultMapZoom = defaultMapZoom.toDouble(),
+                defaultMapBearing = defaultMapRotation.bearing,
                 mapMoments = mapMoments,
                 routePoints = routePoints,
                 photoToPlace = pendingPhoto,
@@ -793,6 +825,82 @@ private fun MapScreen(
         }
     }
 
+    if (showSettingsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSettingsSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp),
+            ) {
+                Text(
+                    text = "Karten-Standard",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 22.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Zoom",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = String.format(Locale.GERMANY, "%.1f", defaultMapZoom),
+                        color = Moss,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Slider(
+                    value = defaultMapZoom,
+                    onValueChange = { value ->
+                        defaultMapZoom = (value * 2).roundToInt() / 2f
+                        context.saveDefaultMapZoom(defaultMapZoom)
+                    },
+                    valueRange = MinimumMapZoom..MaximumMapZoom,
+                    steps = 15,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = "Ausrichtung",
+                    modifier = Modifier.padding(top = 12.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MapRotation.entries.forEach { rotation ->
+                        FilterChip(
+                            selected = defaultMapRotation == rotation,
+                            onClick = {
+                                defaultMapRotation = rotation
+                                context.saveDefaultMapRotation(rotation)
+                            },
+                            label = { Text(rotation.label) },
+                        )
+                    }
+                }
+                Text(
+                    text = "Wird beim Synchronisieren mit deinem Standort angewendet.",
+                    modifier = Modifier.padding(top = 16.dp),
+                    color = Ink.copy(alpha = 0.62f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+
     if (showCamera) {
         CameraScreen(
             onClose = { showCamera = false },
@@ -942,6 +1050,8 @@ private fun MapSurface(
     isFollowingLocation: Boolean,
     isSatelliteView: Boolean,
     manualLocation: SpurCoordinate?,
+    defaultMapZoom: Double,
+    defaultMapBearing: Double,
     mapMoments: List<MapMoment>,
     routePoints: List<TrackPoint>,
     photoToPlace: File?,
@@ -999,6 +1109,8 @@ private fun MapSurface(
                 satellite = isSatelliteView,
                 centerOnLocation = !hasLoadedMapStyle,
                 manualLocation = manualLocation,
+                defaultMapZoom = defaultMapZoom,
+                defaultMapBearing = defaultMapBearing,
                 routePoints = currentRoutePoints,
                 onLoaded = {
                     hasLoadedMapStyle = true
@@ -1008,6 +1120,8 @@ private fun MapSurface(
                             context = context,
                             manualLocation = currentManualLocation,
                             transitionDuration = 0L,
+                            defaultMapZoom = defaultMapZoom,
+                            defaultMapBearing = defaultMapBearing,
                         )
                     }
                 },
@@ -1167,6 +1281,8 @@ private fun MapSurface(
                 context = context,
                 manualLocation = manualLocation,
                 transitionDuration = 500L,
+                defaultMapZoom = defaultMapZoom,
+                defaultMapBearing = defaultMapBearing,
             )
         }
     }
@@ -1357,6 +1473,8 @@ private fun setMapStyle(
     satellite: Boolean,
     centerOnLocation: Boolean,
     manualLocation: SpurCoordinate?,
+    defaultMapZoom: Double,
+    defaultMapBearing: Double,
     routePoints: List<TrackPoint>,
     onLoaded: () -> Unit,
 ) {
@@ -1368,6 +1486,8 @@ private fun setMapStyle(
             style = style,
             centerOnLocation = centerOnLocation,
             manualLocation = manualLocation,
+            defaultMapZoom = defaultMapZoom,
+            defaultMapBearing = defaultMapBearing,
         )
         style.showTourRoute(routePoints)
         if (!centerOnLocation) {
@@ -1445,6 +1565,8 @@ private fun enableLocationTracking(
     style: Style,
     centerOnLocation: Boolean,
     manualLocation: SpurCoordinate?,
+    defaultMapZoom: Double,
+    defaultMapBearing: Double,
 ) {
     if (!context.hasLocationPermission()) return
 
@@ -1469,9 +1591,12 @@ private fun enableLocationTracking(
     )
     if (centerOnLocation && location != null) {
         map.moveCamera(
-            CameraUpdateFactory.newLatLngZoom(
-                LatLng(location.latitude, location.longitude),
-                DefaultMapZoom,
+            CameraUpdateFactory.newCameraPosition(
+                org.maplibre.android.camera.CameraPosition.Builder()
+                    .target(LatLng(location.latitude, location.longitude))
+                    .zoom(defaultMapZoom)
+                    .bearing(defaultMapBearing)
+                    .build(),
             ),
         )
     }
@@ -1481,13 +1606,15 @@ private fun MapLibreMap.followLocation(
     context: Context,
     manualLocation: SpurCoordinate?,
     transitionDuration: Long,
+    defaultMapZoom: Double,
+    defaultMapBearing: Double,
 ) {
     if (manualLocation == null && locationComponent.isLocationComponentActivated) {
         locationComponent.setCameraMode(
             CameraMode.TRACKING,
             transitionDuration,
-            DefaultMapZoom,
-            0.0,
+            defaultMapZoom,
+            defaultMapBearing,
             null,
             null,
         )
@@ -1498,8 +1625,8 @@ private fun MapLibreMap.followLocation(
     val update = CameraUpdateFactory.newCameraPosition(
         org.maplibre.android.camera.CameraPosition.Builder(cameraPosition)
             .target(LatLng(location.latitude, location.longitude))
-            .zoom(DefaultMapZoom)
-            .bearing(0.0)
+            .zoom(defaultMapZoom)
+            .bearing(defaultMapBearing)
             .build(),
     )
     if (transitionDuration == 0L) {
@@ -1581,6 +1708,35 @@ private fun Context.saveManualLocation(location: SpurCoordinate?) {
                 putLong(ManualLongitude, location.longitude.toBits())
             }
         }
+        .apply()
+}
+
+private const val MapSettingsPreferences = "map-settings"
+private const val DefaultZoomPreference = "default-zoom"
+private const val DefaultRotationPreference = "default-rotation"
+
+private fun Context.loadDefaultMapZoom(): Float =
+    getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+        .getFloat(DefaultZoomPreference, DefaultMapZoom.toFloat())
+        .coerceIn(MinimumMapZoom, MaximumMapZoom)
+
+private fun Context.saveDefaultMapZoom(zoom: Float) {
+    getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+        .edit()
+        .putFloat(DefaultZoomPreference, zoom.coerceIn(MinimumMapZoom, MaximumMapZoom))
+        .apply()
+}
+
+private fun Context.loadDefaultMapRotation(): MapRotation =
+    mapRotationFromStored(
+        getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+            .getString(DefaultRotationPreference, null),
+    )
+
+private fun Context.saveDefaultMapRotation(rotation: MapRotation) {
+    getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+        .edit()
+        .putString(DefaultRotationPreference, rotation.name)
         .apply()
 }
 
