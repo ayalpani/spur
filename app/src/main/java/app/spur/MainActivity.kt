@@ -31,6 +31,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -217,7 +219,6 @@ private fun Modifier.mapControlShadow(shape: Shape): Modifier {
 
 private object SpurRoute {
     const val MAP = "map"
-    const val TOURS = "tours"
     const val TOUR_ID = "tourId"
     const val EDITOR = "tour/{$TOUR_ID}"
 
@@ -308,6 +309,7 @@ private fun SpurApp() {
     var displayedTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
     var historyRevision by remember { mutableLongStateOf(0L) }
+    var showHistory by rememberSaveable { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var hasLocationPermission by rememberSaveable {
@@ -413,92 +415,104 @@ private fun SpurApp() {
                     },
                 ) {
                     composable(SpurRoute.MAP) {
-                        MapScreen(
-                            tour = displayedTour,
-                            isTourActive = activeTour != null,
-                            routePoints = routePoints,
-                            now = now,
-                            onStartTour = {
-                                scope.launch {
-                                    val id = withContext(Dispatchers.IO) {
-                                        store.startTour().also { startedId ->
-                                            context.loadManualLocation()?.let { coordinate ->
-                                                store.appendSimulatedLocation(startedId, coordinate)
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            MapScreen(
+                                tour = displayedTour,
+                                isTourActive = activeTour != null,
+                                routePoints = routePoints,
+                                now = now,
+                                onStartTour = {
+                                    scope.launch {
+                                        val id = withContext(Dispatchers.IO) {
+                                            store.startTour().also { startedId ->
+                                                context.loadManualLocation()?.let { coordinate ->
+                                                    store.appendSimulatedLocation(
+                                                        startedId,
+                                                        coordinate,
+                                                    )
+                                                }
                                             }
                                         }
-                                    }
-                                    ContextCompat.startForegroundService(
-                                        context,
-                                        Intent(context, TrackingService::class.java)
-                                            .putExtra(TrackingService.EXTRA_TOUR_ID, id),
-                                    )
-                                    val started = withContext(Dispatchers.IO) { store.tour(id) }
-                                    activeTour = started
-                                    displayedTour = started
-                                    displayedTourId = id
-                                    routePoints = emptyList()
-                                    historyRevision++
-                                }
-                            },
-                            onSimulatedLocation = { coordinate ->
-                                val id = activeTour?.id ?: return@MapScreen
-                                scope.launch {
-                                    withContext(Dispatchers.IO) {
-                                        store.appendSimulatedLocation(id, coordinate)
-                                    }
-                                    historyRevision++
-                                }
-                            },
-                            onEndTour = {
-                                val id = activeTour?.id ?: return@MapScreen
-                                scope.launch {
-                                    withContext(Dispatchers.IO) { store.finishTour(id) }
-                                    context.startService(
-                                        Intent(context, TrackingService::class.java)
-                                            .setAction(TrackingService.ACTION_STOP),
-                                    )
-                                    val result = withContext(Dispatchers.IO) {
-                                        store.tour(id) to store.points(id)
-                                    }
-                                    activeTour = null
-                                    displayedTour = result.first
-                                    displayedTourId = id
-                                    routePoints = result.second
-                                    now = System.currentTimeMillis()
-                                    historyRevision++
-                                }
-                            },
-                            onOpenHistory = {
-                                navController.navigate(SpurRoute.TOURS) {
-                                    launchSingleTop = true
-                                }
-                            },
-                        )
-                    }
-                    composable(SpurRoute.TOURS) {
-                        HistoryScreen(
-                            store = store,
-                            revision = historyRevision,
-                            onBack = { navController.popBackStack() },
-                            onOpenTour = { id ->
-                                displayedTourId = id
-                                navController.popBackStack(SpurRoute.MAP, inclusive = false)
-                            },
-                            onEditTour = { id ->
-                                navController.navigate(SpurRoute.editor(id))
-                            },
-                            onDeleteTour = { id ->
-                                scope.launch {
-                                    withContext(Dispatchers.IO) { store.deleteTour(id) }
-                                    if (displayedTourId == id) {
-                                        displayedTour = null
-                                        displayedTourId = null
+                                        ContextCompat.startForegroundService(
+                                            context,
+                                            Intent(context, TrackingService::class.java)
+                                                .putExtra(TrackingService.EXTRA_TOUR_ID, id),
+                                        )
+                                        val started = withContext(Dispatchers.IO) {
+                                            store.tour(id)
+                                        }
+                                        activeTour = started
+                                        displayedTour = started
+                                        displayedTourId = id
                                         routePoints = emptyList()
+                                        historyRevision++
                                     }
-                                    historyRevision++
-                                }
-                            },
-                        )
+                                },
+                                onSimulatedLocation = { coordinate ->
+                                    val id = activeTour?.id ?: return@MapScreen
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            store.appendSimulatedLocation(id, coordinate)
+                                        }
+                                        historyRevision++
+                                    }
+                                },
+                                onEndTour = {
+                                    val id = activeTour?.id ?: return@MapScreen
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) { store.finishTour(id) }
+                                        context.startService(
+                                            Intent(context, TrackingService::class.java)
+                                                .setAction(TrackingService.ACTION_STOP),
+                                        )
+                                        val result = withContext(Dispatchers.IO) {
+                                            store.tour(id) to store.points(id)
+                                        }
+                                        activeTour = null
+                                        displayedTour = result.first
+                                        displayedTourId = id
+                                        routePoints = result.second
+                                        now = System.currentTimeMillis()
+                                        historyRevision++
+                                    }
+                                },
+                                onOpenHistory = { showHistory = true },
+                            )
+                            AnimatedVisibility(
+                                visible = showHistory,
+                                enter = slideInHorizontally(tween(340)) { it } +
+                                    fadeIn(tween(220)),
+                                exit = slideOutHorizontally(tween(340)) { it } +
+                                    fadeOut(tween(180)),
+                            ) {
+                                HistoryScreen(
+                                    store = store,
+                                    revision = historyRevision,
+                                    onBack = { showHistory = false },
+                                    onOpenTour = { id ->
+                                        displayedTourId = id
+                                        showHistory = false
+                                    },
+                                    onEditTour = { id ->
+                                        showHistory = false
+                                        navController.navigate(SpurRoute.editor(id))
+                                    },
+                                    onDeleteTour = { id ->
+                                        scope.launch {
+                                            withContext(Dispatchers.IO) {
+                                                store.deleteTour(id)
+                                            }
+                                            if (displayedTourId == id) {
+                                                displayedTour = null
+                                                displayedTourId = null
+                                                routePoints = emptyList()
+                                            }
+                                            historyRevision++
+                                        }
+                                    },
+                                )
+                            }
+                        }
                     }
                     composable(
                         route = SpurRoute.EDITOR,
@@ -2262,6 +2276,7 @@ private fun HistoryScreen(
     var tours by remember { mutableStateOf(emptyList<Tour>()) }
     var selectedTour by remember { mutableStateOf<Tour?>(null) }
     var tourToDelete by remember { mutableStateOf<Tour?>(null) }
+    BackHandler(onBack = onBack)
     LaunchedEffect(revision) {
         tours = withContext(Dispatchers.IO) { store.tours() }
     }
