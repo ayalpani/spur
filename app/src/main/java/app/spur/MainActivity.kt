@@ -175,6 +175,7 @@ private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
 private val FollowGreen = Color(0xFF43A873)
 private val FollowSignalPink = Color(0xFFD81B60)
+private val StopRed = Color(0xFFE53935)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private const val MinimumMapZoom = 12f
@@ -2584,6 +2585,7 @@ private fun ActiveTourStopControl(
                 (maxWidth - handleSize - edgePadding * 2).toPx().coerceAtLeast(0f)
             }
             val edgePaddingPixels = with(density) { edgePadding.toPx() }
+            val readyToStop = shouldCompleteStopSwipe(dragOffset, maximum)
 
             AnimatedContent(
                 targetState = armed,
@@ -2631,7 +2633,7 @@ private fun ActiveTourStopControl(
                         )
                     }
                     .size(handleSize)
-                    .background(Mist, CircleShape)
+                    .background(if (readyToStop) StopRed else Mist, CircleShape)
                     .semantics {
                         contentDescription = if (armed) {
                             "Nach rechts wischen, um die Tour zu beenden"
@@ -2668,7 +2670,7 @@ private fun ActiveTourStopControl(
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                StopIcon()
+                StopIcon(color = if (readyToStop) Color.White else Moss)
             }
         }
     }
@@ -2709,7 +2711,7 @@ private fun SwipeStopPrompt() {
 }
 
 @Composable
-private fun StopIcon() {
+private fun StopIcon(color: Color) {
     Canvas(
         modifier = Modifier
             .size(24.dp)
@@ -2717,7 +2719,7 @@ private fun StopIcon() {
     ) {
         val side = 14.dp.toPx()
         drawRoundRect(
-            color = Moss,
+            color = color,
             topLeft = Offset((size.width - side) / 2f, (size.height - side) / 2f),
             size = androidx.compose.ui.geometry.Size(side, side),
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
