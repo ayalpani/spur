@@ -170,10 +170,8 @@ private const val MomentMarkerStroke = 3f
 private const val MapPreviewPixels = 180
 private const val TourRouteSource = "tour-route-source"
 private const val TourRouteLayer = "tour-route-layer"
-internal const val RecenterNorthWindowMillis = 1_000L
-
-internal fun isRecenterNorthTap(previousAt: Long, now: Long): Boolean =
-    previousAt != 0L && now - previousAt in 0..RecenterNorthWindowMillis
+internal fun shouldStopFollowing(cameraMoveReason: Int): Boolean =
+    cameraMoveReason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE
 
 internal fun mapPreviewZoom(
     mapZoom: Double,
@@ -448,9 +446,8 @@ private fun MapScreen(
     val context = LocalContext.current
     val drawerState = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    var recenterRequest by rememberSaveable { mutableStateOf(0) }
-    var recenterNorth by remember { mutableStateOf(false) }
-    var lastRecenterTapAt by remember { mutableLongStateOf(0L) }
+    var followRequest by rememberSaveable { mutableStateOf(0) }
+    var isFollowingLocation by rememberSaveable { mutableStateOf(false) }
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
     var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
     var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
@@ -512,8 +509,8 @@ private fun MapScreen(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             MapSurface(
-                recenterRequest = recenterRequest,
-                recenterNorth = recenterNorth,
+                followRequest = followRequest,
+                isFollowingLocation = isFollowingLocation,
                 isSatelliteView = isSatelliteView,
                 manualLocation = manualLocation,
                 mapMoments = mapMoments,
@@ -553,6 +550,7 @@ private fun MapScreen(
                         Toast.LENGTH_SHORT,
                     ).show()
                 },
+                onFollowingInterrupted = { isFollowingLocation = false },
             )
 
             Row(
@@ -680,15 +678,18 @@ private fun MapScreen(
                     }
                 }
                 MapIconButton(
-                    contentDescription = "Auf eigenen Standort zentrieren",
+                    contentDescription = if (isFollowingLocation) {
+                        "Eigenem Standort wird gefolgt"
+                    } else {
+                        "Eigenem Standort folgen"
+                    },
+                    selected = isFollowingLocation,
                     onClick = {
-                        val now = android.os.SystemClock.elapsedRealtime()
-                        recenterNorth = isRecenterNorthTap(lastRecenterTapAt, now)
-                        lastRecenterTapAt = now
-                        recenterRequest++
+                        isFollowingLocation = true
+                        followRequest++
                     },
                 ) {
-                    RecenterIcon()
+                    FollowLocationIcon(selected = isFollowingLocation)
                 }
             }
 
@@ -780,6 +781,7 @@ private fun MomentOption(
 @Composable
 private fun MapIconButton(
     contentDescription: String,
+    selected: Boolean = false,
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
@@ -789,8 +791,8 @@ private fun MapIconButton(
             .size(60.dp)
             .semantics { this.contentDescription = contentDescription },
         colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = Color.White,
-            contentColor = Ink,
+            containerColor = if (selected) Moss else Color.White,
+            contentColor = if (selected) Color.White else Ink,
         ),
         content = content,
     )
@@ -888,8 +890,8 @@ private fun MapPreviewLoadingOverlay() {
 
 @Composable
 private fun MapSurface(
-    recenterRequest: Int,
-    recenterNorth: Boolean,
+    followRequest: Int,
+    isFollowingLocation: Boolean,
     isSatelliteView: Boolean,
     manualLocation: SpurCoordinate?,
     mapMoments: List<MapMoment>,
@@ -901,12 +903,14 @@ private fun MapSurface(
     onPhotoPlacementFailed: (File) -> Unit,
     onMomentClick: (MapMoment) -> Unit,
     onManualLocationChanged: (SpurCoordinate) -> Unit,
+    onFollowingInterrupted: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
+    val currentOnFollowingInterrupted by rememberUpdatedState(onFollowingInterrupted)
     val currentOnAlternateMapPreviewChanged by rememberUpdatedState(
         onAlternateMapPreviewChanged,
     )
@@ -916,7 +920,8 @@ private fun MapSurface(
     val currentMapMoments by rememberUpdatedState(mapMoments)
     val currentRoutePoints by rememberUpdatedState(routePoints)
     val currentManualLocation by rememberUpdatedState(manualLocation)
-    val currentRecenterRequest by rememberUpdatedState(recenterRequest)
+    val currentFollowRequest by rememberUpdatedState(followRequest)
+    val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
     var markerPositions by remember {
         mutableStateOf<Map<String, android.graphics.PointF>>(emptyMap())
     }
@@ -946,6 +951,13 @@ private fun MapSurface(
                 onLoaded = {
                     hasLoadedMapStyle = true
                     previewCameraPosition = map.cameraPosition
+                    if (currentIsFollowingLocation) {
+                        map.followLocation(
+                            context = context,
+                            manualLocation = currentManualLocation,
+                            transitionDuration = 0L,
+                        )
+                    }
                 },
             )
         }
@@ -1052,8 +1064,12 @@ private fun MapSurface(
         val moveListener = MapLibreMap.OnCameraMoveListener {
             publishMarkerPositions()
         }
-        val moveStartedListener = MapLibreMap.OnCameraMoveStartedListener {
+        val moveStartedListener = MapLibreMap.OnCameraMoveStartedListener { reason ->
             currentOnAlternateMapPreviewLoadingChanged(true)
+            if (currentIsFollowingLocation && shouldStopFollowing(reason)) {
+                map?.locationComponent?.cameraMode = CameraMode.NONE
+                currentOnFollowingInterrupted()
+            }
         }
         val idleListener = MapLibreMap.OnCameraIdleListener {
             publishMarkerPositions()
@@ -1085,31 +1101,18 @@ private fun MapSurface(
         }
     }
 
-    LaunchedEffect(recenterRequest) {
-        if (recenterRequest == 0) return@LaunchedEffect
-        val request = recenterRequest
-        val resetNorth = recenterNorth
+    LaunchedEffect(followRequest, manualLocation, isFollowingLocation) {
+        if (followRequest == 0 || !isFollowingLocation) return@LaunchedEffect
+        val request = followRequest
         mapView.getMapAsync { map ->
-            if (request != currentRecenterRequest) return@getMapAsync
-            val location = map.currentSpurCoordinate(
+            if (
+                request != currentFollowRequest ||
+                !currentIsFollowingLocation
+            ) return@getMapAsync
+            map.followLocation(
                 context = context,
-                manual = manualLocation,
-            ) ?: return@getMapAsync
-            if (map.locationComponent.isLocationComponentActivated) {
-                map.locationComponent.cameraMode = CameraMode.NONE
-            }
-            val current = map.cameraPosition
-            map.animateCamera(
-                CameraUpdateFactory.newCameraPosition(
-                    org.maplibre.android.camera.CameraPosition.Builder(current)
-                        .target(LatLng(location.latitude, location.longitude))
-                        .zoom(DefaultMapZoom)
-                        .apply {
-                            if (resetNorth) bearing(0.0)
-                        }
-                        .build(),
-                ),
-                if (resetNorth) 300 else 500,
+                manualLocation = manualLocation,
+                transitionDuration = 500L,
             )
         }
     }
@@ -1394,6 +1397,35 @@ private fun enableLocationTracking(
                 DefaultMapZoom,
             ),
         )
+    }
+}
+
+private fun MapLibreMap.followLocation(
+    context: Context,
+    manualLocation: SpurCoordinate?,
+    transitionDuration: Long,
+) {
+    if (manualLocation == null && locationComponent.isLocationComponentActivated) {
+        locationComponent.setCameraMode(
+            CameraMode.TRACKING,
+            transitionDuration,
+            DefaultMapZoom,
+            null,
+            null,
+            null,
+        )
+        return
+    }
+
+    val location = currentSpurCoordinate(context = context, manual = manualLocation) ?: return
+    val update = CameraUpdateFactory.newLatLngZoom(
+        LatLng(location.latitude, location.longitude),
+        DefaultMapZoom,
+    )
+    if (transitionDuration == 0L) {
+        moveCamera(update)
+    } else {
+        animateCamera(update, transitionDuration.toInt())
     }
 }
 
@@ -2028,15 +2060,11 @@ private fun PlusIcon() = LucideIcon(
 )
 
 @Composable
-private fun RecenterIcon() = LucideIcon(
+private fun FollowLocationIcon(selected: Boolean) = LucideIcon(
     paths = listOf(
-        "M2 12h3",
-        "M19 12h3",
-        "M12 2v3",
-        "M12 19v3",
-        "M19 12a7 7 0 1 1-14 0 7 7 0 1 1 14 0",
-        "M15 12a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+        "M12 2 19 21 12 17 5 21 12 2",
     ),
+    color = if (selected) Color.White else Ink,
 )
 
 @Composable
@@ -2062,7 +2090,10 @@ private fun LucideLocateOffIcon() = LucideIcon(
 )
 
 @Composable
-private fun LucideIcon(paths: List<String>) {
+private fun LucideIcon(
+    paths: List<String>,
+    color: Color = Ink,
+) {
     val parsedPaths = paths.map { path ->
         remember(path) { PathParser().parsePathString(path).toPath() }
     }
@@ -2074,7 +2105,7 @@ private fun LucideIcon(paths: List<String>) {
             parsedPaths.forEach { path ->
                 drawPath(
                     path = path,
-                    color = Ink,
+                    color = color,
                     style = Stroke(
                         width = 2f,
                         cap = StrokeCap.Round,
