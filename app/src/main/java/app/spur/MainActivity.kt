@@ -193,7 +193,7 @@ private val MapSettingsSectionGap = 24.dp
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MapRotationAnimationMillis = 350L
-private val MapControlElevation = 8.dp
+private val MapControlElevation = 16.dp
 private val MapControlShadowColor = Color.Black
 private const val MapControlShadowLayers = 3
 
