@@ -132,6 +132,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import org.maplibre.android.MapLibre
@@ -180,6 +185,15 @@ private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private const val MinimumMapZoom = 12f
 private const val MaximumMapZoom = 20f
+
+private object SpurRoute {
+    const val MAP = "map"
+    const val TOURS = "tours"
+    const val TOUR_ID = "tourId"
+    const val EDITOR = "tour/{$TOUR_ID}"
+
+    fun editor(tourId: Long): String = "tour/$tourId"
+}
 private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
 private const val SatelliteMapStyleJson =
     """{"version":8,"sources":{"satellite-source":{"type":"raster","tiles":["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],"tileSize":256,"attribution":"Esri, Maxar, Earthstar Geographics, and the GIS User Community"}},"layers":[{"id":"satellite-layer","type":"raster","source":"satellite-source"}]}"""
@@ -246,12 +260,11 @@ private fun SpurApp() {
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
     var historyRevision by remember { mutableLongStateOf(0L) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var showHistory by rememberSaveable { mutableStateOf(false) }
-    var editingTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var hasLocationPermission by rememberSaveable {
         mutableStateOf(context.hasLocationPermission())
     }
+    val navController = rememberNavController()
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
@@ -293,9 +306,6 @@ private fun SpurApp() {
         }
     }
 
-    BackHandler(enabled = editingTourId != null) { editingTourId = null }
-    BackHandler(enabled = showHistory && editingTourId == null) { showHistory = false }
-
     MaterialTheme(
         colorScheme = lightColorScheme(
             primary = Moss,
@@ -324,55 +334,36 @@ private fun SpurApp() {
                     },
                 )
             } else {
-                AnimatedContent(
-                    targetState = showHistory,
-                    transitionSpec = {
-                        val direction = if (targetState) {
-                            AnimatedContentTransitionScope.SlideDirection.Left
-                        } else {
-                            AnimatedContentTransitionScope.SlideDirection.Right
-                        }
-                        slideIntoContainer(direction, tween(340)) togetherWith
-                            slideOutOfContainer(direction, tween(340))
+                NavHost(
+                    navController = navController,
+                    startDestination = SpurRoute.MAP,
+                    enterTransition = {
+                        slideIntoContainer(
+                            AnimatedContentTransitionScope.SlideDirection.Left,
+                            tween(340),
+                        ) +
+                            fadeIn(tween(220))
                     },
-                    label = "History navigation",
-                ) { historyVisible ->
-                    if (historyVisible) {
-                        val editorId = editingTourId
-                        if (editorId == null) {
-                            HistoryScreen(
-                                store = store,
-                                revision = historyRevision,
-                                onBack = { showHistory = false },
-                                onOpenTour = { id ->
-                                    displayedTourId = id
-                                    showHistory = false
-                                },
-                                onEditTour = { editingTourId = it },
-                                onDeleteTour = { id ->
-                                    scope.launch {
-                                        withContext(Dispatchers.IO) { store.deleteTour(id) }
-                                        if (displayedTourId == id) {
-                                            displayedTour = null
-                                            displayedTourId = null
-                                            routePoints = emptyList()
-                                        }
-                                        historyRevision++
-                                    }
-                                },
-                            )
-                        } else {
-                            TourEditorScreen(
-                                store = store,
-                                tourId = editorId,
-                                onBack = { editingTourId = null },
-                                onSaved = {
-                                    editingTourId = null
-                                    historyRevision++
-                                },
-                            )
-                        }
-                    } else {
+                    exitTransition = {
+                        slideOutOfContainer(
+                            AnimatedContentTransitionScope.SlideDirection.Left,
+                            tween(340),
+                        ) + fadeOut(tween(180))
+                    },
+                    popEnterTransition = {
+                        slideIntoContainer(
+                            AnimatedContentTransitionScope.SlideDirection.Right,
+                            tween(340),
+                        ) + fadeIn(tween(220))
+                    },
+                    popExitTransition = {
+                        slideOutOfContainer(
+                            AnimatedContentTransitionScope.SlideDirection.Right,
+                            tween(340),
+                        ) + fadeOut(tween(180))
+                    },
+                ) {
+                    composable(SpurRoute.MAP) {
                         MapScreen(
                             tour = displayedTour,
                             isTourActive = activeTour != null,
@@ -428,7 +419,54 @@ private fun SpurApp() {
                                     historyRevision++
                                 }
                             },
-                            onOpenHistory = { showHistory = true },
+                            onOpenHistory = {
+                                navController.navigate(SpurRoute.TOURS) {
+                                    launchSingleTop = true
+                                }
+                            },
+                        )
+                    }
+                    composable(SpurRoute.TOURS) {
+                        HistoryScreen(
+                            store = store,
+                            revision = historyRevision,
+                            onBack = { navController.popBackStack() },
+                            onOpenTour = { id ->
+                                displayedTourId = id
+                                navController.popBackStack(SpurRoute.MAP, inclusive = false)
+                            },
+                            onEditTour = { id ->
+                                navController.navigate(SpurRoute.editor(id))
+                            },
+                            onDeleteTour = { id ->
+                                scope.launch {
+                                    withContext(Dispatchers.IO) { store.deleteTour(id) }
+                                    if (displayedTourId == id) {
+                                        displayedTour = null
+                                        displayedTourId = null
+                                        routePoints = emptyList()
+                                    }
+                                    historyRevision++
+                                }
+                            },
+                        )
+                    }
+                    composable(
+                        route = SpurRoute.EDITOR,
+                        arguments = listOf(
+                            navArgument(SpurRoute.TOUR_ID) { type = NavType.LongType },
+                        ),
+                    ) { entry ->
+                        val tourId = entry.arguments?.getLong(SpurRoute.TOUR_ID)
+                            ?: return@composable
+                        TourEditorScreen(
+                            store = store,
+                            tourId = tourId,
+                            onBack = { navController.popBackStack() },
+                            onSaved = {
+                                historyRevision++
+                                navController.popBackStack()
+                            },
                         )
                     }
                 }
