@@ -111,6 +111,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInteropFilter
@@ -191,6 +192,7 @@ private val MapSettingsSectionGap = 24.dp
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MapRotationAnimationMillis = 350L
+private val MapControlElevation = 4.dp
 
 private object SpurRoute {
     const val MAP = "map"
@@ -784,13 +786,9 @@ private fun MapScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(
+                MapIconButton(
+                    contentDescription = "Moment hinzufügen",
                     onClick = { showMomentSheet = true },
-                    modifier = Modifier.size(60.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = Color.White,
-                        contentColor = Ink,
-                    ),
                 ) {
                     PlusIcon()
                 }
@@ -812,7 +810,9 @@ private fun MapScreen(
                             containerColor = Ink,
                             contentColor = Color.White,
                         ),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                        elevation = ButtonDefaults.buttonElevation(
+                            defaultElevation = MapControlElevation,
+                        ),
                     ) {
                         Text(
                             text = "Tour starten",
@@ -1097,6 +1097,7 @@ private fun MapIconButton(
         onClick = onClick,
         modifier = Modifier
             .size(60.dp)
+            .shadow(MapControlElevation, CircleShape)
             .semantics { this.contentDescription = contentDescription },
         colors = IconButtonDefaults.filledIconButtonColors(
             containerColor = Color.White,
@@ -1132,6 +1133,7 @@ private fun MapStyleButton(
         shape = previewShape,
         color = Color.Transparent,
         border = BorderStroke(3.dp, Color.White),
+        shadowElevation = MapControlElevation,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val previewModifier = Modifier
@@ -2758,7 +2760,7 @@ private fun ActiveTourStopControl(
         modifier = modifier.height(60.dp),
         color = Color.White,
         shape = CircleShape,
-        shadowElevation = 4.dp,
+        shadowElevation = MapControlElevation,
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val handleSize = 52.dp
