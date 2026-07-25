@@ -1427,7 +1427,7 @@ private fun MapLibreMap.followLocation(
             CameraMode.TRACKING,
             transitionDuration,
             DefaultMapZoom,
-            null,
+            0.0,
             null,
             null,
         )
@@ -1435,9 +1435,12 @@ private fun MapLibreMap.followLocation(
     }
 
     val location = currentSpurCoordinate(context = context, manual = manualLocation) ?: return
-    val update = CameraUpdateFactory.newLatLngZoom(
-        LatLng(location.latitude, location.longitude),
-        DefaultMapZoom,
+    val update = CameraUpdateFactory.newCameraPosition(
+        org.maplibre.android.camera.CameraPosition.Builder(cameraPosition)
+            .target(LatLng(location.latitude, location.longitude))
+            .zoom(DefaultMapZoom)
+            .bearing(0.0)
+            .build(),
     )
     if (transitionDuration == 0L) {
         moveCamera(update)
