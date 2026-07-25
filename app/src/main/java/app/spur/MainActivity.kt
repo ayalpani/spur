@@ -580,6 +580,7 @@ private fun MapScreen(
     var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
+    var showAboutSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
     var pendingPhoto by remember { mutableStateOf<File?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
@@ -623,27 +624,22 @@ private fun MapScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     NavigationDrawerItem(
-                        label = { Text("Karte") },
-                        selected = true,
-                        onClick = { scope.launch { drawerState.close() } },
-                    )
-                    NavigationDrawerItem(
-                        label = { Text("Touren") },
-                        selected = false,
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                onOpenHistory()
-                            }
-                        },
-                    )
-                    NavigationDrawerItem(
                         label = { Text("Einstellungen") },
                         selected = false,
                         onClick = {
                             scope.launch {
                                 drawerState.close()
                                 showSettingsSheet = true
+                            }
+                        },
+                    )
+                    NavigationDrawerItem(
+                        label = { Text("Über Spur") },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                showAboutSheet = true
                             }
                         },
                     )
@@ -985,6 +981,36 @@ private fun MapScreen(
                         onSelect = selectMapRotation,
                     )
                 }
+            }
+        }
+    }
+
+    if (showAboutSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showAboutSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = "Spur",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Spur hält deine Wege und Erinnerungen privat auf deinem Gerät fest.",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = "Entwickelt von Arash.",
+                    color = Ink.copy(alpha = 0.62f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
     }
