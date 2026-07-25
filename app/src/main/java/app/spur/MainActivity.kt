@@ -103,6 +103,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
@@ -2059,16 +2060,30 @@ private fun PlusIcon() = LucideIcon(
 )
 
 @Composable
-private fun FollowLocationIcon(selected: Boolean) = LucideIcon(
-    paths = listOf(
-        "M16.247 7.761a6 6 0 0 1 0 8.478",
-        "M19.075 4.933a10 10 0 0 1 0 14.134",
-        "M4.925 19.067a10 10 0 0 1 0-14.134",
-        "M7.753 16.239a6 6 0 0 1 0-8.478",
-        "M14 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
-    ),
-    color = if (selected) FollowGreen else Ink,
-)
+private fun FollowLocationIcon(selected: Boolean) {
+    val transition = rememberInfiniteTransition(label = "Location following signal")
+    val scale by transition.animateFloat(
+        initialValue = if (selected) 0.985f else 1f,
+        targetValue = if (selected) 1.015f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1_900),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "Location following signal scale",
+    )
+    Box(modifier = Modifier.scale(scale)) {
+        LucideIcon(
+            paths = listOf(
+                "M16.247 7.761a6 6 0 0 1 0 8.478",
+                "M19.075 4.933a10 10 0 0 1 0 14.134",
+                "M4.925 19.067a10 10 0 0 1 0-14.134",
+                "M7.753 16.239a6 6 0 0 1 0-8.478",
+                "M14 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
+            ),
+            color = if (selected) FollowGreen else Ink,
+        )
+    }
+}
 
 @Composable
 private fun HistoryIcon() = LucideIcon(
