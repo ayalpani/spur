@@ -56,10 +56,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -80,6 +77,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -2125,7 +2123,7 @@ private fun TourEditorScreen(
                 )
 
                 if (points.isNotEmpty()) {
-                    PointTimeline(
+                    PointScrubber(
                         points = points,
                         startIndex = startIndex,
                         endIndex = endIndex,
@@ -2209,7 +2207,7 @@ private fun TourEditorScreen(
 }
 
 @Composable
-private fun PointTimeline(
+private fun PointScrubber(
     points: List<TrackPoint>,
     startIndex: Int,
     endIndex: Int,
@@ -2217,51 +2215,20 @@ private fun PointTimeline(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState()
-    LaunchedEffect(selectedIndex) {
-        if (selectedIndex in points.indices) {
-            listState.animateScrollToItem(selectedIndex)
-        }
-    }
-    LazyRow(
-        state = listState,
+    if (endIndex <= startIndex) return
+    Slider(
+        value = selectedIndex.toFloat(),
+        onValueChange = {
+            onSelect(it.roundToInt().coerceIn(startIndex, endIndex))
+        },
+        valueRange = startIndex.toFloat()..endIndex.toFloat(),
+        steps = (endIndex - startIndex - 1).coerceAtLeast(0),
         modifier = modifier
             .fillMaxWidth()
-            .height(58.dp)
-            .semantics { contentDescription = "Gespeicherte Standortpunkte" },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        itemsIndexed(points, key = { _, point -> point.id }) { index, _ ->
-            val isInside = index in startIndex..endIndex
-            Canvas(
-                modifier = Modifier
-                    .size(24.dp)
-                    .semantics { contentDescription = "Standortpunkt ${index + 1}" }
-                    .clickable(enabled = isInside) { onSelect(index) },
-            ) {
-                val center = Offset(size.width / 2, size.height / 2)
-                drawLine(
-                    color = if (isInside) FollowGreen.copy(alpha = 0.45f) else Mist,
-                    start = Offset(0f, center.y),
-                    end = Offset(size.width, center.y),
-                    strokeWidth = 2.dp.toPx(),
-                )
-                drawCircle(
-                    color = when {
-                        index == selectedIndex -> Ink
-                        isInside -> FollowGreen
-                        else -> Mist
-                    },
-                    radius = when {
-                        index == selectedIndex -> 7.dp.toPx()
-                        index == startIndex || index == endIndex -> 5.dp.toPx()
-                        else -> 3.dp.toPx()
-                    },
-                    center = center,
-                )
+            .semantics {
+                contentDescription = "Standortpunkt ${selectedIndex + 1} von ${points.size}"
             }
-        }
-    }
+    )
 }
 
 @Composable
@@ -2317,6 +2284,14 @@ private fun TourEditorMap(
     LaunchedEffect(selectedPoint) {
         mapView.getMapAsync { map ->
             map.style?.showSelectedTrackPoint(selectedPoint)
+            selectedPoint?.let { point ->
+                map.animateCamera(
+                    CameraUpdateFactory.newLatLng(
+                        LatLng(point.latitude, point.longitude),
+                    ),
+                    140,
+                )
+            }
         }
     }
 
