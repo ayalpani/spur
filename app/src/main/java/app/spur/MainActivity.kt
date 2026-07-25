@@ -201,6 +201,13 @@ internal enum class MapRotation(val label: String, val bearing: Double) {
 
 internal fun mapRotationFromStored(value: String?): MapRotation =
     MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH
+
+internal fun shouldFitTourRoute(
+    tourId: Long?,
+    fittedTourId: Long?,
+    pointCount: Int,
+): Boolean = tourId != null && tourId != fittedTourId && pointCount > 0
+
 internal fun shouldStopFollowing(cameraMoveReason: Int): Boolean =
     cameraMoveReason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE
 
@@ -589,6 +596,7 @@ private fun MapScreen(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             MapSurface(
+                tourId = tour?.id,
                 followRequest = followRequest,
                 isFollowingLocation = isFollowingLocation,
                 isSatelliteView = isSatelliteView,
@@ -1046,6 +1054,7 @@ private fun MapPreviewLoadingOverlay() {
 
 @Composable
 private fun MapSurface(
+    tourId: Long?,
     followRequest: Int,
     isFollowingLocation: Boolean,
     isSatelliteView: Boolean,
@@ -1088,6 +1097,7 @@ private fun MapSurface(
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
     }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
+    var fittedTourId by remember { mutableStateOf<Long?>(null) }
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply {
@@ -1337,6 +1347,30 @@ private fun MapSurface(
     LaunchedEffect(routePoints) {
         mapView.getMapAsync { map ->
             map.style?.showTourRoute(routePoints)
+        }
+    }
+
+    LaunchedEffect(tourId, routePoints) {
+        if (!shouldFitTourRoute(tourId, fittedTourId, routePoints.size)) return@LaunchedEffect
+        val id = tourId ?: return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            mapView.post {
+                if (currentIsFollowingLocation) {
+                    map.locationComponent.cameraMode = CameraMode.NONE
+                    currentOnFollowingInterrupted()
+                }
+                val density = context.resources.displayMetrics.density
+                map.fitTourRoute(
+                    points = routePoints,
+                    leftPaddingPixels = (40 * density).roundToInt(),
+                    topPaddingPixels = (104 * density).roundToInt(),
+                    rightPaddingPixels = (40 * density).roundToInt(),
+                    bottomPaddingPixels = (184 * density).roundToInt(),
+                    pointZoom = defaultMapZoom,
+                    animated = true,
+                )
+                fittedTourId = id
+            }
         }
     }
 
@@ -2470,18 +2504,56 @@ private fun MapLibreMap.fitTourRoute(
     points: List<TrackPoint>,
     paddingPixels: Int,
     animated: Boolean,
+) = fitTourRoute(
+    points = points,
+    leftPaddingPixels = paddingPixels,
+    topPaddingPixels = paddingPixels,
+    rightPaddingPixels = paddingPixels,
+    bottomPaddingPixels = paddingPixels,
+    pointZoom = DefaultMapZoom,
+    animated = animated,
+)
+
+private fun MapLibreMap.fitTourRoute(
+    points: List<TrackPoint>,
+    leftPaddingPixels: Int,
+    topPaddingPixels: Int,
+    rightPaddingPixels: Int,
+    bottomPaddingPixels: Int,
+    pointZoom: Double,
+    animated: Boolean,
 ) {
     if (points.isEmpty()) return
     val update = if (points.size == 1) {
-        CameraUpdateFactory.newLatLngZoom(
-            LatLng(points.first().latitude, points.first().longitude),
-            DefaultMapZoom,
+        CameraUpdateFactory.newCameraPosition(
+            org.maplibre.android.camera.CameraPosition.Builder(cameraPosition)
+                .target(LatLng(points.first().latitude, points.first().longitude))
+                .zoom(pointZoom)
+                .build(),
         )
     } else {
         val bounds = LatLngBounds.Builder()
             .includes(points.map { LatLng(it.latitude, it.longitude) })
             .build()
-        CameraUpdateFactory.newLatLngBounds(bounds, paddingPixels)
+        val camera = getCameraForLatLngBounds(
+            bounds,
+            intArrayOf(
+                leftPaddingPixels,
+                topPaddingPixels,
+                rightPaddingPixels,
+                bottomPaddingPixels,
+            ),
+            cameraPosition.bearing,
+            cameraPosition.tilt,
+        )
+        camera?.let(CameraUpdateFactory::newCameraPosition)
+            ?: CameraUpdateFactory.newLatLngBounds(
+                bounds,
+                leftPaddingPixels,
+                topPaddingPixels,
+                rightPaddingPixels,
+                bottomPaddingPixels,
+            )
     }
     if (animated) animateCamera(update, 220) else moveCamera(update)
 }
