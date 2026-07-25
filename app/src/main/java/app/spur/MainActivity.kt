@@ -180,6 +180,11 @@ private const val TourRouteLayer = "tour-route-layer"
 internal fun shouldStopFollowing(cameraMoveReason: Int): Boolean =
     cameraMoveReason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE
 
+internal fun shouldShowMapPreviewLoading(
+    isFollowingLocation: Boolean,
+    cameraMoveReason: Int,
+): Boolean = !isFollowingLocation || shouldStopFollowing(cameraMoveReason)
+
 internal fun mapPreviewZoom(
     mapZoom: Double,
     mapWidthPixels: Int,
@@ -942,6 +947,10 @@ private fun MapSurface(
         }
     }
 
+    LaunchedEffect(isFollowingLocation) {
+        if (isFollowingLocation) currentOnAlternateMapPreviewLoadingChanged(false)
+    }
+
     LaunchedEffect(isSatelliteView) {
         currentOnAlternateMapPreviewLoadingChanged(true)
         mapView.getMapAsync { map ->
@@ -1070,7 +1079,9 @@ private fun MapSurface(
             publishMarkerPositions()
         }
         val moveStartedListener = MapLibreMap.OnCameraMoveStartedListener { reason ->
-            currentOnAlternateMapPreviewLoadingChanged(true)
+            if (shouldShowMapPreviewLoading(currentIsFollowingLocation, reason)) {
+                currentOnAlternateMapPreviewLoadingChanged(true)
+            }
             if (currentIsFollowingLocation && shouldStopFollowing(reason)) {
                 map?.locationComponent?.cameraMode = CameraMode.NONE
                 currentOnFollowingInterrupted()

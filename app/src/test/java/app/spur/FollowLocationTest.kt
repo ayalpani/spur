@@ -24,4 +24,29 @@ class FollowLocationTest {
             ),
         )
     }
+
+    @Test
+    fun automaticFollowingKeepsTheMapPreviewVisible() {
+        assertFalse(
+            shouldShowMapPreviewLoading(
+                isFollowingLocation = true,
+                cameraMoveReason =
+                    MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION,
+            ),
+        )
+        assertTrue(
+            shouldShowMapPreviewLoading(
+                isFollowingLocation = true,
+                cameraMoveReason =
+                    MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE,
+            ),
+        )
+        assertTrue(
+            shouldShowMapPreviewLoading(
+                isFollowingLocation = false,
+                cameraMoveReason =
+                    MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION,
+            ),
+        )
+    }
 }
