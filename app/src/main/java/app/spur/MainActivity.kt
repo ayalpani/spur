@@ -185,7 +185,10 @@ private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private const val MinimumMapZoom = 12f
 private const val MaximumMapZoom = 20f
+private val MapSettingsSectionGap = 24.dp
 private val MapRotationOptionGap = 16.dp
+private val FilterChipVisualInset = 8.dp
+private const val MapRotationAnimationMillis = 350L
 
 private object SpurRoute {
     const val MAP = "map"
@@ -921,9 +924,11 @@ private fun MapScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp),
+                        .padding(top = MapSettingsSectionGap),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(MapRotationOptionGap),
+                    verticalArrangement = Arrangement.spacedBy(
+                        MapRotationOptionGap - FilterChipVisualInset,
+                    ),
                 ) {
                     MapRotationOption(
                         rotation = MapRotation.NORTH,
@@ -1182,6 +1187,7 @@ private fun MapSurface(
     }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
+    var lastMapSettingsBearing by remember { mutableStateOf(defaultMapBearing) }
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply {
@@ -1198,25 +1204,34 @@ private fun MapSurface(
         defaultMapZoom,
         defaultMapBearing,
     ) {
+        val animateRotation = defaultMapBearing != lastMapSettingsBearing
+        lastMapSettingsBearing = defaultMapBearing
         if (!mapSettingsVisible) return@LaunchedEffect
         mapView.getMapAsync { map ->
             if (currentIsFollowingLocation) {
                 map.followLocation(
                     context = context,
                     manualLocation = currentManualLocation,
-                    transitionDuration = 0L,
+                    transitionDuration = if (animateRotation) {
+                        MapRotationAnimationMillis
+                    } else {
+                        0L
+                    },
                     defaultMapZoom = defaultMapZoom,
                     defaultMapBearing = defaultMapBearing,
                 )
             } else {
-                map.moveCamera(
-                    CameraUpdateFactory.newCameraPosition(
-                        org.maplibre.android.camera.CameraPosition.Builder(map.cameraPosition)
-                            .zoom(defaultMapZoom)
-                            .bearing(defaultMapBearing)
-                            .build(),
-                    ),
+                val update = CameraUpdateFactory.newCameraPosition(
+                    org.maplibre.android.camera.CameraPosition.Builder(map.cameraPosition)
+                        .zoom(defaultMapZoom)
+                        .bearing(defaultMapBearing)
+                        .build(),
                 )
+                if (animateRotation) {
+                    map.animateCamera(update, MapRotationAnimationMillis.toInt())
+                } else {
+                    map.moveCamera(update)
+                }
             }
         }
     }
