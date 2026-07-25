@@ -5,6 +5,10 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.location.Location
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 data class Tour(
     val id: Long,
@@ -15,10 +19,36 @@ data class Tour(
 )
 
 data class TrackPoint(
+    val id: Long,
     val latitude: Double,
     val longitude: Double,
     val recordedAt: Long,
 )
+
+internal fun trackDistanceMeters(points: List<TrackPoint>): Double =
+    points.zipWithNext().sumOf { (from, to) ->
+        val earthRadiusMeters = 6_371_000.0
+        val latitudeDelta = Math.toRadians(to.latitude - from.latitude)
+        val longitudeDelta = Math.toRadians(to.longitude - from.longitude)
+        val fromLatitude = Math.toRadians(from.latitude)
+        val toLatitude = Math.toRadians(to.latitude)
+        val a = sin(latitudeDelta / 2) * sin(latitudeDelta / 2) +
+            cos(fromLatitude) * cos(toLatitude) *
+            sin(longitudeDelta / 2) * sin(longitudeDelta / 2)
+        val normalized = a.coerceIn(0.0, 1.0)
+        earthRadiusMeters * 2 * atan2(sqrt(normalized), sqrt(1 - normalized))
+    }
+
+internal fun retainedPointIds(
+    points: List<TrackPoint>,
+    startIndex: Int,
+    endIndex: Int,
+): Set<Long> {
+    if (points.isEmpty()) return emptySet()
+    val start = startIndex.coerceIn(points.indices)
+    val end = endIndex.coerceIn(start, points.lastIndex)
+    return points.subList(start, end + 1).mapTo(mutableSetOf(), TrackPoint::id)
+}
 
 internal fun shouldAcceptPoint(
     accuracyMeters: Float,
@@ -188,7 +218,7 @@ class TourStore(context: Context) :
     fun points(tourId: Long): List<TrackPoint> =
         readableDatabase.rawQuery(
             """
-            SELECT latitude, longitude, recorded_at
+            SELECT id, latitude, longitude, recorded_at
             FROM track_points
             WHERE tour_id = ?
             ORDER BY id
@@ -199,14 +229,57 @@ class TourStore(context: Context) :
                 while (cursor.moveToNext()) {
                     add(
                         TrackPoint(
-                            latitude = cursor.getDouble(0),
-                            longitude = cursor.getDouble(1),
-                            recordedAt = cursor.getLong(2),
+                            id = cursor.getLong(0),
+                            latitude = cursor.getDouble(1),
+                            longitude = cursor.getDouble(2),
+                            recordedAt = cursor.getLong(3),
                         ),
                     )
                 }
             }
         }
+
+    @Synchronized
+    fun updateTourPoints(tourId: Long, retainedIds: Set<Long>) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            points(tourId)
+                .filterNot { it.id in retainedIds }
+                .forEach { point ->
+                    db.delete(
+                        "track_points",
+                        "tour_id = ? AND id = ?",
+                        arrayOf(tourId.toString(), point.id.toString()),
+                    )
+                }
+            val retained = points(tourId)
+            val values = ContentValues().apply {
+                put("distance_meters", trackDistanceMeters(retained))
+                retained.firstOrNull()?.let { put("started_at", it.recordedAt) }
+                if (tour(tourId)?.endedAt != null) {
+                    retained.lastOrNull()?.let { put("ended_at", it.recordedAt) }
+                }
+            }
+            db.update("tours", values, "id = ?", arrayOf(tourId.toString()))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    @Synchronized
+    fun deleteTour(id: Long) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("track_points", "tour_id = ?", arrayOf(id.toString()))
+            db.delete("tours", "id = ?", arrayOf(id.toString()))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
 
     private fun queryTours(
         where: String? = null,

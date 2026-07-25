@@ -32,10 +32,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -57,7 +59,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -77,8 +82,11 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -135,12 +143,18 @@ import org.maplibre.android.location.LocationComponentOptions
 import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.snapshotter.MapSnapshotter
+import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
+import org.maplibre.android.style.layers.PropertyFactory.circleColor
+import org.maplibre.android.style.layers.PropertyFactory.circleRadius
+import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
+import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
@@ -174,6 +188,8 @@ private const val MapPreviewPixels = 180
 private const val LocationPulseDurationMillis = 2_300
 private const val TourRouteSource = "tour-route-source"
 private const val TourRouteLayer = "tour-route-layer"
+private const val SelectedTrackPointSource = "selected-track-point-source"
+private const val SelectedTrackPointLayer = "selected-track-point-layer"
 internal fun shouldStopFollowing(cameraMoveReason: Int): Boolean =
     cameraMoveReason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE
 
@@ -212,6 +228,7 @@ private fun SpurApp() {
     var historyRevision by remember { mutableLongStateOf(0L) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
+    var editingTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var hasLocationPermission by rememberSaveable {
         mutableStateOf(context.hasLocationPermission())
@@ -257,7 +274,8 @@ private fun SpurApp() {
         }
     }
 
-    BackHandler(enabled = showHistory) { showHistory = false }
+    BackHandler(enabled = editingTourId != null) { editingTourId = null }
+    BackHandler(enabled = showHistory && editingTourId == null) { showHistory = false }
 
     MaterialTheme(
         colorScheme = lightColorScheme(
@@ -301,15 +319,40 @@ private fun SpurApp() {
                     label = "History navigation",
                 ) { historyVisible ->
                     if (historyVisible) {
-                        HistoryScreen(
-                            store = store,
-                            revision = historyRevision,
-                            onBack = { showHistory = false },
-                            onOpenTour = { id ->
-                                displayedTourId = id
-                                showHistory = false
-                            },
-                        )
+                        val editorId = editingTourId
+                        if (editorId == null) {
+                            HistoryScreen(
+                                store = store,
+                                revision = historyRevision,
+                                onBack = { showHistory = false },
+                                onOpenTour = { id ->
+                                    displayedTourId = id
+                                    showHistory = false
+                                },
+                                onEditTour = { editingTourId = it },
+                                onDeleteTour = { id ->
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) { store.deleteTour(id) }
+                                        if (displayedTourId == id) {
+                                            displayedTour = null
+                                            displayedTourId = null
+                                            routePoints = emptyList()
+                                        }
+                                        historyRevision++
+                                    }
+                                },
+                            )
+                        } else {
+                            TourEditorScreen(
+                                store = store,
+                                tourId = editorId,
+                                onBack = { editingTourId = null },
+                                onSaved = {
+                                    editingTourId = null
+                                    historyRevision++
+                                },
+                            )
+                        }
                     } else {
                         MapScreen(
                             tour = displayedTour,
@@ -1371,6 +1414,28 @@ private fun Style.showTourRoute(points: List<TrackPoint>) {
     }
 }
 
+private fun Style.showSelectedTrackPoint(point: TrackPoint?) {
+    val source = getSourceAs<GeoJsonSource>(SelectedTrackPointSource)
+        ?: GeoJsonSource(SelectedTrackPointSource).also(::addSource)
+    if (getLayer(SelectedTrackPointLayer) == null) {
+        addLayer(
+            CircleLayer(SelectedTrackPointLayer, SelectedTrackPointSource).withProperties(
+                circleColor("#18201C"),
+                circleRadius(7f),
+                circleStrokeColor("#FFFFFF"),
+                circleStrokeWidth(3f),
+            ),
+        )
+    }
+    if (point == null) {
+        source.setGeoJson("""{"type":"FeatureCollection","features":[]}""")
+    } else {
+        source.setGeoJson(
+            Feature.fromGeometry(Point.fromLngLat(point.longitude, point.latitude)),
+        )
+    }
+}
+
 private fun satelliteStyleBuilder(): Style.Builder {
     return Style.Builder().fromJson(SatelliteMapStyleJson)
 }
@@ -1766,13 +1831,18 @@ private fun drawMomentGlyph(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 private fun HistoryScreen(
     store: TourStore,
     revision: Long,
     onBack: () -> Unit,
     onOpenTour: (Long) -> Unit,
+    onEditTour: (Long) -> Unit,
+    onDeleteTour: (Long) -> Unit,
 ) {
     var tours by remember { mutableStateOf(emptyList<Tour>()) }
+    var selectedTour by remember { mutableStateOf<Tour?>(null) }
+    var tourToDelete by remember { mutableStateOf<Tour?>(null) }
     LaunchedEffect(revision) {
         tours = withContext(Dispatchers.IO) { store.tours() }
     }
@@ -1829,7 +1899,10 @@ private fun HistoryScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onOpenTour(tour.id) },
+                            .combinedClickable(
+                                onClick = { onOpenTour(tour.id) },
+                                onLongClick = { selectedTour = tour },
+                            ),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         shape = RoundedCornerShape(20.dp),
                     ) {
@@ -1862,6 +1935,420 @@ private fun HistoryScreen(
             }
         }
     }
+
+    selectedTour?.let { tour ->
+        ModalBottomSheet(
+            onDismissRequest = { selectedTour = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = formatDate(tour.startedAt),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "${formatTourTime(tour)} · ${formatKilometers(tour.distanceMeters)}",
+                    color = Ink.copy(alpha = 0.62f),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                if (tour.endedAt == null) {
+                    Text(
+                        text = "Eine laufende Tour kannst du nach dem Stoppen bearbeiten.",
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = Ink.copy(alpha = 0.62f),
+                    )
+                } else {
+                    HistoryAction(label = "Bearbeiten") {
+                        selectedTour = null
+                        onEditTour(tour.id)
+                    }
+                    HistoryAction(label = "Tour löschen", destructive = true) {
+                        selectedTour = null
+                        tourToDelete = tour
+                    }
+                }
+            }
+        }
+    }
+
+    tourToDelete?.let { tour ->
+        AlertDialog(
+            onDismissRequest = { tourToDelete = null },
+            title = { Text("Tour löschen?") },
+            text = { Text("Die Tour und alle gespeicherten Standortpunkte werden entfernt.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        tourToDelete = null
+                        onDeleteTour(tour.id)
+                    },
+                ) {
+                    Text("Löschen", color = Color(0xFFB3261E))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { tourToDelete = null }) {
+                    Text("Abbrechen")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun HistoryAction(
+    label: String,
+    destructive: Boolean = false,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        shape = CircleShape,
+    ) {
+        Text(
+            text = label,
+            color = if (destructive) Color(0xFFB3261E) else Ink,
+            style = MaterialTheme.typography.titleMedium,
+        )
+    }
+}
+
+@Composable
+private fun TourEditorScreen(
+    store: TourStore,
+    tourId: Long,
+    onBack: () -> Unit,
+    onSaved: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var tour by remember(tourId) { mutableStateOf<Tour?>(null) }
+    var points by remember(tourId) { mutableStateOf(emptyList<TrackPoint>()) }
+    var startIndex by remember(tourId) { mutableStateOf(0) }
+    var endIndex by remember(tourId) { mutableStateOf(0) }
+    var selectedIndex by remember(tourId) { mutableStateOf(0) }
+    var isSaving by remember(tourId) { mutableStateOf(false) }
+
+    LaunchedEffect(tourId) {
+        val result = withContext(Dispatchers.IO) {
+            store.tour(tourId) to store.points(tourId)
+        }
+        tour = result.first
+        points = result.second
+        startIndex = 0
+        endIndex = result.second.lastIndex.coerceAtLeast(0)
+        selectedIndex = 0
+    }
+
+    val visiblePoints = if (
+        points.isNotEmpty() &&
+        startIndex in points.indices &&
+        endIndex in points.indices
+    ) {
+        points.subList(startIndex, endIndex + 1)
+    } else {
+        emptyList()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Sand),
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            TourEditorMap(
+                points = visiblePoints,
+                selectedPoint = points.getOrNull(selectedIndex),
+            )
+            Row(
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(horizontal = 18.dp, vertical = 14.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                MapIconButton(
+                    contentDescription = "Editor schließen",
+                    onClick = onBack,
+                ) {
+                    BackIcon()
+                }
+                Surface(
+                    modifier = Modifier.padding(start = 10.dp),
+                    color = Color.White,
+                    shape = CircleShape,
+                    shadowElevation = 2.dp,
+                ) {
+                    Text(
+                        text = "Tour bearbeiten",
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+
+        Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            shadowElevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 22.dp, vertical = 20.dp),
+            ) {
+                Text(
+                    text = tour?.let { formatDate(it.startedAt) } ?: "Tour wird geladen …",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "${visiblePoints.size} von ${points.size} Standortpunkten",
+                    modifier = Modifier.padding(top = 3.dp),
+                    color = Ink.copy(alpha = 0.58f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                if (points.isNotEmpty()) {
+                    PointTimeline(
+                        points = points,
+                        startIndex = startIndex,
+                        endIndex = endIndex,
+                        selectedIndex = selectedIndex,
+                        onSelect = { selectedIndex = it },
+                        modifier = Modifier.padding(top = 14.dp),
+                    )
+                }
+
+                if (points.size >= 2) {
+                    RangeSlider(
+                        value = startIndex.toFloat()..endIndex.toFloat(),
+                        onValueChange = { range ->
+                            val newStart = range.start.roundToInt()
+                                .coerceIn(0, points.lastIndex - 1)
+                            val newEnd = range.endInclusive.roundToInt()
+                                .coerceIn(newStart + 1, points.lastIndex)
+                            startIndex = newStart
+                            endIndex = newEnd
+                            selectedIndex = selectedIndex.coerceIn(newStart, newEnd)
+                        },
+                        valueRange = 0f..points.lastIndex.toFloat(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = points.getOrNull(selectedIndex)?.let {
+                            "Punkt ${selectedIndex + 1} · ${formatClock(it.recordedAt)}"
+                        } ?: "Keine Standortpunkte",
+                        modifier = Modifier.weight(1f),
+                        color = Ink.copy(alpha = 0.68f),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    TextButton(
+                        enabled = visiblePoints.size > 2,
+                        onClick = {
+                            val removeAt = selectedIndex
+                            points = points.toMutableList().apply { removeAt(removeAt) }
+                            endIndex--
+                            selectedIndex = removeAt.coerceAtMost(endIndex)
+                                .coerceAtLeast(startIndex)
+                        },
+                    ) {
+                        Text("Punkt löschen")
+                    }
+                }
+
+                Button(
+                    enabled = visiblePoints.size >= 2 && !isSaving,
+                    onClick = {
+                        isSaving = true
+                        val retainedIds = retainedPointIds(points, startIndex, endIndex)
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                store.updateTourPoints(tourId, retainedIds)
+                            }
+                            onSaved()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = Ink),
+                ) {
+                    Text(
+                        text = if (isSaving) "Wird gespeichert …" else "Änderungen speichern",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PointTimeline(
+    points: List<TrackPoint>,
+    startIndex: Int,
+    endIndex: Int,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(selectedIndex) {
+        if (selectedIndex in points.indices) {
+            listState.animateScrollToItem(selectedIndex)
+        }
+    }
+    LazyRow(
+        state = listState,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(58.dp)
+            .semantics { contentDescription = "Gespeicherte Standortpunkte" },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        itemsIndexed(points, key = { _, point -> point.id }) { index, _ ->
+            val isInside = index in startIndex..endIndex
+            Canvas(
+                modifier = Modifier
+                    .size(24.dp)
+                    .semantics { contentDescription = "Standortpunkt ${index + 1}" }
+                    .clickable(enabled = isInside) { onSelect(index) },
+            ) {
+                val center = Offset(size.width / 2, size.height / 2)
+                drawLine(
+                    color = if (isInside) FollowGreen.copy(alpha = 0.45f) else Mist,
+                    start = Offset(0f, center.y),
+                    end = Offset(size.width, center.y),
+                    strokeWidth = 2.dp.toPx(),
+                )
+                drawCircle(
+                    color = when {
+                        index == selectedIndex -> Ink
+                        isInside -> FollowGreen
+                        else -> Mist
+                    },
+                    radius = when {
+                        index == selectedIndex -> 7.dp.toPx()
+                        index == startIndex || index == endIndex -> 5.dp.toPx()
+                        else -> 3.dp.toPx()
+                    },
+                    center = center,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TourEditorMap(
+    points: List<TrackPoint>,
+    selectedPoint: TrackPoint?,
+) {
+    val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val currentPoints by rememberUpdatedState(points)
+    val currentSelectedPoint by rememberUpdatedState(selectedPoint)
+    val density = LocalDensity.current
+    val cameraPadding = with(density) { 52.dp.roundToPx() }
+    val mapView = remember {
+        MapLibre.getInstance(context)
+        MapView(context).apply { onCreate(null) }
+    }
+
+    DisposableEffect(lifecycle, mapView) {
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStart()
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onResume()
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> mapView.onStart()
+                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_STOP -> mapView.onStop()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
+            mapView.onDestroy()
+        }
+    }
+
+    LaunchedEffect(mapView) {
+        mapView.getMapAsync { map ->
+            map.uiSettings.isCompassEnabled = false
+            map.setStyle(StreetMapStyle) { style ->
+                style.showTourRoute(currentPoints)
+                style.showSelectedTrackPoint(currentSelectedPoint)
+                mapView.post {
+                    map.fitTourRoute(currentPoints, cameraPadding, animated = false)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(selectedPoint) {
+        mapView.getMapAsync { map ->
+            map.style?.showSelectedTrackPoint(selectedPoint)
+        }
+    }
+
+    LaunchedEffect(points) {
+        mapView.getMapAsync { map ->
+            map.style?.showTourRoute(points)
+            mapView.post { map.fitTourRoute(points, cameraPadding, animated = true) }
+        }
+    }
+
+    AndroidView(
+        factory = { mapView },
+        modifier = Modifier
+            .fillMaxSize()
+            .semantics { contentDescription = "Kartenvorschau der bearbeiteten Tour" },
+    )
+}
+
+private fun MapLibreMap.fitTourRoute(
+    points: List<TrackPoint>,
+    paddingPixels: Int,
+    animated: Boolean,
+) {
+    if (points.isEmpty()) return
+    val update = if (points.size == 1) {
+        CameraUpdateFactory.newLatLngZoom(
+            LatLng(points.first().latitude, points.first().longitude),
+            DefaultMapZoom,
+        )
+    } else {
+        val bounds = LatLngBounds.Builder()
+            .includes(points.map { LatLng(it.latitude, it.longitude) })
+            .build()
+        CameraUpdateFactory.newLatLngBounds(bounds, paddingPixels)
+    }
+    if (animated) animateCamera(update, 220) else moveCamera(update)
 }
 
 @Composable
@@ -2218,6 +2705,8 @@ private fun HistoryScreenPreview() {
         revision = 0,
         onBack = {},
         onOpenTour = {},
+        onEditTour = {},
+        onDeleteTour = {},
     )
 }
 
