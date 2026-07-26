@@ -275,7 +275,7 @@ private const val MapRotationAnimationMillis = 350L
 private val PhotoMapPreviewSize = 96.dp
 private const val PhotoMapPreviewZoom = 17.5
 private const val TourRouteWidthPixels = 6f
-private const val TourRouteBorderPerSidePixels = 2f
+private const val TourRouteBorderPerSidePixels = 4f
 private const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
 private const val TrailStrokeAlpha = 0.25f
@@ -1548,6 +1548,11 @@ private fun MapPage(
                     title = "Trailfarben wählen",
                     onBack = closeTrailColors,
                 )
+                TrailColorPreview(
+                    colors = trailColors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(24.dp))
                 Text(
                     text = "Füllfarbe",
                     style = MaterialTheme.typography.titleMedium,
@@ -2230,6 +2235,65 @@ private fun MapControlColorPreview(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun TrailColorPreview(
+    colors: TrailColors,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.semantics {
+            contentDescription = "Trail-Vorschau"
+        },
+        color = Mist,
+        shape = RoundedCornerShape(24.dp),
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .padding(16.dp),
+        ) {
+            val previewPath = Path().apply {
+                moveTo(0f, size.height * 0.72f)
+                cubicTo(
+                    size.width * 0.28f,
+                    size.height * 0.72f,
+                    size.width * 0.30f,
+                    size.height * 0.22f,
+                    size.width * 0.55f,
+                    size.height * 0.36f,
+                )
+                cubicTo(
+                    size.width * 0.73f,
+                    size.height * 0.46f,
+                    size.width * 0.78f,
+                    size.height * 0.72f,
+                    size.width,
+                    size.height * 0.58f,
+                )
+            }
+            drawPath(
+                path = previewPath,
+                color = colors.stroke,
+                style = Stroke(
+                    width = TourRouteBorderWidthPixels.dp.toPx(),
+                    cap = StrokeCap.Round,
+                    join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                ),
+            )
+            drawPath(
+                path = previewPath,
+                color = colors.fill,
+                style = Stroke(
+                    width = TourRouteWidthPixels.dp.toPx(),
+                    cap = StrokeCap.Round,
+                    join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                ),
+            )
         }
     }
 }
