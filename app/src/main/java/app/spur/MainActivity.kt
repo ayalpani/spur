@@ -876,6 +876,7 @@ private fun MapPage(
     var isStartingTour by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
+    var showTourMenu by rememberSaveable { mutableStateOf(false) }
     var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showButtonColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showTrailColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
@@ -922,6 +923,7 @@ private fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val tourMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val homeAutoStartBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val buttonColorsBottomSheetState =
@@ -958,6 +960,7 @@ private fun MapPage(
             !showStartTourBottomSheet &&
             !showMomentSheet &&
             !showMainMenu &&
+            !showTourMenu &&
             !showHomeAutoStartBottomSheet &&
             !showButtonColorsBottomSheet &&
             !showTrailColorsBottomSheet &&
@@ -1386,11 +1389,11 @@ private fun MapPage(
             sheetState = mainMenuState,
         ) {
             MainMenu(
-                onOpenHomeAutoStart = {
+                onOpenTour = {
                     scope.launch {
                         mainMenuState.hide()
                         showMainMenu = false
-                        showHomeAutoStartBottomSheet = true
+                        showTourMenu = true
                     }
                 },
                 onOpenButtonColors = {
@@ -1425,11 +1428,40 @@ private fun MapPage(
         }
     }
 
+    if (showTourMenu) {
+        val closeTourMenu: () -> Unit = {
+            scope.launch {
+                tourMenuState.hide()
+                showTourMenu = false
+                showMainMenu = true
+            }
+        }
+        ModalBottomSheet(
+            onDismissRequest = {
+                showTourMenu = false
+                showMainMenu = true
+            },
+            sheetState = tourMenuState,
+        ) {
+            BackHandler(onBack = closeTourMenu)
+            TourMenu(
+                onBack = closeTourMenu,
+                onOpenHomeAutoStart = {
+                    scope.launch {
+                        tourMenuState.hide()
+                        showTourMenu = false
+                        showHomeAutoStartBottomSheet = true
+                    }
+                },
+            )
+        }
+    }
+
     if (showHomeAutoStartBottomSheet) {
         ModalBottomSheet(
             onDismissRequest = {
                 showHomeAutoStartBottomSheet = false
-                showMainMenu = true
+                showTourMenu = true
             },
             sheetState = homeAutoStartBottomSheetState,
         ) {
@@ -1438,7 +1470,7 @@ private fun MapPage(
                     scope.launch {
                         homeAutoStartBottomSheetState.hide()
                         showHomeAutoStartBottomSheet = false
-                        showMainMenu = true
+                        showTourMenu = true
                     }
                 },
             )
@@ -1847,7 +1879,7 @@ private fun HomeAutoStartBottomSheet(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         BottomSheetHeader(
-            title = "Tour beim Verlassen starten",
+            title = "Automatischer Tourstart",
             onBack = onBack,
         )
         Row(
@@ -2094,7 +2126,7 @@ private fun TourActivityIcon(activity: String) {
 
 @Composable
 private fun MainMenu(
-    onOpenHomeAutoStart: () -> Unit,
+    onOpenTour: () -> Unit,
     onOpenButtonColors: () -> Unit,
     onOpenTrailColors: () -> Unit,
     onOpenDirection: () -> Unit,
@@ -2109,15 +2141,34 @@ private fun MainMenu(
             title = "Hauptmenü",
             modifier = Modifier.padding(horizontal = 24.dp),
         )
-        SheetMenuItem(
-            label = "Tour beim Verlassen starten",
-            leading = { HomeIcon() },
-            onClick = onOpenHomeAutoStart,
-        )
+        SheetMenuItem(label = "Tour", onClick = onOpenTour)
         SheetMenuItem(label = "Buttonfarben", onClick = onOpenButtonColors)
         SheetMenuItem(label = "Trail", onClick = onOpenTrailColors)
         SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
         SheetMenuItem(label = "Über Spur", onClick = onOpenAbout)
+    }
+}
+
+@Composable
+private fun TourMenu(
+    onBack: () -> Unit,
+    onOpenHomeAutoStart: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(bottom = 24.dp),
+    ) {
+        BottomSheetHeader(
+            title = "Tour",
+            modifier = Modifier.padding(horizontal = 24.dp),
+            onBack = onBack,
+        )
+        SheetMenuItem(
+            label = "Automatischer Tourstart",
+            leading = { HomeIcon() },
+            onClick = onOpenHomeAutoStart,
+        )
     }
 }
 
