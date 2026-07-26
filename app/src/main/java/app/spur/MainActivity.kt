@@ -24,6 +24,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -774,6 +775,7 @@ private fun MapScreen(
     var showCamera by rememberSaveable { mutableStateOf(false) }
     var pendingPhoto by remember { mutableStateOf<File?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
+    var photoDetailOrigin by remember { mutableStateOf<Offset?>(null) }
     var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
     var manualLocation by remember { mutableStateOf(context.loadManualLocation()) }
     val initialMapZoom = remember { context.loadDefaultMapZoom() }
@@ -899,10 +901,11 @@ private fun MapScreen(
                         Toast.LENGTH_LONG,
                     ).show()
                 },
-                onMomentClick = { moment ->
+                onMomentClick = { moment, origin ->
                     if (moment.type == MomentType.PHOTO) {
                         isFollowingLocation = false
                         isTourOverview = false
+                        photoDetailOrigin = origin
                         photoDetail = moment
                     }
                 },
@@ -1286,8 +1289,12 @@ private fun MapScreen(
         PhotoDetailDialog(
             photos = photos,
             initialPhotoId = moment.id,
+            openOrigin = photoDetailOrigin,
             onPhotoChanged = { photoDetail = it },
-            onDismiss = { photoDetail = null },
+            onDismiss = {
+                photoDetail = null
+                photoDetailOrigin = null
+            },
         )
     }
 }
@@ -1641,7 +1648,7 @@ private fun MapSurface(
     onAlternateMapPreviewLoadingChanged: (Boolean) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onPhotoPlacementFailed: (File) -> Unit,
-    onMomentClick: (MapMoment) -> Unit,
+    onMomentClick: (MapMoment, Offset) -> Unit,
     onManualLocationChanged: (SpurCoordinate) -> Unit,
     onFollowingInterrupted: () -> Unit,
     onMapGestureActiveChanged: (Boolean) -> Unit,
@@ -1904,7 +1911,10 @@ private fun MapSurface(
             ).firstOrNull()?.getStringProperty(MapMomentIdProperty)
             val moment = currentMapMoments.firstOrNull { it.id == momentId }
                 ?: return@OnMapClickListener false
-            currentOnMomentClick(moment)
+            currentOnMomentClick(
+                moment,
+                Offset(screenPoint.x, screenPoint.y),
+            )
             true
         }
         mapView.setOnTouchListener { _, event ->
@@ -2105,6 +2115,7 @@ private fun SimulatedLocationPuck(modifier: Modifier = Modifier) {
 private fun PhotoDetailDialog(
     photos: List<MapMoment>,
     initialPhotoId: String,
+    openOrigin: Offset? = null,
     onPhotoChanged: (MapMoment) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
@@ -2121,6 +2132,11 @@ private fun PhotoDetailDialog(
     val selectedPhoto = photos[pagerState.currentPage.coerceIn(photos.indices)]
     val currentPhoto by rememberUpdatedState(selectedPhoto)
     val currentOnPhotoChanged by rememberUpdatedState(onPhotoChanged)
+    val openProgress = remember(openOrigin) {
+        Animatable(if (openOrigin == null) 1f else 0f)
+    }
+    var openingPhotoAspectRatio by remember(openOrigin) { mutableFloatStateOf(1f) }
+    var openingThumbnail by remember(openOrigin) { mutableStateOf<ImageBitmap?>(null) }
     var isVisible by remember { mutableStateOf(false) }
     var isClosing by remember { mutableStateOf(false) }
 
@@ -2160,6 +2176,23 @@ private fun PhotoDetailDialog(
         isVisible = true
     }
 
+    LaunchedEffect(openOrigin) {
+        if (openOrigin == null) return@LaunchedEffect
+        val photo = File(photos[initialPage].payload)
+        val (aspectRatio, thumbnail) = withContext(Dispatchers.IO) {
+            photoAspectRatio(photo) to decodeMarkerPhoto(photo.absolutePath)?.asImageBitmap()
+        }
+        openingPhotoAspectRatio = aspectRatio
+        openingThumbnail = thumbnail
+        openProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = MotionDurationDefaultMillis,
+                easing = FastOutSlowInEasing,
+            ),
+        )
+    }
+
     LaunchedEffect(pagerState, photos) {
         snapshotFlow { pagerState.settledPage }.collect { page ->
             photos.getOrNull(page)?.let(currentOnPhotoChanged)
@@ -2175,18 +2208,22 @@ private fun PhotoDetailDialog(
     ) {
         AnimatedVisibility(
             visible = isVisible,
-            enter = fadeIn(
-                animationSpec = tween(
-                    durationMillis = MotionDurationDefaultMillis,
-                    easing = FastOutSlowInEasing,
-                ),
-            ) + slideInVertically(
-                animationSpec = tween(
-                    durationMillis = MotionDurationDefaultMillis,
-                    easing = FastOutSlowInEasing,
-                ),
-                initialOffsetY = { height -> height / 10 },
-            ),
+            enter = if (openOrigin == null) {
+                fadeIn(
+                    animationSpec = tween(
+                        durationMillis = MotionDurationDefaultMillis,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) + slideInVertically(
+                    animationSpec = tween(
+                        durationMillis = MotionDurationDefaultMillis,
+                        easing = FastOutSlowInEasing,
+                    ),
+                    initialOffsetY = { height -> height / 10 },
+                )
+            } else {
+                EnterTransition.None
+            },
             exit = fadeOut(
                 animationSpec = tween(
                     durationMillis = MotionDurationDefaultMillis,
@@ -2199,14 +2236,23 @@ private fun PhotoDetailDialog(
                 targetOffsetY = { height -> height / 10 },
             ),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black),
-            ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val progress = openProgress.value
+                val detailAlpha = if (openOrigin == null) {
+                    1f
+                } else {
+                    ((progress - 0.72f) / 0.28f).coerceIn(0f, 1f)
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = progress)),
+                )
                 HorizontalPager(
                     state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = detailAlpha },
                     key = { photos[it].id },
                 ) { page ->
                     val photo = photos[page]
@@ -2223,13 +2269,56 @@ private fun PhotoDetailDialog(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+                val thumbnail = openingThumbnail
+                if (openOrigin != null && thumbnail != null && progress < 1f) {
+                    val density = LocalDensity.current
+                    val availableWidth = constraints.maxWidth.toFloat()
+                    val availableHeight = constraints.maxHeight.toFloat()
+                    val targetWidth = minOf(
+                        availableWidth,
+                        availableHeight * openingPhotoAspectRatio,
+                    )
+                    val targetHeight = targetWidth / openingPhotoAspectRatio
+                    val sourceSize = with(density) { 40.dp.toPx() }
+                    val targetLeft = (availableWidth - targetWidth) / 2f
+                    val targetTop = (availableHeight - targetHeight) / 2f
+                    Image(
+                        bitmap = thumbnail,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .offset {
+                                IntOffset(
+                                    targetLeft.roundToInt(),
+                                    targetTop.roundToInt(),
+                                )
+                            }
+                            .size(
+                                with(density) { targetWidth.toDp() },
+                                with(density) { targetHeight.toDp() },
+                            )
+                            .graphicsLayer {
+                                scaleX = sourceSize / targetWidth +
+                                    (1f - sourceSize / targetWidth) * progress
+                                scaleY = sourceSize / targetHeight +
+                                    (1f - sourceSize / targetHeight) * progress
+                                translationX =
+                                    (openOrigin.x - availableWidth / 2f) * (1f - progress)
+                                translationY =
+                                    (openOrigin.y - availableHeight / 2f) * (1f - progress)
+                                alpha = 1f - detailAlpha
+                            }
+                            .clip(RoundedCornerShape(7.dp)),
+                    )
+                }
                 IconButton(
                     onClick = ::dismissAnimated,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .statusBarsPadding()
                         .padding(16.dp)
-                        .size(56.dp),
+                        .size(56.dp)
+                        .graphicsLayer { alpha = detailAlpha },
                     colors = IconButtonDefaults.filledIconButtonColors(
                         containerColor = Color.White,
                         contentColor = Ink,
@@ -2262,7 +2351,8 @@ private fun PhotoDetailDialog(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
-                        .padding(20.dp),
+                        .padding(20.dp)
+                        .graphicsLayer { alpha = detailAlpha },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.White,
                         contentColor = Ink,
@@ -2272,6 +2362,18 @@ private fun PhotoDetailDialog(
                 }
             }
         }
+    }
+}
+
+private fun photoAspectRatio(photo: File): Float {
+    val options = android.graphics.BitmapFactory.Options().apply {
+        inJustDecodeBounds = true
+    }
+    android.graphics.BitmapFactory.decodeFile(photo.absolutePath, options)
+    return if (options.outWidth > 0 && options.outHeight > 0) {
+        options.outWidth.toFloat() / options.outHeight
+    } else {
+        1f
     }
 }
 
