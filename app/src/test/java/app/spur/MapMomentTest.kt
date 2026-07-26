@@ -113,7 +113,7 @@ class MapMomentTest {
     }
 
     @Test
-    fun photoMetadataUsesCaptureTimestampAndDirectionalCoordinates() {
+    fun photoMetadataUsesCaptureTimestampAndShortPlaceDescription() {
         val photo = MapMoment(
             id = "photo-1700000000000",
             type = MomentType.PHOTO,
@@ -123,6 +123,27 @@ class MapMomentTest {
         )
 
         assertEquals(1_700_000_000_000, photo.captureTimeMillis())
-        assertEquals("52,52000° N · 13,40500° W", formatPhotoLocation(photo))
+        assertEquals(
+            "Metzer Straße 12, Prenzlauer Berg",
+            shortPlaceDescription(
+                thoroughfare = "Metzer Straße",
+                streetNumber = "12",
+                district = "Prenzlauer Berg",
+                locality = "Berlin",
+                region = "Berlin",
+                featureName = null,
+            ),
+        )
+        assertEquals(
+            "Berlin",
+            shortPlaceDescription(
+                thoroughfare = null,
+                streetNumber = null,
+                district = null,
+                locality = "Berlin",
+                region = "Berlin",
+                featureName = null,
+            ),
+        )
     }
 }

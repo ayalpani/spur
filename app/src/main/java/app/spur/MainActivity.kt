@@ -7,6 +7,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Address
+import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
@@ -166,6 +168,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.location.LocationComponentActivationOptions
@@ -224,6 +227,7 @@ import java.io.File
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.coroutines.resume
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -245,6 +249,8 @@ private val FilterChipVisualInset = 8.dp
 private const val MotionDurationDefaultMillis = 200
 private const val DrawerMotionDurationMillis = 256
 private const val MapRotationAnimationMillis = 350L
+private val PhotoMapPreviewSize = 60.dp
+private const val PhotoMapPreviewZoom = 16.0
 private const val TourRouteWidthPixels = 6f
 private const val TourRouteBorderPerSidePixels = 2f
 private const val TourRouteBorderWidthPixels =
@@ -1132,11 +1138,7 @@ private fun MapScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    LucideIcon(
-                        paths = listOf(
-                            "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
-                            "M15 10a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
-                        ),
+                    MapPinIcon(
                         color = MapPinRed,
                         modifier = Modifier.size(64.dp),
                     )
@@ -2411,29 +2413,14 @@ private fun PhotoDetailDialog(
                             .clip(RoundedCornerShape(7.dp)),
                     )
                 }
-                Column(
+                PhotoLocationMetadata(
+                    photo = selectedPhoto,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .statusBarsPadding()
                         .padding(18.dp)
-                        .graphicsLayer { alpha = controlsAlpha }
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.Black.copy(alpha = 0.58f))
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                ) {
-                    Text(
-                        text = photoCaptureLabel(selectedPhoto),
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Text(
-                        text = formatPhotoLocation(selectedPhoto),
-                        modifier = Modifier.padding(top = 2.dp),
-                        color = Color.White.copy(alpha = 0.72f),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
+                        .graphicsLayer { alpha = controlsAlpha },
+                )
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -2542,23 +2529,193 @@ private fun photoCaptureLabel(photo: MapMoment): String {
     val capturedAt = photo.captureTimeMillis()
         ?: File(photo.payload).lastModified().takeIf { it > 0L }
         ?: return "Aufnahmezeit unbekannt"
-    return "Aufgenommen ${
-        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-            .format(Date(capturedAt))
-    }"
+    return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+        .format(Date(capturedAt))
 }
 
-internal fun formatPhotoLocation(photo: MapMoment): String {
-    val latitudeDirection = if (photo.latitude >= 0) "N" else "S"
-    val longitudeDirection = if (photo.longitude >= 0) "E" else "W"
-    return String.format(
-        Locale.GERMANY,
-        "%.5f° %s · %.5f° %s",
-        abs(photo.latitude),
-        latitudeDirection,
-        abs(photo.longitude),
-        longitudeDirection,
-    )
+@Composable
+private fun PhotoLocationMetadata(
+    photo: MapMoment,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    var place by remember(photo.id) {
+        mutableStateOf(context.loadPhotoPlace(photo.id))
+    }
+    LaunchedEffect(photo.id) {
+        if (place != null) return@LaunchedEffect
+        context.reverseGeocode(photo.latitude, photo.longitude)?.let { resolved ->
+            context.savePhotoPlace(photo.id, resolved)
+            place = resolved
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.Black.copy(alpha = 0.58f))
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        PhotoMapPreview(photo = photo)
+        Column(
+            modifier = Modifier.widthIn(max = 240.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = photoCaptureLabel(photo),
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            Box(modifier = Modifier.height(20.dp)) {
+                place?.let { description ->
+                    Text(
+                        text = description,
+                        modifier = Modifier.padding(top = 2.dp),
+                        color = Color.White.copy(alpha = 0.72f),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhotoMapPreview(
+    photo: MapMoment,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val previewPixels = with(LocalDensity.current) {
+        PhotoMapPreviewSize.roundToPx()
+    }
+    var preview by remember(photo.id) { mutableStateOf<ImageBitmap?>(null) }
+
+    DisposableEffect(photo.id, previewPixels) {
+        MapLibre.getInstance(context)
+        var disposed = false
+        val options = MapSnapshotter.Options(previewPixels, previewPixels)
+            .withCameraPosition(
+                org.maplibre.android.camera.CameraPosition.Builder()
+                    .target(LatLng(photo.latitude, photo.longitude))
+                    .zoom(PhotoMapPreviewZoom)
+                    .build(),
+            )
+            .withPixelRatio(1f)
+            .withLogo(false)
+            .withStyleBuilder(Style.Builder().fromUri(StreetMapStyle))
+        val snapshotter = MapSnapshotter(context, options)
+        snapshotter.start(
+            { snapshot ->
+                if (!disposed) preview = snapshot.bitmap.asImageBitmap()
+            },
+            { _ -> },
+        )
+        onDispose {
+            disposed = true
+            snapshotter.cancel()
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .size(PhotoMapPreviewSize)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Mist),
+        contentAlignment = Alignment.Center,
+    ) {
+        preview?.let { bitmap ->
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        MapPinIcon(
+            color = MapPinRed,
+            modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
+private suspend fun Context.reverseGeocode(
+    latitude: Double,
+    longitude: Double,
+): String? {
+    if (
+        !Geocoder.isPresent() ||
+        latitude !in -90.0..90.0 ||
+        longitude !in -180.0..180.0
+    ) {
+        return null
+    }
+    val geocoder = Geocoder(applicationContext, Locale.getDefault())
+    val address = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        suspendCancellableCoroutine { continuation ->
+            geocoder.getFromLocation(
+                latitude,
+                longitude,
+                1,
+                object : Geocoder.GeocodeListener {
+                    override fun onGeocode(addresses: MutableList<Address>) {
+                        if (continuation.isActive) {
+                            continuation.resume(addresses.firstOrNull())
+                        }
+                    }
+
+                    override fun onError(errorMessage: String?) {
+                        if (continuation.isActive) continuation.resume(null)
+                    }
+                },
+            )
+        }
+    } else {
+        @Suppress("DEPRECATION")
+        withContext(Dispatchers.IO) {
+            runCatching {
+                geocoder.getFromLocation(latitude, longitude, 1)?.firstOrNull()
+            }.getOrNull()
+        }
+    }
+    return address?.let {
+        shortPlaceDescription(
+            thoroughfare = it.thoroughfare,
+            streetNumber = it.subThoroughfare,
+            district = it.subLocality,
+            locality = it.locality,
+            region = it.adminArea,
+            featureName = it.featureName,
+        )
+    }
+}
+
+internal fun shortPlaceDescription(
+    thoroughfare: String?,
+    streetNumber: String?,
+    district: String?,
+    locality: String?,
+    region: String?,
+    featureName: String?,
+): String? {
+    val street = listOfNotNull(thoroughfare, streetNumber)
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .joinToString(" ")
+        .ifEmpty { null }
+    val area = listOf(district, locality, region)
+        .firstOrNull { !it.isNullOrBlank() }
+        ?.trim()
+    val fallback = featureName?.trim()?.takeIf(String::isNotEmpty)
+    return listOfNotNull(street ?: fallback, area)
+        .distinct()
+        .take(2)
+        .joinToString(", ")
+        .ifEmpty { null }
 }
 
 private fun Context.sharePhoto(source: File): Boolean = runCatching {
@@ -3181,6 +3338,7 @@ private fun Context.saveMapControlForegroundColor(color: MapControlColor) {
 
 private const val MapMomentPreferences = "map-moments"
 private const val MapMomentEntries = "entries"
+private const val PhotoPlacePreferences = "photo-places"
 
 private fun Context.loadMapMoments(): List<MapMoment> =
     getSharedPreferences(MapMomentPreferences, Context.MODE_PRIVATE)
@@ -3193,6 +3351,17 @@ private fun Context.saveMapMoments(moments: List<MapMoment>) {
     getSharedPreferences(MapMomentPreferences, Context.MODE_PRIVATE)
         .edit()
         .putStringSet(MapMomentEntries, moments.map(::encodeMapMoment).toSet())
+        .apply()
+}
+
+private fun Context.loadPhotoPlace(photoId: String): String? =
+    getSharedPreferences(PhotoPlacePreferences, Context.MODE_PRIVATE)
+        .getString(photoId, null)
+
+private fun Context.savePhotoPlace(photoId: String, place: String) {
+    getSharedPreferences(PhotoPlacePreferences, Context.MODE_PRIVATE)
+        .edit()
+        .putString(photoId, place)
         .apply()
 }
 
@@ -4256,6 +4425,19 @@ private fun ShareIcon() = LucideIcon(
         "M8.59 13.51 15.42 17.49",
         "M15.41 6.51 8.59 10.49",
     ),
+)
+
+@Composable
+private fun MapPinIcon(
+    color: Color = LocalContentColor.current,
+    modifier: Modifier = Modifier.size(32.dp),
+) = LucideIcon(
+    paths = listOf(
+        "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
+        "M15 10a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+    ),
+    color = color,
+    modifier = modifier,
 )
 
 @Composable
