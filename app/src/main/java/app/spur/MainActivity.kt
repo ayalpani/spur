@@ -356,6 +356,12 @@ internal fun shouldFitTourRoute(
     pointCount: Int,
 ): Boolean = tourId != null && tourId != fittedTourId && pointCount > 0
 
+internal fun shouldShowTourOverview(
+    isFollowingLocation: Boolean,
+    isTourActive: Boolean,
+    routePointCount: Int,
+): Boolean = isFollowingLocation && isTourActive && routePointCount > 0
+
 internal fun shouldStopFollowing(cameraMoveReason: Int): Boolean =
     cameraMoveReason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE
 
@@ -707,7 +713,9 @@ private fun MapScreen(
         scope.launch { drawerState.close() }
     }
     var followRequest by rememberSaveable { mutableStateOf(0) }
+    var tourOverviewRequest by rememberSaveable { mutableStateOf(0) }
     var isFollowingLocation by rememberSaveable { mutableStateOf(false) }
+    var isTourOverview by rememberSaveable { mutableStateOf(false) }
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
     var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
     var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
@@ -728,6 +736,21 @@ private fun MapScreen(
     }
     var isMapGestureActive by remember { mutableStateOf(false) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val followOwnLocation: () -> Unit = {
+        isTourOverview = false
+        isFollowingLocation = true
+        followRequest++
+    }
+    BackHandler(
+        enabled = isTourOverview &&
+            drawerState.isClosed &&
+            !showMomentSheet &&
+            !showSettingsSheet &&
+            !showAboutSheet &&
+            !showCamera &&
+            photoDetail == null,
+        onBack = followOwnLocation,
+    )
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -788,6 +811,7 @@ private fun MapScreen(
                 modifier = Modifier.zIndex(if (isMapGestureActive) 1f else 0f),
                 tourId = tour?.id,
                 followRequest = followRequest,
+                tourOverviewRequest = tourOverviewRequest,
                 isFollowingLocation = isFollowingLocation,
                 isSatelliteView = isSatelliteView,
                 manualLocation = manualLocation,
@@ -831,7 +855,10 @@ private fun MapScreen(
                         Toast.LENGTH_SHORT,
                     ).show()
                 },
-                onFollowingInterrupted = { isFollowingLocation = false },
+                onFollowingInterrupted = {
+                    isFollowingLocation = false
+                    isTourOverview = false
+                },
                 onMapGestureActiveChanged = { isMapGestureActive = it },
             )
 
@@ -965,14 +992,25 @@ private fun MapScreen(
                     }
                 }
                 MapIconButton(
-                    contentDescription = if (isFollowingLocation) {
-                        "Eigenem Standort wird gefolgt"
-                    } else {
-                        "Eigenem Standort folgen"
+                    contentDescription = when {
+                        isTourOverview -> "Zur Standortverfolgung zurückkehren"
+                        isFollowingLocation -> "Gesamte Tour anzeigen"
+                        else -> "Eigenem Standort folgen"
                     },
                     onClick = {
-                        isFollowingLocation = true
-                        followRequest++
+                        if (
+                            shouldShowTourOverview(
+                                isFollowingLocation = isFollowingLocation,
+                                isTourActive = isTourActive,
+                                routePointCount = routePoints.size,
+                            )
+                        ) {
+                            isFollowingLocation = false
+                            isTourOverview = true
+                            tourOverviewRequest++
+                        } else {
+                            followOwnLocation()
+                        }
                     },
                 ) {
                     FollowLocationIcon(selected = isFollowingLocation)
@@ -1440,6 +1478,7 @@ private fun MapSurface(
     modifier: Modifier = Modifier,
     tourId: Long?,
     followRequest: Int,
+    tourOverviewRequest: Int,
     isFollowingLocation: Boolean,
     isSatelliteView: Boolean,
     manualLocation: SpurCoordinate?,
@@ -1476,6 +1515,7 @@ private fun MapSurface(
     val currentRoutePoints by rememberUpdatedState(routePoints)
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
+    val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var previewCameraPosition by remember {
@@ -1770,6 +1810,27 @@ private fun MapSurface(
         }
     }
 
+    LaunchedEffect(tourOverviewRequest) {
+        if (tourOverviewRequest == 0) return@LaunchedEffect
+        val request = tourOverviewRequest
+        mapView.getMapAsync { map ->
+            mapView.post {
+                if (
+                    request != currentTourOverviewRequest ||
+                    currentIsFollowingLocation ||
+                    currentRoutePoints.isEmpty()
+                ) return@post
+                map.locationComponent.cameraMode = CameraMode.NONE
+                map.fitMapScreenTourRoute(
+                    points = currentRoutePoints,
+                    density = context.resources.displayMetrics.density,
+                    pointZoom = initialMapZoom,
+                    animated = true,
+                )
+            }
+        }
+    }
+
     LaunchedEffect(photoToPlace) {
         val photo = photoToPlace ?: return@LaunchedEffect
         mapView.getMapAsync { map ->
@@ -1828,13 +1889,9 @@ private fun MapSurface(
                     map.locationComponent.cameraMode = CameraMode.NONE
                     currentOnFollowingInterrupted()
                 }
-                val density = context.resources.displayMetrics.density
-                map.fitTourRoute(
+                map.fitMapScreenTourRoute(
                     points = routePoints,
-                    leftPaddingPixels = (40 * density).roundToInt(),
-                    topPaddingPixels = (104 * density).roundToInt(),
-                    rightPaddingPixels = (40 * density).roundToInt(),
-                    bottomPaddingPixels = (184 * density).roundToInt(),
+                    density = context.resources.displayMetrics.density,
                     pointZoom = initialMapZoom,
                     animated = true,
                 )
@@ -3259,6 +3316,21 @@ private fun MapLibreMap.fitTourRoute(
     rightPaddingPixels = paddingPixels,
     bottomPaddingPixels = paddingPixels,
     pointZoom = DefaultMapZoom,
+    animated = animated,
+)
+
+private fun MapLibreMap.fitMapScreenTourRoute(
+    points: List<TrackPoint>,
+    density: Float,
+    pointZoom: Double,
+    animated: Boolean,
+) = fitTourRoute(
+    points = points,
+    leftPaddingPixels = (40 * density).roundToInt(),
+    topPaddingPixels = (104 * density).roundToInt(),
+    rightPaddingPixels = (40 * density).roundToInt(),
+    bottomPaddingPixels = (184 * density).roundToInt(),
+    pointZoom = pointZoom,
     animated = animated,
 )
 

@@ -8,6 +8,38 @@ import org.maplibre.android.maps.MapLibreMap
 
 class FollowLocationTest {
     @Test
+    fun activeFollowingButtonOpensTourOverviewOnlyWhenRouteExists() {
+        assertTrue(
+            shouldShowTourOverview(
+                isFollowingLocation = true,
+                isTourActive = true,
+                routePointCount = 2,
+            ),
+        )
+        assertFalse(
+            shouldShowTourOverview(
+                isFollowingLocation = false,
+                isTourActive = true,
+                routePointCount = 2,
+            ),
+        )
+        assertFalse(
+            shouldShowTourOverview(
+                isFollowingLocation = true,
+                isTourActive = false,
+                routePointCount = 2,
+            ),
+        )
+        assertFalse(
+            shouldShowTourOverview(
+                isFollowingLocation = true,
+                isTourActive = true,
+                routePointCount = 0,
+            ),
+        )
+    }
+
+    @Test
     fun onlyUserGesturesStopFollowing() {
         assertTrue(
             shouldStopFollowing(
