@@ -1,6 +1,7 @@
 package app.spur
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -34,6 +35,23 @@ class TourStoreTest {
         assertFalse(stabilizer.isReady(fix(latitude = 52.52100, accuracy = 8f)))
         assertFalse(stabilizer.isReady(fix(latitude = 52.52105, accuracy = 8f)))
         assertTrue(stabilizer.isReady(fix(latitude = 52.52110, accuracy = 8f)))
+    }
+
+    @Test
+    fun activitiesAreRankedByFrequencyThenRecency() {
+        val ranked = rankedTourActivities(
+            usage = listOf(
+                TourActivityUsage("Laufen", count = 2, lastUsedAt = 20),
+                TourActivityUsage("Inline-Skaten", count = 4, lastUsedAt = 10),
+                TourActivityUsage("Radfahren", count = 2, lastUsedAt = 30),
+            ),
+            defaults = listOf("Inline-Skaten", "Spazieren", "Laufen"),
+        )
+
+        assertEquals(
+            listOf("Inline-Skaten", "Radfahren", "Laufen", "Spazieren"),
+            ranked,
+        )
     }
 
     private fun fix(

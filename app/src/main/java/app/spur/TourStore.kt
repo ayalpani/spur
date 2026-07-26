@@ -16,7 +16,27 @@ data class Tour(
     val endedAt: Long?,
     val distanceMeters: Double,
     val pointCount: Int,
+    val activity: String? = null,
 )
+
+data class TourActivityUsage(
+    val label: String,
+    val count: Int,
+    val lastUsedAt: Long,
+)
+
+internal fun rankedTourActivities(
+    usage: List<TourActivityUsage>,
+    defaults: List<String>,
+): List<String> =
+    (
+        usage
+            .sortedWith(
+                compareByDescending<TourActivityUsage> { it.count }
+                    .thenByDescending { it.lastUsedAt },
+            )
+            .map(TourActivityUsage::label) + defaults
+        ).distinctBy { it.lowercase() }
 
 data class TrackPoint(
     val id: Long,
@@ -121,7 +141,7 @@ internal fun shouldAcceptPoint(
 }
 
 class TourStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "spur.db", null, 1) {
+    SQLiteOpenHelper(context.applicationContext, "spur.db", null, 2) {
     private val gpsStartStabilizers = mutableMapOf<Long, GpsStartStabilizer>()
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -131,7 +151,8 @@ class TourStore(context: Context) :
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 started_at INTEGER NOT NULL,
                 ended_at INTEGER,
-                distance_meters REAL NOT NULL DEFAULT 0
+                distance_meters REAL NOT NULL DEFAULT 0,
+                activity TEXT
             )
             """.trimIndent(),
         )
@@ -150,10 +171,17 @@ class TourStore(context: Context) :
         db.execSQL("CREATE INDEX track_points_tour_id ON track_points(tour_id, id)")
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) db.execSQL("ALTER TABLE tours ADD COLUMN activity TEXT")
+    }
 
     @Synchronized
-    fun startTour(now: Long = System.currentTimeMillis()): Long {
+    fun startTour(
+        activity: String,
+        now: Long = System.currentTimeMillis(),
+    ): Long {
+        val normalizedActivity = activity.trim().take(40)
+        require(normalizedActivity.isNotEmpty())
         gpsStartStabilizers.clear()
         writableDatabase.execSQL(
             "UPDATE tours SET ended_at = ? WHERE ended_at IS NULL",
@@ -162,7 +190,10 @@ class TourStore(context: Context) :
         return writableDatabase.insertOrThrow(
             "tours",
             null,
-            ContentValues().apply { put("started_at", now) },
+            ContentValues().apply {
+                put("started_at", now)
+                put("activity", normalizedActivity)
+            },
         )
     }
 
@@ -294,6 +325,29 @@ class TourStore(context: Context) :
     fun tours(): List<Tour> = queryTours(tail = "ORDER BY t.started_at DESC")
 
     @Synchronized
+    fun activityUsage(): List<TourActivityUsage> =
+        tours()
+            .mapNotNull { tour ->
+                tour.activity
+                    ?.trim()
+                    ?.takeIf(String::isNotEmpty)
+                    ?.let { activity -> activity to tour.startedAt }
+            }
+            .groupBy { (activity) -> activity.lowercase() }
+            .values
+            .map { uses ->
+                TourActivityUsage(
+                    label = uses.maxBy { (_, startedAt) -> startedAt }.first,
+                    count = uses.size,
+                    lastUsedAt = uses.maxOf { (_, startedAt) -> startedAt },
+                )
+            }
+            .sortedWith(
+                compareByDescending<TourActivityUsage> { it.count }
+                    .thenByDescending { it.lastUsedAt },
+            )
+
+    @Synchronized
     fun points(tourId: Long): List<TrackPoint> =
         readableDatabase.rawQuery(
             """
@@ -368,7 +422,7 @@ class TourStore(context: Context) :
     ): List<Tour> =
         readableDatabase.rawQuery(
             """
-            SELECT t.id, t.started_at, t.ended_at, t.distance_meters, COUNT(p.id)
+            SELECT t.id, t.started_at, t.ended_at, t.distance_meters, COUNT(p.id), t.activity
             FROM tours t
             LEFT JOIN track_points p ON p.tour_id = t.id
             ${where?.let { "WHERE $it" }.orEmpty()}
@@ -386,6 +440,7 @@ class TourStore(context: Context) :
                             endedAt = if (cursor.isNull(2)) null else cursor.getLong(2),
                             distanceMeters = cursor.getDouble(3),
                             pointCount = cursor.getInt(4),
+                            activity = cursor.getString(5),
                         ),
                     )
                 }
