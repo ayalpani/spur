@@ -30,6 +30,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -83,7 +84,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -1174,12 +1174,11 @@ private fun MapScreen(
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator(
+                    RotatingAsterisk(
                         modifier = Modifier
-                            .size(48.dp)
-                            .semantics { contentDescription = "Karte wird geladen" },
+                            .size(48.dp),
                         color = Ink,
-                        strokeWidth = 4.dp,
+                        contentDescription = "Karte wird geladen",
                     )
                 }
             }
@@ -1792,7 +1791,6 @@ private fun MapSurface(
     var pendingPhotoMoment by remember { mutableStateOf<MapMoment?>(null) }
     var pendingPhotoPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
-    var awaitingMapRender by remember { mutableStateOf(false) }
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
     var lastMapSettingsBearing by remember { mutableStateOf(defaultMapBearing) }
     val mapView = remember {
@@ -1841,7 +1839,6 @@ private fun MapSurface(
     }
 
     LaunchedEffect(isSatelliteView) {
-        awaitingMapRender = false
         currentOnMapReadyChanged(false)
         currentOnAlternateMapPreviewLoadingChanged(true)
         mapView.getMapAsync { map ->
@@ -1867,7 +1864,9 @@ private fun MapSurface(
                             defaultMapBearing = defaultMapBearing,
                         )
                     }
-                    awaitingMapRender = true
+                    mapView.postOnAnimation {
+                        currentOnMapReadyChanged(true)
+                    }
                 },
             )
         }
@@ -1958,14 +1957,6 @@ private fun MapSurface(
         var map: MapLibreMap? = null
         var isMapTouchActive = false
         var isCameraMoving = false
-        val renderedMapListener = MapView.OnDidFinishRenderingMapListener { fullyRendered ->
-            if (fullyRendered && awaitingMapRender) {
-                awaitingMapRender = false
-                currentOnMapReadyChanged(true)
-            }
-        }
-        mapView.addOnDidFinishRenderingMapListener(renderedMapListener)
-
         fun publishManualLocationPosition() {
             val readyMap = map ?: return
             manualLocationPosition = currentManualLocation?.let { location ->
@@ -2079,7 +2070,6 @@ private fun MapSurface(
         }
         onDispose {
             currentOnMapGestureActiveChanged(false)
-            mapView.removeOnDidFinishRenderingMapListener(renderedMapListener)
             mapView.setOnTouchListener(null)
             map?.removeOnCameraMoveStartedListener(moveStartedListener)
             map?.removeOnCameraMoveListener(moveListener)
@@ -2270,8 +2260,7 @@ private fun MapSurface(
 private fun PendingPhotoMarker(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .size(MomentMarkerWidth.dp, MomentMarkerHeight.dp)
-            .semantics { contentDescription = "Foto wird auf der Karte geladen" },
+            .size(MomentMarkerWidth.dp, MomentMarkerHeight.dp),
         contentAlignment = Alignment.TopCenter,
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -2304,14 +2293,46 @@ private fun PendingPhotoMarker(modifier: Modifier = Modifier) {
                 ),
             )
         }
-        CircularProgressIndicator(
+        RotatingAsterisk(
             modifier = Modifier
                 .padding(top = 15.dp)
                 .size(24.dp),
             color = MomentMarkerGreen,
-            strokeWidth = 3.dp,
+            contentDescription = "Foto wird geladen",
         )
     }
+}
+
+@Composable
+private fun RotatingAsterisk(
+    color: Color,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    val transition = rememberInfiniteTransition(label = "Rotating asterisk")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = 900,
+                easing = LinearEasing,
+            ),
+        ),
+        label = "Asterisk rotation",
+    )
+    LucideIcon(
+        paths = listOf(
+            "M12 6v12",
+            "M17.196 9 6.804 15",
+            "m6.804 9 10.392 6",
+        ),
+        color = color,
+        strokeWidth = LucideBoldStrokeWidth,
+        modifier = modifier
+            .graphicsLayer { rotationZ = rotation }
+            .semantics { this.contentDescription = contentDescription },
+    )
 }
 
 @Composable
