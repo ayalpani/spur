@@ -2894,7 +2894,12 @@ private fun PhotoMapPreview(
     Box(
         modifier = modifier
             .size(PhotoMapPreviewSize)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(
+                RoundedCornerShape(
+                    topStart = 16.dp,
+                    bottomStart = 16.dp,
+                ),
+            )
             .background(Mist),
         contentAlignment = Alignment.Center,
     ) {
