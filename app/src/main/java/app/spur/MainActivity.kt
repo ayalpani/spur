@@ -1830,6 +1830,8 @@ private fun MapSurface(
     }
     var pendingPhotoMoment by remember { mutableStateOf<MapMoment?>(null) }
     var pendingPhotoPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
+    var preparedMapMoments by remember { mutableStateOf<PreparedMapMoments?>(null) }
+    var mapStyleRevision by remember { mutableStateOf(0) }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
     var lastMapSettingsBearing by remember { mutableStateOf(defaultMapBearing) }
@@ -1892,8 +1894,8 @@ private fun MapSurface(
                 initialMapZoom = initialMapZoom,
                 defaultMapBearing = defaultMapBearing,
                 routePoints = currentRoutePoints,
-                mapMoments = currentMapMoments,
                 onLoaded = {
+                    mapStyleRevision++
                     hasLoadedMapStyle = true
                     previewCameraPosition = map.cameraPosition
                     if (currentIsFollowingLocation) {
@@ -2224,10 +2226,18 @@ private fun MapSurface(
     }
 
     LaunchedEffect(mapMoments, momentImageRevision) {
+        preparedMapMoments = withContext(Dispatchers.Default) {
+            prepareMapMoments(context.applicationContext, mapMoments)
+        }
+    }
+
+    LaunchedEffect(preparedMapMoments, mapStyleRevision) {
+        val prepared = preparedMapMoments ?: return@LaunchedEffect
+        if (mapStyleRevision == 0) return@LaunchedEffect
         mapView.getMapAsync { map ->
-            map.style?.showMapMoments(context, mapMoments)
+            map.style?.showMapMoments(prepared)
             val pending = pendingPhotoMoment
-            if (pending != null && mapMoments.any { it.id == pending.id }) {
+            if (pending != null && prepared.moments.any { it.id == pending.id }) {
                 pendingPhotoMoment = null
                 pendingPhotoPosition = null
             }
@@ -3130,7 +3140,6 @@ private fun setMapStyle(
     initialMapZoom: Double,
     defaultMapBearing: Double,
     routePoints: List<TrackPoint>,
-    mapMoments: List<MapMoment>,
     onLoaded: () -> Unit,
 ) {
     val cameraPosition = map.cameraPosition
@@ -3145,7 +3154,6 @@ private fun setMapStyle(
             defaultMapBearing = defaultMapBearing,
         )
         style.showTourRoute(routePoints)
-        style.showMapMoments(context, mapMoments)
         if (!centerOnLocation) {
             map.moveCamera(CameraUpdateFactory.newCameraPosition(cameraPosition))
         }
@@ -3162,10 +3170,16 @@ private fun setMapStyle(
     }
 }
 
-private fun Style.showMapMoments(
+private data class PreparedMapMoments(
+    val moments: List<MapMoment>,
+    val images: HashMap<String, android.graphics.Bitmap>,
+    val features: List<Feature>,
+)
+
+private fun prepareMapMoments(
     context: Context,
     moments: List<MapMoment>,
-) {
+): PreparedMapMoments {
     val images = HashMap<String, android.graphics.Bitmap>(moments.size * 3)
     val features = moments.mapIndexed { index, moment ->
         val imageId = MapMomentImagePrefix + moment.id
@@ -3183,6 +3197,17 @@ private fun Style.showMapMoments(
             addNumberProperty(MapMomentRepresentativeProperty, index)
         }
     }
+    return PreparedMapMoments(
+        moments = moments,
+        images = images,
+        features = features,
+    )
+}
+
+private fun Style.showMapMoments(prepared: PreparedMapMoments) {
+    val moments = prepared.moments
+    val images = prepared.images
+    val features = prepared.features
     if (images.isNotEmpty()) addImages(images)
 
     val source = getSourceAs<GeoJsonSource>(MapMomentSource)
