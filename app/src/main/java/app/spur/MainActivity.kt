@@ -239,6 +239,7 @@ private val StopRed = Color(0xFFE53935)
 private val MapPinRed = Color(0xFFEA4335)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
+private val MapControlGap = 10.dp
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MotionDurationDefaultMillis = 200
@@ -978,7 +979,7 @@ private fun MapScreen(
                     ) {
                         ShareIcon()
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(MapControlGap))
                 }
                 MapIconButton(
                     contentDescription = "Tour-History öffnen",
@@ -993,7 +994,7 @@ private fun MapScreen(
                     .align(Alignment.BottomStart)
                     .navigationBarsPadding()
                     .padding(start = 18.dp, bottom = 86.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(MapControlGap),
             ) {
                 MapStyleButton(
                     contentDescription = if (isSatelliteView) {
@@ -1039,7 +1040,7 @@ private fun MapScreen(
                     .padding(horizontal = 18.dp, vertical = 16.dp)
                     .fillMaxWidth()
                     .widthIn(max = 560.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(MapControlGap),
                 verticalAlignment = Alignment.Bottom,
             ) {
                 MapIconButton(
@@ -2430,11 +2431,11 @@ private fun PhotoDetailDialog(
                 }
                 Row(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
+                        .align(Alignment.BottomStart)
                         .navigationBarsPadding()
                         .padding(16.dp)
                         .graphicsLayer { alpha = controlsAlpha },
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(MapControlGap),
                 ) {
                     PhotoActionButton(
                         contentDescription = "Foto teilen",
@@ -2468,12 +2469,17 @@ private fun PhotoDetailDialog(
                     ) {
                         PhotoRotateLeftIcon()
                     }
-                    PhotoActionButton(
-                        contentDescription = "Foto schließen",
-                        onClick = ::dismissAnimated,
-                    ) {
-                        PhotoCloseIcon()
-                    }
+                }
+                PhotoActionButton(
+                    contentDescription = "Foto schließen",
+                    onClick = ::dismissAnimated,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .navigationBarsPadding()
+                        .padding(16.dp)
+                        .graphicsLayer { alpha = controlsAlpha },
+                ) {
+                    PhotoCloseIcon()
                 }
             }
         }
@@ -2484,11 +2490,12 @@ private fun PhotoDetailDialog(
 private fun PhotoActionButton(
     contentDescription: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     IconButton(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .size(56.dp)
             .semantics { this.contentDescription = contentDescription },
         colors = IconButtonDefaults.filledIconButtonColors(
