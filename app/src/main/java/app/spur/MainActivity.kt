@@ -1056,19 +1056,17 @@ private fun MapScreen(
                         "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
                         "M15 10a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
                     ),
-                    color = Color.Black,
+                    color = Ink,
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
                         .size(64.dp),
                 )
                 Text(
                     text = "Auf der Karte ablegen",
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    color = Ink,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = "Was möchtest du hier festhalten?",
-                    style = MaterialTheme.typography.bodyLarge,
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1448,8 +1446,10 @@ private fun MomentOption(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.aspectRatio(1f),
-        shape = RoundedCornerShape(20.dp),
+        modifier = modifier.height(56.dp),
+        shape = CircleShape,
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink),
+        border = BorderStroke(1.dp, Ink),
     ) {
         Text(
             text = label,
