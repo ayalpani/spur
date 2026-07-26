@@ -50,12 +50,21 @@ class StopSwipeTest {
             "1.234 m",
             activeTourPlayerText(tour, now = 3_662_000L, showTrackingTime = false),
         )
-        val trackingTime = activeTourPlayerText(
-            tour,
-            now = 3_662_000L,
-            showTrackingTime = true,
+        assertEquals(
+            "1h 1m 1s",
+            activeTourPlayerText(
+                tour,
+                now = 3_662_000L,
+                showTrackingTime = true,
+            ),
         )
-        assertTrue(trackingTime.startsWith("Seit "))
-        assertTrue(trackingTime.endsWith("1:01:01"))
+    }
+
+    @Test
+    fun playerDurationUsesCompactUnitNotation() {
+        assertEquals("2h 45m 34s", formatPlayerDuration(9_934_000L))
+        assertEquals("45m 34s", formatPlayerDuration(2_734_000L))
+        assertEquals("34s", formatPlayerDuration(34_000L))
+        assertEquals("0s", formatPlayerDuration(-1L))
     }
 }

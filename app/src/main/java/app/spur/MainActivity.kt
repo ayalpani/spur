@@ -5927,10 +5927,22 @@ internal fun activeTourPlayerText(
     showTrackingTime: Boolean,
 ): String =
     if (showTrackingTime) {
-        "Seit ${formatClock(tour.startedAt)} · ${formatDuration(now - tour.startedAt)}"
+        formatPlayerDuration(now - tour.startedAt)
     } else {
         formatMeters(tour.distanceMeters)
     }
+
+internal fun formatPlayerDuration(durationMillis: Long): String {
+    val totalSeconds = durationMillis.coerceAtLeast(0L) / 1_000
+    val hours = totalSeconds / 3_600
+    val minutes = (totalSeconds % 3_600) / 60
+    val seconds = totalSeconds % 60
+    return buildString {
+        if (hours > 0) append("${hours}h ")
+        if (hours > 0 || minutes > 0) append("${minutes}m ")
+        append("${seconds}s")
+    }
+}
 
 private fun formatClock(timestamp: Long): String =
     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(timestamp))
