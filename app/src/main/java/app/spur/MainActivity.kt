@@ -352,6 +352,27 @@ internal enum class MapControlColor(
         get() = if (color.luminance() > 0.3f) Ink else Color.White
 }
 
+private fun momentMarkerColor(type: MomentType): Color = when (type) {
+    MomentType.PHOTO -> MomentMarkerGreen
+    MomentType.VIDEO -> MapControlColor.BLUE.color
+    MomentType.VOICE -> MapControlColor.ORANGE.color
+    MomentType.EMOJI -> Ink
+}
+
+private val MomentPhotoIconPaths = listOf(
+    "M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z",
+    "M15 13a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+)
+private val MomentVideoIconPaths = listOf(
+    "m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5",
+    "M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2",
+)
+private val MomentSpeechIconPaths = listOf(
+    "M8.8 20v-4.1l1.9.2a2.3 2.3 0 0 0 2.164-2.1V8.3A5.37 5.37 0 0 0 2 8.25c0 2.8.656 3.054 1 4.55a5.77 5.77 0 0 1 .029 2.758L2 20",
+    "M19.8 17.8a7.5 7.5 0 0 0 .003-10.603",
+    "M17 15a3.5 3.5 0 0 0-.025-4.975",
+)
+
 internal enum class FeedbackNoticeKind(
     val background: Color,
     val foreground: Color,
@@ -1534,31 +1555,22 @@ private fun MapPage(
                     horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
                 ) {
                     MomentOption(
-                        label = "Sprache",
+                        label = "Foto",
+                        accentColor = momentMarkerColor(MomentType.PHOTO),
+                        icon = { MomentPhotoIcon() },
                         modifier = Modifier.weight(1f),
                     ) {
                         showMomentSheet = false
-                        voiceRecordingStartRequest = 0L
-                        showVoiceRecorder = true
+                        if (context.hasCameraPermission()) {
+                            showCamera = true
+                        } else {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
                     }
-                    MomentOption(
-                        label = "Emoji",
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        showMomentSheet = false
-                        showFeedbackNotice(
-                            FeedbackNoticeKind.PLACEHOLDER,
-                            "Emojimarker kommt als Nächstes.",
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(MomentSheetGridGap))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
-                ) {
                     MomentOption(
                         label = "Video",
+                        accentColor = momentMarkerColor(MomentType.VIDEO),
+                        icon = { MomentVideoIcon() },
                         modifier = Modifier.weight(1f),
                     ) {
                         showMomentSheet = false
@@ -1568,16 +1580,39 @@ private fun MapPage(
                             videoPermissionLauncher.launch(Manifest.permission.CAMERA)
                         }
                     }
+                }
+                Spacer(modifier = Modifier.height(MomentSheetGridGap))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
+                ) {
                     MomentOption(
-                        label = "Foto",
+                        label = "Sprache",
+                        accentColor = momentMarkerColor(MomentType.VOICE),
+                        icon = { MomentSpeechIcon() },
                         modifier = Modifier.weight(1f),
                     ) {
                         showMomentSheet = false
-                        if (context.hasCameraPermission()) {
-                            showCamera = true
-                        } else {
-                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                        }
+                        voiceRecordingStartRequest = 0L
+                        showVoiceRecorder = true
+                    }
+                    MomentOption(
+                        label = "Emoji",
+                        accentColor = momentMarkerColor(MomentType.EMOJI),
+                        containerColor = Mist,
+                        icon = {
+                            Text(
+                                text = "🙂",
+                                fontSize = 30.sp,
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        showMomentSheet = false
+                        showFeedbackNotice(
+                            FeedbackNoticeKind.PLACEHOLDER,
+                            "Emojimarker kommt als Nächstes.",
+                        )
                     }
                 }
             }
@@ -3054,21 +3089,35 @@ private fun CompassCircle() {
 @Composable
 private fun MomentOption(
     label: String,
+    accentColor: Color,
+    containerColor: Color = Ink,
+    icon: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.height(56.dp),
-        shape = CircleShape,
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink),
-        border = BorderStroke(1.dp, Ink),
+        modifier = modifier.height(88.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = containerColor,
+            contentColor = accentColor,
+        ),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.55f)),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleMedium,
-            fontSize = 24.sp,
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            icon()
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
@@ -3746,6 +3795,7 @@ private fun PendingMomentMarker(
     type: MomentType,
     modifier: Modifier = Modifier,
 ) {
+    val markerColor = momentMarkerColor(type)
     Box(
         modifier = modifier
             .size(MomentMarkerWidth.dp, MomentMarkerHeight.dp),
@@ -3754,7 +3804,7 @@ private fun PendingMomentMarker(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val scale = size.width / MomentMarkerWidth
             drawRoundRect(
-                color = MomentMarkerGreen,
+                color = markerColor,
                 topLeft = Offset(6f * scale, 2f * scale),
                 size = Size(50f * scale, 50f * scale),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(
@@ -3769,7 +3819,7 @@ private fun PendingMomentMarker(
                     lineTo(31f * scale, 57f * scale)
                     close()
                 },
-                color = MomentMarkerGreen,
+                color = markerColor,
             )
             drawRoundRect(
                 color = Color.White,
@@ -3785,7 +3835,7 @@ private fun PendingMomentMarker(
             modifier = Modifier
                 .padding(top = 15.dp)
                 .size(24.dp),
-            color = MomentMarkerGreen,
+            color = markerColor,
             contentDescription = when (type) {
                 MomentType.PHOTO -> "Foto wird geladen"
                 MomentType.VIDEO -> "Video wird geladen"
@@ -4872,7 +4922,7 @@ private fun Style.showMapMoments(prepared: PreparedMapMoments) {
                     textFont(arrayOf("Noto Sans Bold")),
                     textSize(13f),
                     textColor(android.graphics.Color.WHITE),
-                    textHaloColor(android.graphics.Color.rgb(35, 97, 74)),
+                    textHaloColor(Ink.toArgb()),
                     textHaloWidth(5f),
                     textOffset(arrayOf(1.45f, -3.8f)),
                     textAnchor(Property.TEXT_ANCHOR_CENTER),
@@ -5370,7 +5420,7 @@ private fun createMomentMarkerBitmap(
             val scale = context.resources.displayMetrics.density
             val canvas = android.graphics.Canvas(bitmap)
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-            paint.color = MomentMarkerGreen.toArgb()
+            paint.color = momentMarkerColor(moment.type).toArgb()
             paint.style = android.graphics.Paint.Style.FILL
 
             if (selected) {
@@ -5428,6 +5478,12 @@ private fun createMomentMarkerBitmap(
                 }
                 drawMarkerPhoto(canvas, paint, photoContent, photo, scale)
                 photo.recycle()
+            } else if (moment.type == MomentType.EMOJI) {
+                paint.color = Ink.toArgb()
+                paint.style = android.graphics.Paint.Style.FILL
+                paint.textAlign = android.graphics.Paint.Align.CENTER
+                paint.textSize = 28 * scale
+                canvas.drawText(moment.payload.ifBlank { "🙂" }, 31 * scale, 38 * scale, paint)
             } else {
                 paint.color = android.graphics.Color.rgb(24, 32, 28)
                 paint.style = android.graphics.Paint.Style.STROKE
@@ -5512,28 +5568,10 @@ private fun drawMomentGlyph(
     type: MomentType,
 ) {
     val paths = when (type) {
-        MomentType.PHOTO -> listOf(
-            "M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z",
-            "M15 13a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
-        )
-        MomentType.VIDEO -> listOf(
-            "m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5",
-            "M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2",
-        )
-        MomentType.VOICE -> listOf(
-            "M2 10v3",
-            "M6 6v11",
-            "M10 3v18",
-            "M14 8v7",
-            "M18 5v13",
-            "M22 10v3",
-        )
-        MomentType.EMOJI -> listOf(
-            "M22 12a10 10 0 1 1-20 0 10 10 0 1 1 20 0",
-            "M8 14s1.5 2 4 2 4-2 4-2",
-            "M9 9h.01",
-            "M15 9h.01",
-        )
+        MomentType.PHOTO -> MomentPhotoIconPaths
+        MomentType.VIDEO -> MomentVideoIconPaths
+        MomentType.VOICE -> MomentSpeechIconPaths
+        MomentType.EMOJI -> emptyList()
     }
 
     paint.style = android.graphics.Paint.Style.STROKE
@@ -6613,6 +6651,27 @@ private fun MapPinIcon(
     ),
     color = color,
     modifier = modifier,
+)
+
+@Composable
+private fun MomentPhotoIcon() = LucideIcon(
+    paths = MomentPhotoIconPaths,
+    strokeWidth = LucideBoldStrokeWidth,
+    modifier = Modifier.size(30.dp),
+)
+
+@Composable
+private fun MomentVideoIcon() = LucideIcon(
+    paths = MomentVideoIconPaths,
+    strokeWidth = LucideBoldStrokeWidth,
+    modifier = Modifier.size(30.dp),
+)
+
+@Composable
+private fun MomentSpeechIcon() = LucideIcon(
+    paths = MomentSpeechIconPaths,
+    strokeWidth = LucideBoldStrokeWidth,
+    modifier = Modifier.size(30.dp),
 )
 
 @Composable
