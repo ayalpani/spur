@@ -14,6 +14,22 @@ class MapControlColorTest {
     }
 
     @Test
+    fun blueDefaultsToYellowForegroundWhileOtherColorsKeepReadableDefaults() {
+        assertEquals(
+            MapControlColor.YELLOW,
+            defaultMapControlForeground(MapControlColor.BLUE),
+        )
+        assertEquals(
+            MapControlColor.WHITE,
+            defaultMapControlForeground(MapControlColor.GREEN),
+        )
+        assertEquals(
+            MapControlColor.BLACK,
+            defaultMapControlForeground(MapControlColor.YELLOW),
+        )
+    }
+
+    @Test
     fun playerColorsInvertTheSelectedMapControlColors() {
         val selected = MapControlColors(
             background = Color(0xFF2563EB),
@@ -22,10 +38,5 @@ class MapControlColorTest {
 
         assertEquals(Color.White, selected.inverted.background)
         assertEquals(Color(0xFF2563EB), selected.inverted.foreground)
-        assertEquals(Color.Black, MapControlColor.BLACK.colors.inverted.foreground)
-        assertEquals(
-            Color(0xFF7C3AED),
-            MapControlColor.VIOLET.colors.inverted.foreground,
-        )
     }
 }

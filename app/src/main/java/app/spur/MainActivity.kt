@@ -256,7 +256,7 @@ internal data class MapControlColors(
 
 internal enum class MapControlColor(
     val label: String,
-    val background: Color,
+    val color: Color,
 ) {
     BLACK("Schwarz", Color.Black),
     WHITE("Weiß", Color.White),
@@ -269,11 +269,8 @@ internal enum class MapControlColor(
     VIOLET("Violett", Color(0xFF7C3AED)),
     ;
 
-    val colors: MapControlColors
-        get() = MapControlColors(
-            background = background,
-            foreground = if (background.luminance() > 0.3f) Ink else Color.White,
-        )
+    val contrastColor: Color
+        get() = if (color.luminance() > 0.3f) Ink else Color.White
 }
 
 private val LocalMapControlColors = staticCompositionLocalOf {
@@ -337,6 +334,13 @@ internal fun mapRotationFromStored(value: String?): MapRotation =
 
 internal fun mapControlColorFromStored(value: String?): MapControlColor =
     MapControlColor.entries.firstOrNull { it.name == value } ?: MapControlColor.BLACK
+
+internal fun defaultMapControlForeground(background: MapControlColor): MapControlColor =
+    when {
+        background == MapControlColor.BLUE -> MapControlColor.YELLOW
+        background.color.luminance() > 0.3f -> MapControlColor.BLACK
+        else -> MapControlColor.WHITE
+    }
 
 internal fun nearestCompassRotation(current: Float, target: Float): Float {
     val delta = (target - current) % 360f
@@ -739,8 +743,11 @@ private fun MapScreen(
     var defaultMapRotation by remember {
         mutableStateOf(context.loadDefaultMapRotation())
     }
-    var mapControlColor by remember {
+    var mapControlBackground by remember {
         mutableStateOf(context.loadMapControlColor())
+    }
+    var mapControlForeground by remember {
+        mutableStateOf(context.loadMapControlForegroundColor(mapControlBackground))
     }
     var isMapGestureActive by remember { mutableStateOf(false) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -773,7 +780,11 @@ private fun MapScreen(
         }
     }
 
-    CompositionLocalProvider(LocalMapControlColors provides mapControlColor.colors) {
+    val mapControlColors = MapControlColors(
+        background = mapControlBackground.color,
+        foreground = mapControlForeground.color,
+    )
+    CompositionLocalProvider(LocalMapControlColors provides mapControlColors) {
         ModalNavigationDrawer(
             drawerState = drawerState,
             gesturesEnabled = false,
@@ -1131,9 +1142,13 @@ private fun MapScreen(
             defaultMapRotation = it
             context.saveDefaultMapRotation(it)
         }
-        val selectMapControlColor: (MapControlColor) -> Unit = {
-            mapControlColor = it
+        val selectMapControlBackground: (MapControlColor) -> Unit = {
+            mapControlBackground = it
             context.saveMapControlColor(it)
+        }
+        val selectMapControlForeground: (MapControlColor) -> Unit = {
+            mapControlForeground = it
+            context.saveMapControlForegroundColor(it)
         }
         ModalBottomSheet(
             onDismissRequest = { showSettingsSheet = false },
@@ -1145,6 +1160,11 @@ private fun MapScreen(
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 24.dp),
             ) {
+                MapControlColorPreview(
+                    colors = mapControlColors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(24.dp))
                 Text(
                     text = "Buttonfarbe",
                     style = MaterialTheme.typography.titleMedium,
@@ -1152,8 +1172,22 @@ private fun MapScreen(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 MapControlColorPicker(
-                    selectedColor = mapControlColor,
-                    onSelect = selectMapControlColor,
+                    label = "Buttonfarbe",
+                    selectedColor = mapControlBackground,
+                    onSelect = selectMapControlBackground,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "Icon- und Textfarbe",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                MapControlColorPicker(
+                    label = "Icon- und Textfarbe",
+                    selectedColor = mapControlForeground,
+                    onSelect = selectMapControlForeground,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(modifier = Modifier.height(28.dp))
@@ -1216,7 +1250,64 @@ private fun MapScreen(
 }
 
 @Composable
+private fun MapControlColorPreview(
+    colors: MapControlColors,
+    modifier: Modifier = Modifier,
+) {
+    val playerColors = colors.inverted
+    Surface(
+        modifier = modifier,
+        color = Mist,
+        shape = RoundedCornerShape(24.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(60.dp),
+                color = colors.background,
+                contentColor = colors.foreground,
+                shape = CircleShape,
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CompositionLocalProvider(
+                        LocalLucideStrokeWidth provides LucideBoldStrokeWidth,
+                    ) {
+                        MenuIcon()
+                    }
+                }
+            }
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(60.dp),
+                color = playerColors.background,
+                contentColor = playerColors.foreground,
+                shape = CircleShape,
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Tour starten",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun MapControlColorPicker(
+    label: String,
     selectedColor: MapControlColor,
     onSelect: (MapControlColor) -> Unit,
     modifier: Modifier = Modifier,
@@ -1237,15 +1328,15 @@ private fun MapControlColorPicker(
                         modifier = Modifier
                             .size(48.dp)
                             .semantics {
-                                contentDescription = "Buttonfarbe ${option.label}"
+                                contentDescription = "$label ${option.label}"
                                 this.selected = selected
                             },
                         shape = CircleShape,
-                        color = option.background,
+                        color = option.color,
                         border = BorderStroke(
                             width = if (selected) 3.dp else 1.dp,
                             color = if (selected) {
-                                option.colors.foreground
+                                option.contrastColor
                             } else {
                                 Ink.copy(alpha = 0.18f)
                             },
@@ -1258,7 +1349,7 @@ private fun MapControlColorPicker(
                             ) {
                                 LucideIcon(
                                     paths = listOf("M20 6 9 17l-5-5"),
-                                    color = option.colors.foreground,
+                                    color = option.contrastColor,
                                 )
                             }
                         }
@@ -2526,6 +2617,7 @@ private const val MapSettingsPreferences = "map-settings"
 private const val DefaultZoomPreference = "default-zoom"
 private const val DefaultRotationPreference = "default-rotation"
 private const val MapControlColorPreference = "map-control-color"
+private const val MapControlForegroundColorPreference = "map-control-foreground-color"
 
 private fun Context.loadDefaultMapZoom(): Double =
     getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
@@ -2562,6 +2654,23 @@ private fun Context.saveMapControlColor(color: MapControlColor) {
     getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
         .edit()
         .putString(MapControlColorPreference, color.name)
+        .apply()
+}
+
+private fun Context.loadMapControlForegroundColor(
+    background: MapControlColor,
+): MapControlColor {
+    val stored = getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+        .getString(MapControlForegroundColorPreference, null)
+    return stored
+        ?.let(::mapControlColorFromStored)
+        ?: defaultMapControlForeground(background)
+}
+
+private fun Context.saveMapControlForegroundColor(color: MapControlColor) {
+    getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+        .edit()
+        .putString(MapControlForegroundColorPreference, color.name)
         .apply()
 }
 
