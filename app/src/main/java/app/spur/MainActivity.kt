@@ -2,6 +2,7 @@ package app.spur
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -9,6 +10,8 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.widget.Toast
@@ -45,6 +48,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -59,6 +63,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -143,6 +148,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
+import coil3.compose.AsyncImage
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -189,6 +195,7 @@ import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
@@ -773,7 +780,7 @@ private fun MapScreen(
                     isAlternateMapPreviewLoading = it
                 },
                 onMomentPlaced = { moment ->
-                    val updatedMoments = mapMoments + moment
+                    val updatedMoments = mapMoments + moment.copy(tourId = tour?.id)
                     context.saveMapMoments(updatedMoments)
                     mapMoments = updatedMoments
                     pendingPhoto = null
@@ -1809,9 +1816,28 @@ private fun PhotoDetailDialog(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
-    val photo = remember(photoPath) { decodePhotoDetail(context, photoPath) }
-    DisposableEffect(photo) {
-        onDispose { photo?.recycle() }
+    val scope = rememberCoroutineScope()
+
+    fun savePhoto() {
+        scope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                context.savePhotoToGallery(File(photoPath))
+            }
+            Toast.makeText(
+                context,
+                if (saved) "In Galerie gespeichert." else "Foto konnte nicht gespeichert werden.",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) savePhoto() else Toast.makeText(
+            context,
+            "Zum Speichern braucht Spur Zugriff auf deine Bilder.",
+            Toast.LENGTH_LONG,
+        ).show()
     }
 
     Dialog(
@@ -1826,14 +1852,12 @@ private fun PhotoDetailDialog(
                 .fillMaxSize()
                 .background(Color.Black),
         ) {
-            photo?.let {
-                Image(
-                    bitmap = it.asImageBitmap(),
-                    contentDescription = "Foto in Vollbildansicht",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            ZoomableAsyncImage(
+                model = File(photoPath),
+                contentDescription = "Zoombares Foto in Vollbildansicht",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier
@@ -1851,9 +1875,85 @@ private fun PhotoDetailDialog(
                     contentDescription = "Foto schließen",
                 )
             }
+            Button(
+                onClick = {
+                    if (
+                        Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        storagePermissionLauncher.launch(
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                        )
+                    } else {
+                        savePhoto()
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(20.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White,
+                    contentColor = Ink,
+                ),
+            ) {
+                Text("In Galerie speichern")
+            }
         }
     }
 }
+
+@Suppress("DEPRECATION")
+private fun Context.savePhotoToGallery(source: File): Boolean = runCatching {
+    if (!source.isFile) return false
+    val resolver = contentResolver
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, source.name)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(
+                MediaStore.Images.Media.RELATIVE_PATH,
+                "${Environment.DIRECTORY_PICTURES}/Spur",
+            )
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: error("Could not create gallery entry")
+        try {
+            resolver.openOutputStream(uri)?.use { output ->
+                source.inputStream().use { input -> input.copyTo(output) }
+            } ?: error("Could not open gallery entry")
+            resolver.update(
+                uri,
+                ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) },
+                null,
+                null,
+            )
+        } catch (error: Throwable) {
+            resolver.delete(uri, null, null)
+            throw error
+        }
+    } else {
+        val directory = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+            "Spur",
+        ).apply { mkdirs() }
+        val destination = File(directory, source.name)
+        source.copyTo(destination, overwrite = true)
+        resolver.insert(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, destination.name)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                put(MediaStore.Images.Media.DATA, destination.absolutePath)
+            },
+        )
+    }
+    true
+}.getOrDefault(false)
 
 private fun shareActiveTour(context: Context) {
     val share = Intent(Intent.ACTION_SEND).apply {
@@ -2308,45 +2408,6 @@ private fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
         }
     }.getOrNull()
 
-private fun decodePhotoDetail(context: Context, path: String): android.graphics.Bitmap? =
-    runCatching {
-        val metrics = context.resources.displayMetrics
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-            android.graphics.ImageDecoder.decodeBitmap(
-                android.graphics.ImageDecoder.createSource(File(path)),
-            ) { decoder, info, _ ->
-                decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
-                val scale = minOf(
-                    1f,
-                    metrics.widthPixels.toFloat() / info.size.width,
-                    metrics.heightPixels.toFloat() / info.size.height,
-                )
-                decoder.setTargetSize(
-                    maxOf(1, (info.size.width * scale).toInt()),
-                    maxOf(1, (info.size.height * scale).toInt()),
-                )
-            }
-        } else {
-            val bounds = android.graphics.BitmapFactory.Options().apply {
-                inJustDecodeBounds = true
-            }
-            android.graphics.BitmapFactory.decodeFile(path, bounds)
-            var sampleSize = 1
-            while (
-                bounds.outWidth / sampleSize > metrics.widthPixels * 2 ||
-                bounds.outHeight / sampleSize > metrics.heightPixels * 2
-            ) {
-                sampleSize *= 2
-            }
-            android.graphics.BitmapFactory.decodeFile(
-                path,
-                android.graphics.BitmapFactory.Options().apply {
-                    inSampleSize = sampleSize
-                },
-            )
-        }
-    }.getOrNull()
-
 private fun drawMarkerPhoto(
     canvas: android.graphics.Canvas,
     paint: android.graphics.Paint,
@@ -2440,12 +2501,19 @@ private fun HistoryScreen(
     onEditTour: (Long) -> Unit,
     onDeleteTour: (Long) -> Unit,
 ) {
+    val context = LocalContext.current
     var tours by remember { mutableStateOf(emptyList<Tour>()) }
+    var mapMoments by remember { mutableStateOf(emptyList<MapMoment>()) }
     var selectedTour by remember { mutableStateOf<Tour?>(null) }
     var tourToDelete by remember { mutableStateOf<Tour?>(null) }
+    var selectedPhoto by remember { mutableStateOf<MapMoment?>(null) }
     BackHandler(onBack = onBack)
     LaunchedEffect(revision) {
-        tours = withContext(Dispatchers.IO) { store.tours() }
+        val (loadedTours, loadedMoments) = withContext(Dispatchers.IO) {
+            store.tours() to context.loadMapMoments()
+        }
+        tours = loadedTours
+        mapMoments = loadedMoments
     }
 
     Column(
@@ -2497,6 +2565,7 @@ private fun HistoryScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(tours, key = { it.id }) { tour ->
+                    val photos = photoMomentsForTour(mapMoments, tour)
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2507,29 +2576,40 @@ private fun HistoryScreen(
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         shape = RoundedCornerShape(20.dp),
                     ) {
-                        Row(
-                            modifier = Modifier.padding(18.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                        Column {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(18.dp)
+                                    .padding(bottom = if (photos.isEmpty()) 0.dp else 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = formatDate(tour.startedAt),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                    Text(
+                                        text = formatTourTime(tour),
+                                        modifier = Modifier.padding(top = 3.dp),
+                                        color = Ink.copy(alpha = 0.56f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
                                 Text(
-                                    text = formatDate(tour.startedAt),
+                                    text = formatKilometers(tour.distanceMeters),
+                                    color = Moss,
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Medium,
-                                )
-                                Text(
-                                    text = formatTourTime(tour),
-                                    modifier = Modifier.padding(top = 3.dp),
-                                    color = Ink.copy(alpha = 0.56f),
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
                                 )
                             }
-                            Text(
-                                text = formatKilometers(tour.distanceMeters),
-                                color = Moss,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
+                            if (photos.isNotEmpty()) {
+                                TourPhotoStrip(
+                                    photos = photos,
+                                    onOpen = { selectedPhoto = it },
+                                )
+                            }
                         }
                     }
                 }
@@ -2604,6 +2684,41 @@ private fun HistoryScreen(
                 }
             },
         )
+    }
+
+    selectedPhoto?.let { photo ->
+        PhotoDetailDialog(
+            photoPath = photo.payload,
+            onDismiss = { selectedPhoto = null },
+        )
+    }
+}
+
+@Composable
+private fun TourPhotoStrip(
+    photos: List<MapMoment>,
+    onOpen: (MapMoment) -> Unit,
+) {
+    LazyRow(
+        contentPadding = PaddingValues(
+            start = 18.dp,
+            end = 18.dp,
+            bottom = 18.dp,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(photos, key = { it.id }) { photo ->
+            AsyncImage(
+                model = File(photo.payload),
+                contentDescription = "Foto dieser Tour öffnen",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Mist)
+                    .clickable { onOpen(photo) },
+            )
+        }
     }
 }
 
