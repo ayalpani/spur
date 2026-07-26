@@ -11,10 +11,12 @@ import android.location.Address
 import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.widget.Toast
@@ -98,6 +100,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
@@ -840,6 +843,7 @@ private fun MapPage(
     var isStartingTour by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
+    var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAppearanceBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
@@ -878,6 +882,8 @@ private fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val homeAutoStartBottomSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val appearanceBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val directionBottomSheetState =
@@ -900,11 +906,17 @@ private fun MapPage(
         delay(LoaderContentFadeInDurationMillis.toLong())
         mapInitializationStarted = true
     }
+    LaunchedEffect(Unit) {
+        if (context.loadHomeAutoStartSettings().enabled) {
+            context.registerHomeExitGeofence()
+        }
+    }
     BackHandler(
         enabled = isTourOverview &&
             !showStartTourBottomSheet &&
             !showMomentSheet &&
             !showMainMenu &&
+            !showHomeAutoStartBottomSheet &&
             !showAppearanceBottomSheet &&
             !showDirectionBottomSheet &&
             !showAboutBottomSheet &&
@@ -1323,6 +1335,13 @@ private fun MapPage(
             sheetState = mainMenuState,
         ) {
             MainMenu(
+                onOpenHomeAutoStart = {
+                    scope.launch {
+                        mainMenuState.hide()
+                        showMainMenu = false
+                        showHomeAutoStartBottomSheet = true
+                    }
+                },
                 onOpenAppearance = {
                     scope.launch {
                         mainMenuState.hide()
@@ -1342,6 +1361,26 @@ private fun MapPage(
                         mainMenuState.hide()
                         showMainMenu = false
                         showAboutBottomSheet = true
+                    }
+                },
+            )
+        }
+    }
+
+    if (showHomeAutoStartBottomSheet) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                showHomeAutoStartBottomSheet = false
+                showMainMenu = true
+            },
+            sheetState = homeAutoStartBottomSheetState,
+        ) {
+            HomeAutoStartBottomSheet(
+                onBack = {
+                    scope.launch {
+                        homeAutoStartBottomSheetState.hide()
+                        showHomeAutoStartBottomSheet = false
+                        showMainMenu = true
                     }
                 },
             )
@@ -1551,6 +1590,248 @@ private fun MapPage(
 }
 
 @Composable
+private fun HomeAutoStartBottomSheet(
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var settings by remember { mutableStateOf(context.loadHomeAutoStartSettings()) }
+    var setupRequested by rememberSaveable { mutableStateOf(false) }
+    var candidateHome by remember { mutableStateOf<SpurCoordinate?>(null) }
+    var locating by remember { mutableStateOf(false) }
+    var needsBackgroundPermission by rememberSaveable { mutableStateOf(false) }
+    var message by rememberSaveable { mutableStateOf<String?>(null) }
+
+    fun disable() {
+        context.removeHomeExitGeofence()
+        settings = HomeAutoStartSettings(enabled = false, home = null)
+        context.saveHomeAutoStartSettings(settings)
+        setupRequested = false
+        candidateHome = null
+        needsBackgroundPermission = false
+        message = null
+    }
+
+    fun activate(home: SpurCoordinate) {
+        settings = HomeAutoStartSettings(enabled = true, home = home)
+        context.saveHomeAutoStartSettings(settings)
+        context.registerHomeExitGeofence()
+        setupRequested = false
+        needsBackgroundPermission = false
+        message = "Automatischer Tourstart ist aktiv."
+    }
+
+    val backgroundPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            candidateHome?.let(::activate)
+        } else {
+            message = "Ohne Hintergrundstandort bleibt die Einstellung aus."
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, needsBackgroundPermission, candidateHome) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (
+                event == Lifecycle.Event.ON_RESUME &&
+                needsBackgroundPermission &&
+                context.hasBackgroundLocationPermission()
+            ) {
+                candidateHome?.let(::activate)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        BottomSheetHeader(
+            title = "Tour beim Verlassen starten",
+            onBack = onBack,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Automatischer Tourstart",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            Switch(
+                checked = settings.enabled || setupRequested,
+                onCheckedChange = { enabled ->
+                    if (!enabled) {
+                        disable()
+                    } else {
+                        setupRequested = true
+                        locating = true
+                        message = null
+                        scope.launch {
+                            candidateHome = context.currentSpurLocation()
+                            locating = false
+                            if (candidateHome == null) {
+                                setupRequested = false
+                                message = "Dein aktueller Standort konnte nicht bestimmt werden."
+                            }
+                        }
+                    }
+                },
+            )
+        }
+
+        val shownHome = settings.home ?: candidateHome
+        shownHome?.let { home ->
+            HomeLocationPreview(home)
+        }
+
+        when {
+            locating -> Text("Aktueller Standort wird bestimmt.")
+            settings.enabled -> Text("Spur startet eine Tour, wenn du diesen Bereich verlässt.")
+            needsBackgroundPermission -> {
+                Text(
+                    "Damit das auch bei geschlossener App funktioniert, erlaube Spur in Android " +
+                        "den Standortzugriff „Immer zulassen“.",
+                )
+                Button(
+                    onClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:${context.packageName}"),
+                                ),
+                            )
+                        } else {
+                            backgroundPermissionLauncher.launch(
+                                Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = CircleShape,
+                ) {
+                    Text("Standortzugriff öffnen", fontWeight = FontWeight.Bold)
+                }
+            }
+            candidateHome != null -> {
+                Text(
+                    text = "Bist du gerade zu Hause?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Button(
+                    onClick = {
+                        val home = candidateHome ?: return@Button
+                        if (context.hasBackgroundLocationPermission()) {
+                            activate(home)
+                        } else {
+                            needsBackgroundPermission = true
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = CircleShape,
+                ) {
+                    Text("Ja, hier ist mein Zuhause", fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = {
+                        setupRequested = false
+                        candidateHome = null
+                        message = "Komm später wieder, wenn du zu Hause bist."
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = CircleShape,
+                ) {
+                    Text("Nein")
+                }
+            }
+        }
+
+        message?.let {
+            Text(
+                text = it,
+                color = Ink.copy(alpha = 0.68f),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeLocationPreview(
+    home: SpurCoordinate,
+) {
+    val context = LocalContext.current
+    val previewPixels = with(LocalDensity.current) { 180.dp.roundToPx() }
+    var preview by remember(home) { mutableStateOf<ImageBitmap?>(null) }
+
+    DisposableEffect(home, previewPixels) {
+        MapLibre.getInstance(context)
+        var disposed = false
+        val snapshotter = MapSnapshotter(
+            context,
+            MapSnapshotter.Options(previewPixels, previewPixels)
+                .withCameraPosition(
+                    org.maplibre.android.camera.CameraPosition.Builder()
+                        .target(LatLng(home.latitude, home.longitude))
+                        .zoom(PhotoMapPreviewZoom)
+                        .build(),
+                )
+                .withPixelRatio(1f)
+                .withLogo(false)
+                .withStyleBuilder(Style.Builder().fromUri(StreetMapStyle)),
+        )
+        snapshotter.start(
+            { snapshot ->
+                if (!disposed) preview = snapshot.bitmap.asImageBitmap()
+            },
+            { _ -> },
+        )
+        onDispose {
+            disposed = true
+            snapshotter.cancel()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Mist),
+        contentAlignment = Alignment.Center,
+    ) {
+        preview?.let {
+            Image(
+                bitmap = it,
+                contentDescription = "Karte deines aktuellen Standorts",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        HomeIcon(modifier = Modifier.size(32.dp))
+    }
+}
+
+@Composable
 private fun StartTourBottomSheet(
     activityUsage: List<TourActivityUsage>,
     onStartTour: (String) -> Unit,
@@ -1638,6 +1919,7 @@ private fun TourActivityIcon(activity: String) {
 
 @Composable
 private fun MainMenu(
+    onOpenHomeAutoStart: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenDirection: () -> Unit,
     onOpenAbout: () -> Unit,
@@ -1650,6 +1932,11 @@ private fun MainMenu(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         BottomSheetHeader(title = "Hauptmenü")
+        SheetMenuItem(
+            label = "Tour beim Verlassen starten",
+            leading = { HomeIcon() },
+            onClick = onOpenHomeAutoStart,
+        )
         SheetMenuItem(label = "Darstellung", onClick = onOpenAppearance)
         SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
         SheetMenuItem(label = "Über Spur", onClick = onOpenAbout)
@@ -5367,6 +5654,18 @@ private fun HistoryIcon() = LucideIcon(
         "M3 3v5h5",
         "M12 7v5l4 2",
     ),
+)
+
+@Composable
+private fun HomeIcon(
+    modifier: Modifier = Modifier.size(28.dp),
+) = LucideIcon(
+    paths = listOf(
+        "M3 9.5 12 2l9 7.5",
+        "M5 10v10h14V10",
+        "M9 20v-6h6v6",
+    ),
+    modifier = modifier,
 )
 
 @Composable
