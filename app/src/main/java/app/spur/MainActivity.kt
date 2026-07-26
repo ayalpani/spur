@@ -281,7 +281,8 @@ private const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
 private const val TrailStrokeAlpha = 0.5f
 private const val SignalButtonPulseAlpha = 0.42f
-private const val SignalButtonPulseStartScale = 0.62f
+private const val SignalButtonSecondaryPulseAlpha = 0.24f
+private const val SignalButtonWobbleDistanceDp = 7f
 private val DefaultTourActivities = listOf(
     "Inline-Skaten",
     "Spazieren",
@@ -291,8 +292,6 @@ private val DefaultTourActivities = listOf(
 )
 internal const val LucideBoldStrokeWidth = 3f
 private const val LucideRegularStrokeWidth = 2f
-private const val FollowLocationPulseMinScale = 0.78f
-private const val FollowLocationPulseMaxScale = 1.28f
 private const val ArashLinkedInUrl = "https://www.linkedin.com/in/arash-yalpani-3367258"
 private val MapControlElevation = 16.dp
 private val MapControlShadowColor = Color.Black
@@ -378,7 +377,6 @@ internal const val MomentMarkerWidth = 62
 private const val MomentMarkerHeight = 58
 private const val MomentMarkerStroke = 3f
 private const val MapPreviewPixels = 180
-private const val FollowLocationPulseDurationMillis = 2_300
 private const val MapLocationPulseDurationMillis = 3_000
 private const val TourRouteSource = "tour-route-source"
 private const val TourRouteBorderLayer = "tour-route-border-layer"
@@ -3112,9 +3110,15 @@ private fun MapSurface(
         }
     }
 
-    LaunchedEffect(trailColors.fill) {
-        mapView.getMapAsync { map ->
-            map.updateLocationPulseColor(currentTrailColors.fill)
+    LaunchedEffect(mapStyleRevision, trailColors.fill, manualLocation) {
+        if (mapStyleRevision == 0 || manualLocation != null) return@LaunchedEffect
+        while (true) {
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                mapView.getMapAsync { map ->
+                    map.restartLocationPulse(currentTrailColors.fill)
+                }
+            }
+            delay(MapLocationPulseDurationMillis.toLong())
         }
     }
 
@@ -4491,13 +4495,17 @@ private fun enableLocationTracking(
     }
 }
 
-private fun MapLibreMap.updateLocationPulseColor(color: Color) {
+private fun MapLibreMap.restartLocationPulse(color: Color) {
     val component = locationComponent
     if (!component.isLocationComponentActivated) return
     component.applyStyle(
         component.locationComponentOptions
             .toBuilder()
+            .pulseEnabled(true)
+            .pulseFadeEnabled(true)
             .pulseColor(color.toArgb())
+            .pulseSingleDuration(MapLocationPulseDurationMillis.toFloat())
+            .pulseInterpolator(AccelerateDecelerateInterpolator())
             .build(),
     )
 }
@@ -6016,64 +6024,63 @@ private fun PlusIcon() = LucideIcon(
 
 @Composable
 private fun FollowLocationIcon(selected: Boolean) {
-    val transition = rememberInfiniteTransition(label = "Location following signal")
     val pulseColor = LocalTrailColors.current.fill
-    val scale by transition.animateFloat(
-        initialValue = if (selected) FollowLocationPulseMinScale else 1f,
-        targetValue = if (selected) FollowLocationPulseMaxScale else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = FollowLocationPulseDurationMillis / 2,
-                easing = FastOutSlowInEasing,
+    val phase = if (selected) {
+        val transition = rememberInfiniteTransition(label = "Location following signal")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = (Math.PI * 2).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = MapLocationPulseDurationMillis,
+                    easing = LinearEasing,
+                ),
             ),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "Location following signal scale",
-    )
-    val backgroundProgress by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = if (selected) 1f else 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = MapLocationPulseDurationMillis,
-                easing = FastOutSlowInEasing,
-            ),
-        ),
-        label = "Location following background pulse",
-    )
+            label = "Location following background wobble",
+        ).value
+    } else {
+        0f
+    }
+    val wobbleDistance = with(LocalDensity.current) {
+        SignalButtonWobbleDistanceDp.dp.toPx()
+    }
     Box(
-        modifier = Modifier.size(52.dp),
+        modifier = Modifier
+            .size(52.dp)
+            .clip(CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .size(42.dp)
                 .graphicsLayer {
-                    val pulseScale = SignalButtonPulseStartScale +
-                        (1f - SignalButtonPulseStartScale) * backgroundProgress
-                    scaleX = pulseScale
-                    scaleY = pulseScale
-                    alpha = if (selected) {
-                        SignalButtonPulseAlpha * (1f - backgroundProgress)
-                    } else {
-                        0f
-                    }
+                    translationX = cos(phase) * wobbleDistance
+                    translationY = sin(phase) * wobbleDistance
+                    alpha = if (selected) SignalButtonPulseAlpha else 0f
                 }
                 .background(pulseColor, CircleShape),
         )
-        Box(modifier = Modifier.scale(scale)) {
-            LucideIcon(
-                paths = listOf(
-                    "M16.247 7.761a6 6 0 0 1 0 8.478",
-                    "M19.075 4.933a10 10 0 0 1 0 14.134",
-                    "M4.925 19.067a10 10 0 0 1 0-14.134",
-                    "M7.753 16.239a6 6 0 0 1 0-8.478",
-                    "M14 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
-                ),
-                color = LocalContentColor.current,
-                strokeWidth = LucideRegularStrokeWidth,
-            )
-        }
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .graphicsLayer {
+                    translationX = -sin(phase) * wobbleDistance
+                    translationY = cos(phase) * wobbleDistance
+                    alpha = if (selected) SignalButtonSecondaryPulseAlpha else 0f
+                }
+                .background(pulseColor, CircleShape),
+        )
+        LucideIcon(
+            paths = listOf(
+                "M16.247 7.761a6 6 0 0 1 0 8.478",
+                "M19.075 4.933a10 10 0 0 1 0 14.134",
+                "M4.925 19.067a10 10 0 0 1 0-14.134",
+                "M7.753 16.239a6 6 0 0 1 0-8.478",
+                "M14 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
+            ),
+            color = LocalContentColor.current,
+            strokeWidth = LucideRegularStrokeWidth,
+        )
     }
 }
 
