@@ -60,6 +60,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -255,6 +256,7 @@ private val TourRouteGlow = Color(0xFFFFFF00).copy(alpha = 0.5f)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private val MapControlGap = 10.dp
+private val StopSwipeHandleSize = 52.dp
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MotionDurationDefaultMillis = 200
@@ -4555,7 +4557,7 @@ private fun ActiveTourStopControl(
             shape = CircleShape,
         ) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val handleSize = 52.dp
+                val handleSize = StopSwipeHandleSize
                 val edgePadding = 4.dp
                 val maximum = with(density) {
                     (maxWidth - handleSize - edgePadding * 2).toPx().coerceAtLeast(0f)
@@ -4676,29 +4678,29 @@ private fun SwipeStopPrompt(
     swipePromptAlpha: Float,
     modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(
-                start = if (stopThresholdReached) 20.dp else 68.dp,
-                end = if (stopThresholdReached) 68.dp else 12.dp,
-            ),
-        contentAlignment = if (stopThresholdReached) {
-            Alignment.CenterStart
-        } else {
-            Alignment.Center
-        },
+    Row(
+        modifier = modifier.fillMaxSize(),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = if (stopThresholdReached) "Stop Tour" else "Swipe right",
-            modifier = Modifier.graphicsLayer {
-                alpha = if (stopThresholdReached) 1f else swipePromptAlpha
-            },
-            color = color,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-        )
+        if (!stopThresholdReached) Spacer(modifier = Modifier.width(StopSwipeHandleSize))
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = if (stopThresholdReached) "Stop Tour" else "Swipe right",
+                modifier = Modifier.graphicsLayer {
+                    alpha = if (stopThresholdReached) 1f else swipePromptAlpha
+                },
+                color = color,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+            )
+        }
+        if (stopThresholdReached) Spacer(modifier = Modifier.width(StopSwipeHandleSize))
     }
 }
 
