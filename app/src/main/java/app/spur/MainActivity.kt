@@ -154,6 +154,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
@@ -826,6 +827,8 @@ private fun MapScreen(
     var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
+    var showAppearanceSettingsSheet by rememberSaveable { mutableStateOf(false) }
+    var showDirectionSettingsSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
     var pendingPhoto by remember { mutableStateOf<File?>(null) }
@@ -859,6 +862,11 @@ private fun MapScreen(
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
     var isMapGestureActive by remember { mutableStateOf(false) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val settingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val appearanceSettingsSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val directionSettingsSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val followOwnLocation: () -> Unit = {
         isTourOverview = false
         isFollowingLocation = true
@@ -879,6 +887,8 @@ private fun MapScreen(
             drawerState.isClosed &&
             !showMomentSheet &&
             !showSettingsSheet &&
+            !showAppearanceSettingsSheet &&
+            !showDirectionSettingsSheet &&
             !showAboutSheet &&
             !showCamera &&
             photoDetail == null,
@@ -955,7 +965,7 @@ private fun MapScreen(
                 manualLocation = manualLocation,
                 initialMapZoom = initialMapZoom,
                 defaultMapBearing = defaultMapRotation.bearing,
-                mapSettingsVisible = showSettingsSheet,
+                mapSettingsVisible = showDirectionSettingsSheet,
                 mapMoments = mapMoments,
                 momentImageRevision = photoRevision,
                 routePoints = routePoints,
@@ -1311,22 +1321,43 @@ private fun MapScreen(
     }
 
     if (showSettingsSheet) {
-        val compassRotation = remember {
-            Animatable(-defaultMapRotation.bearing.toFloat())
+        ModalBottomSheet(
+            onDismissRequest = { showSettingsSheet = false },
+            sheetState = settingsSheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                BottomSheetHeader(title = "Einstellungen")
+                SheetMenuItem(
+                    label = "Darstellung",
+                    onClick = {
+                        scope.launch {
+                            settingsSheetState.hide()
+                            showSettingsSheet = false
+                            showAppearanceSettingsSheet = true
+                        }
+                    },
+                )
+                SheetMenuItem(
+                    label = "Himmelsrichtung",
+                    onClick = {
+                        scope.launch {
+                            settingsSheetState.hide()
+                            showSettingsSheet = false
+                            showDirectionSettingsSheet = true
+                        }
+                    },
+                )
+            }
         }
-        LaunchedEffect(defaultMapRotation) {
-            compassRotation.animateTo(
-                targetValue = nearestCompassRotation(
-                    current = compassRotation.value,
-                    target = -defaultMapRotation.bearing.toFloat(),
-                ),
-                animationSpec = tween(MapRotationAnimationMillis.toInt()),
-            )
-        }
-        val selectMapRotation: (MapRotation) -> Unit = {
-            defaultMapRotation = it
-            context.saveDefaultMapRotation(it)
-        }
+    }
+
+    if (showAppearanceSettingsSheet) {
         val selectMapControlBackground: (MapControlColor) -> Unit = {
             mapControlBackground = it
             context.saveMapControlColor(it)
@@ -1336,8 +1367,8 @@ private fun MapScreen(
             context.saveMapControlForegroundColor(it)
         }
         ModalBottomSheet(
-            onDismissRequest = { showSettingsSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            onDismissRequest = { showAppearanceSettingsSheet = false },
+            sheetState = appearanceSettingsSheetState,
         ) {
             Column(
                 modifier = Modifier
@@ -1345,6 +1376,16 @@ private fun MapScreen(
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 24.dp),
             ) {
+                BottomSheetHeader(
+                    title = "Darstellung wählen",
+                    onBack = {
+                        scope.launch {
+                            appearanceSettingsSheetState.hide()
+                            showAppearanceSettingsSheet = false
+                            showSettingsSheet = true
+                        }
+                    },
+                )
                 MapControlColorPreview(
                     colors = mapControlColors,
                     modifier = Modifier.fillMaxWidth(),
@@ -1375,7 +1416,47 @@ private fun MapScreen(
                     onSelect = selectMapControlForeground,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(modifier = Modifier.height(28.dp))
+            }
+        }
+    }
+
+    if (showDirectionSettingsSheet) {
+        val compassRotation = remember {
+            Animatable(-defaultMapRotation.bearing.toFloat())
+        }
+        LaunchedEffect(defaultMapRotation) {
+            compassRotation.animateTo(
+                targetValue = nearestCompassRotation(
+                    current = compassRotation.value,
+                    target = -defaultMapRotation.bearing.toFloat(),
+                ),
+                animationSpec = tween(MapRotationAnimationMillis.toInt()),
+            )
+        }
+        val selectMapRotation: (MapRotation) -> Unit = {
+            defaultMapRotation = it
+            context.saveDefaultMapRotation(it)
+        }
+        ModalBottomSheet(
+            onDismissRequest = { showDirectionSettingsSheet = false },
+            sheetState = directionSettingsSheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp),
+            ) {
+                BottomSheetHeader(
+                    title = "Himmelsrichtung wählen",
+                    onBack = {
+                        scope.launch {
+                            directionSettingsSheetState.hide()
+                            showDirectionSettingsSheet = false
+                            showSettingsSheet = true
+                        }
+                    },
+                )
                 MapRotationPicker(
                     compassRotation = compassRotation.value,
                     selectedRotation = defaultMapRotation,
@@ -1438,12 +1519,100 @@ private fun MapScreen(
                 focusedPhoto = it
             },
             onPhotoRotated = onPhotoRotated,
+            onPhotoDeleted = { deletedPhoto ->
+                scope.launch {
+                    val updatedMoments = context.deleteMapMoment(
+                        moment = deletedPhoto,
+                        moments = mapMoments,
+                    )
+                    if (updatedMoments == null) {
+                        Toast.makeText(
+                            context,
+                            "Das Bild konnte nicht gelöscht werden.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    } else {
+                        mapMoments = updatedMoments
+                        photoDetail = null
+                        photoDetailOrigin = null
+                        focusedPhoto = null
+                    }
+                }
+            },
             onDismiss = {
                 photoDetail = null
                 photoDetailOrigin = null
                 focusedPhoto = null
             },
         )
+    }
+}
+
+@Composable
+private fun BottomSheetHeader(
+    title: String,
+    onBack: (() -> Unit)? = null,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (onBack != null) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.align(Alignment.CenterStart),
+            ) {
+                BackIcon()
+            }
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun SheetMenuItem(
+    label: String,
+    onClick: () -> Unit,
+    destructive: Boolean = false,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: Boolean = true,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        color = Mist,
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            leading?.invoke()
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                color = if (destructive) StopRed else Ink,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            if (trailing) {
+                LucideIcon(
+                    paths = listOf("m9 18 6-6-6-6"),
+                    color = Ink,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
     }
 }
 
@@ -2404,6 +2573,7 @@ private fun SimulatedLocationPuck(modifier: Modifier = Modifier) {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun PhotoDetailDialog(
     photos: List<MapMoment>,
     initialPhotoId: String,
@@ -2411,6 +2581,7 @@ private fun PhotoDetailDialog(
     photoRevision: Long = 0L,
     onPhotoChanged: (MapMoment) -> Unit = {},
     onPhotoRotated: () -> Unit = {},
+    onPhotoDeleted: (MapMoment) -> Unit,
     onDismiss: () -> Unit,
 ) {
     if (photos.isEmpty()) return
@@ -2427,6 +2598,7 @@ private fun PhotoDetailDialog(
     val currentPhoto by rememberUpdatedState(selectedPhoto)
     val currentOnPhotoChanged by rememberUpdatedState(onPhotoChanged)
     val currentOnPhotoRotated by rememberUpdatedState(onPhotoRotated)
+    val currentOnPhotoDeleted by rememberUpdatedState(onPhotoDeleted)
     val rotationMutex = remember { Mutex() }
     var imageRevision by remember(photoRevision) { mutableLongStateOf(photoRevision) }
     var hasRotatedPhoto by remember { mutableStateOf(false) }
@@ -2437,6 +2609,12 @@ private fun PhotoDetailDialog(
     var openingThumbnail by remember(openOrigin) { mutableStateOf<ImageBitmap?>(null) }
     var isVisible by remember { mutableStateOf(false) }
     var isClosing by remember { mutableStateOf(false) }
+    var showPhotoActionsSheet by remember { mutableStateOf(false) }
+    var showDeletePhotoSheet by remember { mutableStateOf(false) }
+    val photoActionsSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val deletePhotoSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = false)
     var openingAnimationFinished by remember(openOrigin) {
         mutableStateOf(false)
     }
@@ -2448,6 +2626,20 @@ private fun PhotoDetailDialog(
         isVisible = false
         scope.launch {
             delay(MotionDurationDefaultMillis.toLong())
+            if (hasRotatedPhoto) currentOnPhotoRotated()
+            onDismiss()
+        }
+    }
+
+    fun deleteAnimated(photo: MapMoment) {
+        if (isClosing) return
+        isClosing = true
+        isVisible = false
+        scope.launch {
+            deletePhotoSheetState.hide()
+            showDeletePhotoSheet = false
+            delay(MotionDurationDefaultMillis.toLong())
+            currentOnPhotoDeleted(photo)
             if (hasRotatedPhoto) currentOnPhotoRotated()
             onDismiss()
         }
@@ -2504,6 +2696,19 @@ private fun PhotoDetailDialog(
             "Zum Speichern braucht Spur Zugriff auf deine Bilder.",
             Toast.LENGTH_LONG,
         ).show()
+    }
+    val requestSavePhoto: () -> Unit = {
+        if (
+            Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            savePhoto()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -2699,30 +2904,10 @@ private fun PhotoDetailDialog(
                             horizontalArrangement = Arrangement.spacedBy(MapControlGap),
                         ) {
                             PhotoActionButton(
-                                contentDescription = "Foto teilen",
-                                onClick = ::sharePhoto,
+                                contentDescription = "Bildaktionen öffnen",
+                                onClick = { showPhotoActionsSheet = true },
                             ) {
-                                ShareIcon()
-                            }
-                            PhotoActionButton(
-                                contentDescription = "Foto in Galerie speichern",
-                                onClick = {
-                                    if (
-                                        Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-                                        ContextCompat.checkSelfPermission(
-                                            context,
-                                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                                        ) != PackageManager.PERMISSION_GRANTED
-                                    ) {
-                                        storagePermissionLauncher.launch(
-                                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                                        )
-                                    } else {
-                                        savePhoto()
-                                    }
-                                },
-                            ) {
-                                PhotoDownloadIcon()
+                                PhotoMoreIcon()
                             }
                             PhotoActionButton(
                                 contentDescription = "Foto 90 Grad nach links drehen",
@@ -2742,6 +2927,107 @@ private fun PhotoDetailDialog(
                             PhotoCloseIcon()
                         }
                     }
+                }
+            }
+        }
+    }
+
+    if (showPhotoActionsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showPhotoActionsSheet = false },
+            sheetState = photoActionsSheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                BottomSheetHeader(title = "Bildaktionen")
+                SheetMenuItem(
+                    label = "Teilen",
+                    trailing = false,
+                    leading = { ShareIcon() },
+                    onClick = {
+                        scope.launch {
+                            photoActionsSheetState.hide()
+                            showPhotoActionsSheet = false
+                            sharePhoto()
+                        }
+                    },
+                )
+                SheetMenuItem(
+                    label = "In Galerie speichern",
+                    trailing = false,
+                    leading = { PhotoDownloadIcon() },
+                    onClick = {
+                        scope.launch {
+                            photoActionsSheetState.hide()
+                            showPhotoActionsSheet = false
+                            requestSavePhoto()
+                        }
+                    },
+                )
+                SheetMenuItem(
+                    label = "Bild löschen",
+                    destructive = true,
+                    trailing = false,
+                    leading = { PhotoDeleteIcon(color = StopRed) },
+                    onClick = {
+                        scope.launch {
+                            photoActionsSheetState.hide()
+                            showPhotoActionsSheet = false
+                            showDeletePhotoSheet = true
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    if (showDeletePhotoSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showDeletePhotoSheet = false },
+            sheetState = deletePhotoSheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                BottomSheetHeader(title = "Bild löschen")
+                Text(
+                    text = "Das Bild wird dauerhaft aus Spur und vom Gerät entfernt.",
+                    color = Ink.copy(alpha = 0.68f),
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Button(
+                    onClick = { deleteAnimated(currentPhoto) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = StopRed,
+                        contentColor = Color.White,
+                    ),
+                    shape = CircleShape,
+                ) {
+                    Text(
+                        text = "Bild endgültig löschen",
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                TextButton(
+                    onClick = { showDeletePhotoSheet = false },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Abbrechen", color = Ink)
                 }
             }
         }
@@ -2780,6 +3066,27 @@ private fun PhotoDownloadIcon() = LucideIcon(
         "m7 10 5 5 5-5",
         "M12 15V3",
     ),
+)
+
+@Composable
+private fun PhotoMoreIcon() = LucideIcon(
+    paths = listOf(
+        "M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2",
+        "M19 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2",
+        "M5 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2",
+    ),
+)
+
+@Composable
+private fun PhotoDeleteIcon(color: Color = LocalContentColor.current) = LucideIcon(
+    paths = listOf(
+        "M3 6h18",
+        "M8 6V4h8v2",
+        "M19 6l-1 14H6L5 6",
+        "M10 11v5",
+        "M14 11v5",
+    ),
+    color = color,
 )
 
 @Composable
@@ -3644,6 +3951,23 @@ private fun Context.saveMapMoments(moments: List<MapMoment>) {
         .apply()
 }
 
+private suspend fun Context.deleteMapMoment(
+    moment: MapMoment,
+    moments: List<MapMoment>,
+): List<MapMoment>? = withContext(Dispatchers.IO) {
+    val photoDirectory = File(filesDir, "moments/photos").canonicalFile
+    val photo = File(moment.payload).canonicalFile
+    if (photo.parentFile != photoDirectory) return@withContext null
+    if (photo.exists() && !photo.delete()) return@withContext null
+    val updatedMoments = moments.filterNot { it.id == moment.id }
+    saveMapMoments(updatedMoments)
+    getSharedPreferences(PhotoPlacePreferences, Context.MODE_PRIVATE)
+        .edit()
+        .remove(moment.id)
+        .apply()
+    updatedMoments
+}
+
 private fun Context.loadPhotoPlace(photoId: String): String? =
     getSharedPreferences(PhotoPlacePreferences, Context.MODE_PRIVATE)
         .getString(photoId, null)
@@ -4132,6 +4456,25 @@ private fun HistoryScreen(
             photoRevision = photoRevision,
             onPhotoChanged = { selectedPhoto = it },
             onPhotoRotated = onPhotoRotated,
+            onPhotoDeleted = { deletedPhoto ->
+                scope.launch {
+                    val updatedMoments = context.deleteMapMoment(
+                        moment = deletedPhoto,
+                        moments = mapMoments,
+                    )
+                    if (updatedMoments == null) {
+                        Toast.makeText(
+                            context,
+                            "Das Bild konnte nicht gelöscht werden.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    } else {
+                        mapMoments = updatedMoments
+                        selectedPhoto = null
+                        isPhotoDetailVisible = false
+                    }
+                }
+            },
             onDismiss = { isPhotoDetailVisible = false },
         )
     }
