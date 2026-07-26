@@ -134,7 +134,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -165,12 +164,22 @@ import org.maplibre.android.style.layers.PropertyFactory.circleColor
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
+import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
+import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
+import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
+import org.maplibre.android.style.layers.PropertyFactory.iconImage
+import org.maplibre.android.style.layers.PropertyFactory.iconPitchAlignment
+import org.maplibre.android.style.layers.PropertyFactory.iconRotationAlignment
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.layers.PropertyFactory.symbolZOrder
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.android.style.expressions.Expression
 import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import kotlinx.coroutines.launch
@@ -234,6 +243,11 @@ private const val TourRouteSource = "tour-route-source"
 private const val TourRouteLayer = "tour-route-layer"
 private const val SelectedTrackPointSource = "selected-track-point-source"
 private const val SelectedTrackPointLayer = "selected-track-point-layer"
+private const val MapMomentSource = "map-moment-source"
+private const val MapMomentLayer = "map-moment-layer"
+private const val MapMomentIdProperty = "moment-id"
+private const val MapMomentImageProperty = "moment-image"
+private const val MapMomentImagePrefix = "map-moment-"
 
 internal enum class MapRotation(val label: String, val bearing: Double) {
     NORTH("Norden", 0.0),
@@ -1253,6 +1267,7 @@ private fun MapSurface(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
+    val currentOnMomentClick by rememberUpdatedState(onMomentClick)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentOnFollowingInterrupted by rememberUpdatedState(onFollowingInterrupted)
     val currentOnAlternateMapPreviewChanged by rememberUpdatedState(
@@ -1266,9 +1281,6 @@ private fun MapSurface(
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
-    var markerPositions by remember {
-        mutableStateOf<Map<String, android.graphics.PointF>>(emptyMap())
-    }
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
@@ -1334,6 +1346,7 @@ private fun MapSurface(
                 initialMapZoom = initialMapZoom,
                 defaultMapBearing = defaultMapBearing,
                 routePoints = currentRoutePoints,
+                mapMoments = currentMapMoments,
                 onLoaded = {
                     hasLoadedMapStyle = true
                     previewCameraPosition = map.cameraPosition
@@ -1434,13 +1447,8 @@ private fun MapSurface(
     DisposableEffect(mapView) {
         var map: MapLibreMap? = null
 
-        fun publishMarkerPositions() {
+        fun publishManualLocationPosition() {
             val readyMap = map ?: return
-            markerPositions = currentMapMoments.associate { moment ->
-                moment.id to readyMap.projection.toScreenLocation(
-                    LatLng(moment.latitude, moment.longitude),
-                )
-            }
             manualLocationPosition = currentManualLocation?.let { location ->
                 readyMap.projection.toScreenLocation(
                     LatLng(location.latitude, location.longitude),
@@ -1449,7 +1457,7 @@ private fun MapSurface(
         }
 
         val moveListener = MapLibreMap.OnCameraMoveListener {
-            publishMarkerPositions()
+            if (currentManualLocation != null) publishManualLocationPosition()
         }
         var cameraMoveReason =
             MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
@@ -1464,7 +1472,7 @@ private fun MapSurface(
             }
         }
         val idleListener = MapLibreMap.OnCameraIdleListener {
-            publishMarkerPositions()
+            publishManualLocationPosition()
             previewCameraPosition = map?.cameraPosition
             if (shouldStopFollowing(cameraMoveReason)) {
                 map?.cameraPosition?.zoom?.let(context::saveDefaultMapZoom)
@@ -1482,19 +1490,32 @@ private fun MapSurface(
             )
             true
         }
+        val clickListener = MapLibreMap.OnMapClickListener { point ->
+            val readyMap = map ?: return@OnMapClickListener false
+            val momentId = readyMap.queryRenderedFeatures(
+                readyMap.projection.toScreenLocation(point),
+                MapMomentLayer,
+            ).firstOrNull()?.getStringProperty(MapMomentIdProperty)
+            val moment = currentMapMoments.firstOrNull { it.id == momentId }
+                ?: return@OnMapClickListener false
+            currentOnMomentClick(moment)
+            true
+        }
         mapView.getMapAsync { readyMap ->
             map = readyMap
             readyMap.addOnCameraMoveStartedListener(moveStartedListener)
             readyMap.addOnCameraMoveListener(moveListener)
             readyMap.addOnCameraIdleListener(idleListener)
             readyMap.addOnMapLongClickListener(longClickListener)
-            publishMarkerPositions()
+            readyMap.addOnMapClickListener(clickListener)
+            publishManualLocationPosition()
         }
         onDispose {
             map?.removeOnCameraMoveStartedListener(moveStartedListener)
             map?.removeOnCameraMoveListener(moveListener)
             map?.removeOnCameraIdleListener(idleListener)
             map?.removeOnMapLongClickListener(longClickListener)
+            map?.removeOnMapClickListener(clickListener)
         }
     }
 
@@ -1554,11 +1575,7 @@ private fun MapSurface(
 
     LaunchedEffect(mapMoments) {
         mapView.getMapAsync { map ->
-            markerPositions = mapMoments.associate { moment ->
-                moment.id to map.projection.toScreenLocation(
-                    LatLng(moment.latitude, moment.longitude),
-                )
-            }
+            map.style?.showMapMoments(context, mapMoments)
         }
     }
 
@@ -1602,8 +1619,6 @@ private fun MapSurface(
 
         val density = LocalDensity.current
         val manualPuckSizePx = with(density) { 52.dp.roundToPx() }
-        val markerWidthPx = with(density) { MomentMarkerWidth.dp.roundToPx() }
-        val markerHeightPx = with(density) { MomentMarkerHeight.dp.roundToPx() }
         manualLocationPosition?.let { position ->
             SimulatedLocationPuck(
                 modifier = Modifier.offset {
@@ -1612,29 +1627,6 @@ private fun MapSurface(
                         y = position.y.roundToInt() - manualPuckSizePx / 2,
                     )
                 },
-            )
-        }
-        mapMoments.forEach { moment ->
-            val position = markerPositions[moment.id] ?: return@forEach
-            val marker = remember(moment) {
-                createMomentMarkerBitmap(context, moment, selected = false).asImageBitmap()
-            }
-            Image(
-                bitmap = marker,
-                contentDescription = "Abgelegtes Foto auf der Karte",
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            x = position.x.roundToInt() - markerWidthPx / 2,
-                            y = position.y.roundToInt() - markerHeightPx,
-                        )
-                    }
-                    .size(
-                        width = MomentMarkerWidth.dp,
-                        height = MomentMarkerHeight.dp,
-                    )
-                    .zIndex(position.y)
-                    .clickable { onMomentClick(moment) },
             )
         }
     }
@@ -1728,6 +1720,7 @@ private fun setMapStyle(
     initialMapZoom: Double,
     defaultMapBearing: Double,
     routePoints: List<TrackPoint>,
+    mapMoments: List<MapMoment>,
     onLoaded: () -> Unit,
 ) {
     val cameraPosition = map.cameraPosition
@@ -1742,6 +1735,7 @@ private fun setMapStyle(
             defaultMapBearing = defaultMapBearing,
         )
         style.showTourRoute(routePoints)
+        style.showMapMoments(context, mapMoments)
         if (!centerOnLocation) {
             map.moveCamera(CameraUpdateFactory.newCameraPosition(cameraPosition))
         }
@@ -1755,6 +1749,42 @@ private fun setMapStyle(
         )
     } else {
         map.setStyle(StreetMapStyle, styleLoaded)
+    }
+}
+
+private fun Style.showMapMoments(
+    context: Context,
+    moments: List<MapMoment>,
+) {
+    val images = HashMap<String, android.graphics.Bitmap>(moments.size)
+    val features = moments.map { moment ->
+        val imageId = MapMomentImagePrefix + moment.id
+        images[imageId] = createMomentMarkerBitmap(context, moment, selected = false)
+        Feature.fromGeometry(
+            Point.fromLngLat(moment.longitude, moment.latitude),
+        ).apply {
+            addStringProperty(MapMomentIdProperty, moment.id)
+            addStringProperty(MapMomentImageProperty, imageId)
+        }
+    }
+    if (images.isNotEmpty()) addImages(images)
+
+    val source = getSourceAs<GeoJsonSource>(MapMomentSource)
+        ?: GeoJsonSource(MapMomentSource).also(::addSource)
+    source.setGeoJson(FeatureCollection.fromFeatures(features))
+
+    if (getLayer(MapMomentLayer) == null) {
+        addLayer(
+            SymbolLayer(MapMomentLayer, MapMomentSource).withProperties(
+                iconImage(Expression.get(MapMomentImageProperty)),
+                iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+                iconAllowOverlap(true),
+                iconIgnorePlacement(true),
+                iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
+            ),
+        )
     }
 }
 
