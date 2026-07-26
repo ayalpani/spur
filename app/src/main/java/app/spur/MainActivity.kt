@@ -267,8 +267,15 @@ private val MapPinRed = Color(0xFFEA4335)
 private val MomentMarkerGreen = Color(0xFF43A047)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
-private val MapControlGap = 10.dp
-private val MapControlSize = 60.dp
+private const val MapControlGapDp = 10
+private const val MapControlSizeDp = 60
+private const val MapControlHorizontalPaddingDp = 18
+private const val MapControlVerticalPaddingDp = 16
+private const val MapPlayerMinimumWidthDp = 180
+private val MapControlGap = MapControlGapDp.dp
+private val MapControlSize = MapControlSizeDp.dp
+private val MapControlHorizontalPadding = MapControlHorizontalPaddingDp.dp
+private val MapControlVerticalPadding = MapControlVerticalPaddingDp.dp
 private val SheetMenuTextSize = 18.sp
 private val StopSwipeHandleSize = 52.dp
 private val MapRotationOptionGap = 16.dp
@@ -461,6 +468,13 @@ internal fun shouldShowTourOverview(
     isTourActive: Boolean,
     routePointCount: Int,
 ): Boolean = isFollowingLocation && isTourActive && routePointCount > 0
+
+internal fun shouldStackMapPlayer(screenWidthDp: Int): Boolean =
+    screenWidthDp <
+        MapControlHorizontalPaddingDp * 2 +
+        MapControlSizeDp * 2 +
+        MapControlGapDp * 2 +
+        MapPlayerMinimumWidthDp
 
 internal fun shouldStopFollowing(cameraMoveReason: Int): Boolean =
     cameraMoveReason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE
@@ -874,6 +888,13 @@ private fun MapPage(
     onPhotoRotated: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val usesStackedMapPlayer = shouldStackMapPlayer(
+        LocalConfiguration.current.screenWidthDp,
+    )
+    val sideControlsBottomPadding = MapControlVerticalPadding +
+        MapControlSize +
+        MapControlGap +
+        if (usesStackedMapPlayer) MapControlSize + MapControlGap else 0.dp
     val scope = rememberCoroutineScope()
     var followRequest by rememberSaveable { mutableStateOf(0) }
     var tourOverviewRequest by rememberSaveable { mutableStateOf(0) }
@@ -1183,7 +1204,10 @@ private fun MapPage(
                 Column(
                     modifier = Modifier
                         .navigationBarsPadding()
-                        .padding(start = 18.dp, bottom = 86.dp),
+                        .padding(
+                            start = MapControlHorizontalPadding,
+                            bottom = sideControlsBottomPadding,
+                        ),
                     verticalArrangement = Arrangement.spacedBy(MapControlGap),
                 ) {
                     MapStyleButton(
@@ -1231,35 +1255,28 @@ private fun MapPage(
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
             ) {
-                Row(
-                    modifier = Modifier
-                        .navigationBarsPadding()
-                        .padding(horizontal = 18.dp, vertical = 16.dp)
-                        .fillMaxWidth()
-                        .widthIn(max = 560.dp),
-                    horizontalArrangement = Arrangement.spacedBy(MapControlGap),
-                    verticalAlignment = Alignment.Bottom,
-                ) {
+                val momentControl: @Composable () -> Unit = {
                     MapIconButton(
                         contentDescription = "Moment hinzufügen",
                         onClick = { showMomentSheet = true },
                     ) {
                         PlusIcon()
                     }
+                }
+                val playerControl: @Composable (Modifier) -> Unit = { modifier ->
                     if (isTourActive && tour != null) {
                         ActiveTourStopControl(
                             tour = tour,
                             now = now,
                             onStop = onEndTour,
-                            modifier = Modifier.weight(1f),
+                            modifier = modifier,
                         )
                     } else {
                         val controlColors = LocalMapControlColors.current.inverted
                         Button(
                             onClick = { showStartTourBottomSheet = true },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(60.dp)
+                            modifier = modifier
+                                .height(MapControlSize)
                                 .mapControlShadow(CircleShape),
                             shape = CircleShape,
                             colors = ButtonDefaults.buttonColors(
@@ -1282,6 +1299,8 @@ private fun MapPage(
                             )
                         }
                     }
+                }
+                val followControl: @Composable () -> Unit = {
                     MapIconButton(
                         contentDescription = when {
                             isTourOverview -> "Zur Standortverfolgung zurückkehren"
@@ -1305,6 +1324,39 @@ private fun MapPage(
                         },
                     ) {
                         FollowLocationIcon(selected = isFollowingLocation)
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(
+                            horizontal = MapControlHorizontalPadding,
+                            vertical = MapControlVerticalPadding,
+                        )
+                        .fillMaxWidth()
+                        .widthIn(max = 560.dp),
+                    verticalArrangement = Arrangement.spacedBy(MapControlGap),
+                ) {
+                    if (usesStackedMapPlayer) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            momentControl()
+                            followControl()
+                        }
+                        playerControl(Modifier.fillMaxWidth())
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(MapControlGap),
+                            verticalAlignment = Alignment.Bottom,
+                        ) {
+                            momentControl()
+                            playerControl(Modifier.weight(1f))
+                            followControl()
+                        }
                     }
                 }
             }

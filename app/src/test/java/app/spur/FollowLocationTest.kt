@@ -8,6 +8,13 @@ import org.maplibre.android.maps.MapLibreMap
 
 class FollowLocationTest {
     @Test
+    fun playerStacksOnlyBelowItsCalculatedMinimumWidth() {
+        assertTrue(shouldStackMapPlayer(screenWidthDp = 355))
+        assertFalse(shouldStackMapPlayer(screenWidthDp = 356))
+        assertFalse(shouldStackMapPlayer(screenWidthDp = 600))
+    }
+
+    @Test
     fun activeFollowingButtonOpensTourOverviewOnlyWhenRouteExists() {
         assertTrue(
             shouldShowTourOverview(
