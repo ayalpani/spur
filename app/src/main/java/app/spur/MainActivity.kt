@@ -2598,7 +2598,7 @@ private fun HistoryScreen(
                                     )
                                 }
                                 Text(
-                                    text = formatKilometers(tour.distanceMeters),
+                                    text = formatMeters(tour.distanceMeters),
                                     color = Moss,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
@@ -2635,7 +2635,7 @@ private fun HistoryScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "${formatTourTime(tour)} · ${formatKilometers(tour.distanceMeters)}",
+                    text = "${formatTourTime(tour)} · ${formatMeters(tour.distanceMeters)}",
                     color = Ink.copy(alpha = 0.62f),
                     style = MaterialTheme.typography.bodyLarge,
                 )
