@@ -194,9 +194,6 @@ private val FollowSignalPink = Color(0xFFD81B60)
 private val StopRed = Color(0xFFE53935)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
-private const val MinimumMapZoom = 12f
-private const val MaximumMapZoom = 20f
-private val MapSettingsSectionGap = 24.dp
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MapRotationAnimationMillis = 350L
@@ -634,9 +631,7 @@ private fun MapScreen(
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
     var manualLocation by remember { mutableStateOf(context.loadManualLocation()) }
-    var defaultMapZoom by remember {
-        mutableFloatStateOf(context.loadDefaultMapZoom())
-    }
+    val initialMapZoom = remember { context.loadDefaultMapZoom() }
     var defaultMapRotation by remember {
         mutableStateOf(context.loadDefaultMapRotation())
     }
@@ -702,7 +697,7 @@ private fun MapScreen(
                 isFollowingLocation = isFollowingLocation,
                 isSatelliteView = isSatelliteView,
                 manualLocation = manualLocation,
-                defaultMapZoom = defaultMapZoom.toDouble(),
+                initialMapZoom = initialMapZoom,
                 defaultMapBearing = defaultMapRotation.bearing,
                 mapSettingsVisible = showSettingsSheet,
                 mapMoments = mapMoments,
@@ -965,39 +960,11 @@ private fun MapScreen(
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 24.dp),
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Zoom",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = String.format(Locale.GERMANY, "%.1f", defaultMapZoom),
-                        color = Moss,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                Slider(
-                    value = defaultMapZoom,
-                    onValueChange = { value ->
-                        defaultMapZoom = (value * 2).roundToInt() / 2f
-                        context.saveDefaultMapZoom(defaultMapZoom)
-                    },
-                    valueRange = MinimumMapZoom..MaximumMapZoom,
-                    steps = 15,
-                    modifier = Modifier.fillMaxWidth(),
-                )
                 MapRotationPicker(
                     compassRotation = compassRotation.value,
                     selectedRotation = defaultMapRotation,
                     onSelect = selectMapRotation,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = MapSettingsSectionGap),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -1265,7 +1232,7 @@ private fun MapSurface(
     isFollowingLocation: Boolean,
     isSatelliteView: Boolean,
     manualLocation: SpurCoordinate?,
-    defaultMapZoom: Double,
+    initialMapZoom: Double,
     defaultMapBearing: Double,
     mapSettingsVisible: Boolean,
     mapMoments: List<MapMoment>,
@@ -1319,7 +1286,6 @@ private fun MapSurface(
 
     LaunchedEffect(
         mapSettingsVisible,
-        defaultMapZoom,
         defaultMapBearing,
     ) {
         val animateRotation = defaultMapBearing != lastMapSettingsBearing
@@ -1335,13 +1301,11 @@ private fun MapSurface(
                     } else {
                         0L
                     },
-                    defaultMapZoom = defaultMapZoom,
                     defaultMapBearing = defaultMapBearing,
                 )
             } else {
                 val update = CameraUpdateFactory.newCameraPosition(
                     org.maplibre.android.camera.CameraPosition.Builder(map.cameraPosition)
-                        .zoom(defaultMapZoom)
                         .bearing(defaultMapBearing)
                         .build(),
                 )
@@ -1364,7 +1328,7 @@ private fun MapSurface(
                 satellite = isSatelliteView,
                 centerOnLocation = !hasLoadedMapStyle,
                 manualLocation = manualLocation,
-                defaultMapZoom = defaultMapZoom,
+                initialMapZoom = initialMapZoom,
                 defaultMapBearing = defaultMapBearing,
                 routePoints = currentRoutePoints,
                 onLoaded = {
@@ -1375,7 +1339,6 @@ private fun MapSurface(
                             context = context,
                             manualLocation = currentManualLocation,
                             transitionDuration = 0L,
-                            defaultMapZoom = defaultMapZoom,
                             defaultMapBearing = defaultMapBearing,
                         )
                     }
@@ -1485,7 +1448,10 @@ private fun MapSurface(
         val moveListener = MapLibreMap.OnCameraMoveListener {
             publishMarkerPositions()
         }
+        var cameraMoveReason =
+            MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
         val moveStartedListener = MapLibreMap.OnCameraMoveStartedListener { reason ->
+            cameraMoveReason = reason
             if (shouldShowMapPreviewLoading(currentIsFollowingLocation, reason)) {
                 currentOnAlternateMapPreviewLoadingChanged(true)
             }
@@ -1497,6 +1463,11 @@ private fun MapSurface(
         val idleListener = MapLibreMap.OnCameraIdleListener {
             publishMarkerPositions()
             previewCameraPosition = map?.cameraPosition
+            if (shouldStopFollowing(cameraMoveReason)) {
+                map?.cameraPosition?.zoom?.let(context::saveDefaultMapZoom)
+            }
+            cameraMoveReason =
+                MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
         }
         val longClickListener = MapLibreMap.OnMapLongClickListener { point ->
             mapView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -1536,7 +1507,6 @@ private fun MapSurface(
                 context = context,
                 manualLocation = manualLocation,
                 transitionDuration = 500L,
-                defaultMapZoom = defaultMapZoom,
                 defaultMapBearing = defaultMapBearing,
             )
         }
@@ -1611,7 +1581,7 @@ private fun MapSurface(
                     topPaddingPixels = (104 * density).roundToInt(),
                     rightPaddingPixels = (40 * density).roundToInt(),
                     bottomPaddingPixels = (184 * density).roundToInt(),
-                    pointZoom = defaultMapZoom,
+                    pointZoom = initialMapZoom,
                     animated = true,
                 )
                 fittedTourId = id
@@ -1752,7 +1722,7 @@ private fun setMapStyle(
     satellite: Boolean,
     centerOnLocation: Boolean,
     manualLocation: SpurCoordinate?,
-    defaultMapZoom: Double,
+    initialMapZoom: Double,
     defaultMapBearing: Double,
     routePoints: List<TrackPoint>,
     onLoaded: () -> Unit,
@@ -1765,7 +1735,7 @@ private fun setMapStyle(
             style = style,
             centerOnLocation = centerOnLocation,
             manualLocation = manualLocation,
-            defaultMapZoom = defaultMapZoom,
+            initialMapZoom = initialMapZoom,
             defaultMapBearing = defaultMapBearing,
         )
         style.showTourRoute(routePoints)
@@ -1844,7 +1814,7 @@ private fun enableLocationTracking(
     style: Style,
     centerOnLocation: Boolean,
     manualLocation: SpurCoordinate?,
-    defaultMapZoom: Double,
+    initialMapZoom: Double,
     defaultMapBearing: Double,
 ) {
     if (!context.hasLocationPermission()) return
@@ -1873,7 +1843,7 @@ private fun enableLocationTracking(
             CameraUpdateFactory.newCameraPosition(
                 org.maplibre.android.camera.CameraPosition.Builder()
                     .target(LatLng(location.latitude, location.longitude))
-                    .zoom(defaultMapZoom)
+                    .zoom(initialMapZoom)
                     .bearing(defaultMapBearing)
                     .build(),
             ),
@@ -1885,14 +1855,13 @@ private fun MapLibreMap.followLocation(
     context: Context,
     manualLocation: SpurCoordinate?,
     transitionDuration: Long,
-    defaultMapZoom: Double,
     defaultMapBearing: Double,
 ) {
     if (manualLocation == null && locationComponent.isLocationComponentActivated) {
         locationComponent.setCameraMode(
             CameraMode.TRACKING,
             transitionDuration,
-            defaultMapZoom,
+            cameraPosition.zoom,
             defaultMapBearing,
             null,
             null,
@@ -1904,7 +1873,6 @@ private fun MapLibreMap.followLocation(
     val update = CameraUpdateFactory.newCameraPosition(
         org.maplibre.android.camera.CameraPosition.Builder(cameraPosition)
             .target(LatLng(location.latitude, location.longitude))
-            .zoom(defaultMapZoom)
             .bearing(defaultMapBearing)
             .build(),
     )
@@ -1994,15 +1962,15 @@ private const val MapSettingsPreferences = "map-settings"
 private const val DefaultZoomPreference = "default-zoom"
 private const val DefaultRotationPreference = "default-rotation"
 
-private fun Context.loadDefaultMapZoom(): Float =
+private fun Context.loadDefaultMapZoom(): Double =
     getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
         .getFloat(DefaultZoomPreference, DefaultMapZoom.toFloat())
-        .coerceIn(MinimumMapZoom, MaximumMapZoom)
+        .toDouble()
 
-private fun Context.saveDefaultMapZoom(zoom: Float) {
+private fun Context.saveDefaultMapZoom(zoom: Double) {
     getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
         .edit()
-        .putFloat(DefaultZoomPreference, zoom.coerceIn(MinimumMapZoom, MaximumMapZoom))
+        .putFloat(DefaultZoomPreference, zoom.toFloat())
         .apply()
 }
 
