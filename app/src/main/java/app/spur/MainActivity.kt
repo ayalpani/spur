@@ -2970,13 +2970,18 @@ private fun ActiveTourStopControl(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .height(timeCapHeight)
-                .mapControlShadow(timeCapShape),
-            color = controlColors.background.copy(alpha = 0.75f),
+                .mapControlShadow(timeCapShape)
+                .graphicsLayer { alpha = 0.75f },
+            color = controlColors.background,
             contentColor = controlColors.foreground,
             shape = timeCapShape,
         ) {
             Box(
-                modifier = Modifier.padding(horizontal = 18.dp),
+                modifier = Modifier.padding(
+                    start = 18.dp,
+                    end = 18.dp,
+                    bottom = capOverlap,
+                ),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
