@@ -108,6 +108,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -258,8 +259,8 @@ private const val MotionDurationDefaultMillis = 200
 private const val PendingPhotoRevealDelayMillis = 1_000L
 private const val DrawerMotionDurationMillis = 256
 private const val MapRotationAnimationMillis = 350L
-private val PhotoMapPreviewSize = 80.dp
-private const val PhotoMapPreviewZoom = 16.0
+private val PhotoMapPreviewSize = 96.dp
+private const val PhotoMapPreviewZoom = 17.5
 private const val TourRouteWidthPixels = 6f
 private const val TourRouteBorderPerSidePixels = 2f
 private const val TourRouteBorderWidthPixels =
@@ -2361,6 +2362,10 @@ private fun PhotoDetailDialog(
     var openingThumbnail by remember(openOrigin) { mutableStateOf<ImageBitmap?>(null) }
     var isVisible by remember { mutableStateOf(false) }
     var isClosing by remember { mutableStateOf(false) }
+    var openingAnimationFinished by remember(openOrigin) {
+        mutableStateOf(false)
+    }
+    val resolvedImageKeys = remember { mutableStateMapOf<String, Boolean>() }
 
     fun dismissAnimated() {
         if (isClosing) return
@@ -2428,6 +2433,10 @@ private fun PhotoDetailDialog(
 
     LaunchedEffect(Unit) {
         isVisible = true
+        if (openOrigin == null) {
+            delay(MotionDurationDefaultMillis.toLong())
+            openingAnimationFinished = true
+        }
     }
 
     LaunchedEffect(openOrigin) {
@@ -2445,6 +2454,7 @@ private fun PhotoDetailDialog(
                 easing = FastOutSlowInEasing,
             ),
         )
+        openingAnimationFinished = true
     }
 
     LaunchedEffect(pagerState, photos) {
@@ -2501,11 +2511,11 @@ private fun PhotoDetailDialog(
                 } else {
                     if (progress >= 1f) 1f else 0f
                 }
-                val controlsAlpha = if (openOrigin == null) {
-                    1f
-                } else {
-                    ((progress - 0.72f) / 0.28f).coerceIn(0f, 1f)
-                }
+                val selectedImageKey = "${selectedPhoto.id}:$imageRevision"
+                val controlsVisible =
+                    openingAnimationFinished &&
+                        resolvedImageKeys[selectedImageKey] == true &&
+                        !isClosing
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -2520,11 +2530,16 @@ private fun PhotoDetailDialog(
                     beyondViewportPageCount = 1,
                 ) { page ->
                     val photo = photos[page]
+                    val imageKey = "${photo.id}:$imageRevision"
                     val imageRequest = remember(photo.payload, imageRevision, openOrigin) {
                         ImageRequest.Builder(context)
                             .data(File(photo.payload))
                             .memoryCacheKey("${photo.payload}:$imageRevision")
                             .diskCachePolicy(CachePolicy.DISABLED)
+                            .listener(
+                                onError = { _, _ -> resolvedImageKeys[imageKey] = true },
+                                onSuccess = { _, _ -> resolvedImageKeys[imageKey] = true },
+                            )
                             .let { builder ->
                                 if (openOrigin == null) {
                                     builder.crossfade(MotionDurationDefaultMillis)
@@ -2586,65 +2601,72 @@ private fun PhotoDetailDialog(
                             .clip(RoundedCornerShape(7.dp)),
                     )
                 }
-                PhotoLocationMetadata(
-                    photo = selectedPhoto,
+                AnimatedVisibility(
+                    visible = controlsVisible,
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .statusBarsPadding()
-                        .padding(18.dp)
-                        .graphicsLayer { alpha = controlsAlpha },
-                )
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .navigationBarsPadding()
-                        .padding(16.dp)
-                        .graphicsLayer { alpha = controlsAlpha },
-                    horizontalArrangement = Arrangement.spacedBy(MapControlGap),
+                        .fillMaxSize(),
+                    enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                    exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
                 ) {
-                    PhotoActionButton(
-                        contentDescription = "Foto teilen",
-                        onClick = ::sharePhoto,
-                    ) {
-                        ShareIcon()
-                    }
-                    PhotoActionButton(
-                        contentDescription = "Foto in Galerie speichern",
-                        onClick = {
-                            if (
-                                Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-                                ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                                ) != PackageManager.PERMISSION_GRANTED
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        PhotoLocationMetadata(
+                            photo = selectedPhoto,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .statusBarsPadding()
+                                .padding(top = 18.dp, end = 18.dp),
+                        )
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .navigationBarsPadding()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(MapControlGap),
+                        ) {
+                            PhotoActionButton(
+                                contentDescription = "Foto teilen",
+                                onClick = ::sharePhoto,
                             ) {
-                                storagePermissionLauncher.launch(
-                                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                                )
-                            } else {
-                                savePhoto()
+                                ShareIcon()
                             }
-                        },
-                    ) {
-                        PhotoDownloadIcon()
+                            PhotoActionButton(
+                                contentDescription = "Foto in Galerie speichern",
+                                onClick = {
+                                    if (
+                                        Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                                        ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                        ) != PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        storagePermissionLauncher.launch(
+                                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                        )
+                                    } else {
+                                        savePhoto()
+                                    }
+                                },
+                            ) {
+                                PhotoDownloadIcon()
+                            }
+                            PhotoActionButton(
+                                contentDescription = "Foto 90 Grad nach links drehen",
+                                onClick = ::rotatePhotoLeft,
+                            ) {
+                                PhotoRotateLeftIcon()
+                            }
+                        }
+                        PhotoActionButton(
+                            contentDescription = "Foto schließen",
+                            onClick = ::dismissAnimated,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .navigationBarsPadding()
+                                .padding(16.dp),
+                        ) {
+                            PhotoCloseIcon()
+                        }
                     }
-                    PhotoActionButton(
-                        contentDescription = "Foto 90 Grad nach links drehen",
-                        onClick = ::rotatePhotoLeft,
-                    ) {
-                        PhotoRotateLeftIcon()
-                    }
-                }
-                PhotoActionButton(
-                    contentDescription = "Foto schließen",
-                    onClick = ::dismissAnimated,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .navigationBarsPadding()
-                        .padding(16.dp)
-                        .graphicsLayer { alpha = controlsAlpha },
-                ) {
-                    PhotoCloseIcon()
                 }
             }
         }
@@ -2726,14 +2748,14 @@ private fun PhotoLocationMetadata(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.Black.copy(alpha = 0.58f))
-            .padding(10.dp),
+            .background(Color.Black.copy(alpha = 0.58f)),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         PhotoMapPreview(photo = photo)
         Column(
-            modifier = Modifier.widthIn(max = 240.dp),
+            modifier = Modifier
+                .widthIn(max = 228.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
