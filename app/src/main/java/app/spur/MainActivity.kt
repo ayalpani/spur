@@ -1600,7 +1600,7 @@ private fun HomeAutoStartBottomSheet(
     var setupRequested by rememberSaveable { mutableStateOf(false) }
     var candidateHome by remember { mutableStateOf<SpurCoordinate?>(null) }
     var locating by remember { mutableStateOf(false) }
-    var needsBackgroundPermission by rememberSaveable { mutableStateOf(false) }
+    var needsBackgroundPermission by remember { mutableStateOf(false) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
 
     fun disable() {
@@ -1628,18 +1628,48 @@ private fun HomeAutoStartBottomSheet(
         if (granted) {
             candidateHome?.let(::activate)
         } else {
+            locating = false
+            setupRequested = false
+            candidateHome = null
+            needsBackgroundPermission = false
             message = "Ohne Hintergrundstandort bleibt die Einstellung aus."
         }
     }
 
-    DisposableEffect(lifecycleOwner, needsBackgroundPermission, candidateHome) {
+    fun requestBackgroundLocation() {
+        needsBackgroundPermission = true
+    }
+
+    LaunchedEffect(needsBackgroundPermission) {
+        if (!needsBackgroundPermission) return@LaunchedEffect
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.startActivity(
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:${context.packageName}"),
+                ),
+            )
+        } else {
+            backgroundPermissionLauncher.launch(
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+            )
+        }
+    }
+
+    val currentNeedsBackgroundPermission by rememberUpdatedState(needsBackgroundPermission)
+    val currentCandidateHome by rememberUpdatedState(candidateHome)
+    DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (
-                event == Lifecycle.Event.ON_RESUME &&
-                needsBackgroundPermission &&
-                context.hasBackgroundLocationPermission()
-            ) {
-                candidateHome?.let(::activate)
+            if (event == Lifecycle.Event.ON_RESUME && currentNeedsBackgroundPermission) {
+                if (context.hasBackgroundLocationPermission()) {
+                    currentCandidateHome?.let(::activate)
+                } else {
+                    locating = false
+                    setupRequested = false
+                    candidateHome = null
+                    needsBackgroundPermission = false
+                    message = "Ohne Hintergrundstandort bleibt die Einstellung aus."
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -1699,34 +1729,6 @@ private fun HomeAutoStartBottomSheet(
         when {
             locating -> Text("Aktueller Standort wird bestimmt.")
             settings.enabled -> Text("Spur startet eine Tour, wenn du diesen Bereich verlässt.")
-            needsBackgroundPermission -> {
-                Text(
-                    "Damit das auch bei geschlossener App funktioniert, erlaube Spur in Android " +
-                        "den Standortzugriff „Immer zulassen“.",
-                )
-                Button(
-                    onClick = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            context.startActivity(
-                                Intent(
-                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    Uri.parse("package:${context.packageName}"),
-                                ),
-                            )
-                        } else {
-                            backgroundPermissionLauncher.launch(
-                                Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-                            )
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = CircleShape,
-                ) {
-                    Text("Standortzugriff öffnen", fontWeight = FontWeight.Bold)
-                }
-            }
             candidateHome != null -> {
                 Text(
                     text = "Bist du gerade zu Hause?",
@@ -1739,7 +1741,7 @@ private fun HomeAutoStartBottomSheet(
                         if (context.hasBackgroundLocationPermission()) {
                             activate(home)
                         } else {
-                            needsBackgroundPermission = true
+                            requestBackgroundLocation()
                         }
                     },
                     modifier = Modifier
