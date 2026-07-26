@@ -53,7 +53,7 @@ private val CameraChrome = Color.Black.copy(alpha = 0.42f)
 
 @Composable
 internal fun CameraScreen(
-    showFeedbackNotice: (String) -> Unit,
+    showFeedbackNotice: ShowFeedbackNotice,
     onClose: () -> Unit,
     onPhotoAccepted: (File) -> Unit,
 ) {
@@ -101,7 +101,10 @@ internal fun CameraScreen(
                     provider.bindToLifecycle(lifecycleOwner, selector, preview, capture)
                     imageCapture = capture
                 }.onFailure {
-                    showFeedbackNotice("Die Kamera konnte nicht geöffnet werden.")
+                    showFeedbackNotice(
+                        FeedbackNoticeKind.ERROR,
+                        "Die Kamera konnte nicht geöffnet werden.",
+                    )
                 }
             },
             mainExecutor,
@@ -198,6 +201,7 @@ internal fun CameraScreen(
                                     isCapturing = false
                                     output.delete()
                                     showFeedbackNotice(
+                                        FeedbackNoticeKind.ERROR,
                                         "Das Foto konnte nicht gespeichert werden.",
                                     )
                                 }

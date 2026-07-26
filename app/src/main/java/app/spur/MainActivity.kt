@@ -352,8 +352,16 @@ internal enum class MapControlColor(
         get() = if (color.luminance() > 0.3f) Ink else Color.White
 }
 
-private val FeedbackNoticeBackground = MapControlColor.YELLOW.color
-private val FeedbackNoticeForeground = Ink
+internal enum class FeedbackNoticeKind(
+    val background: Color,
+    val foreground: Color,
+) {
+    PERMISSION(FollowGreen, Ink),
+    ERROR(StopRed, Color.White),
+    PLACEHOLDER(Mist, Ink),
+}
+
+internal typealias ShowFeedbackNotice = (FeedbackNoticeKind, String) -> Unit
 
 internal data class TrailColors(
     val fill: Color,
@@ -378,6 +386,7 @@ private data class PendingMapMoment(
 
 private data class FeedbackNotice(
     val id: Long,
+    val kind: FeedbackNoticeKind,
     val message: String,
 )
 
@@ -405,8 +414,8 @@ private fun FeedbackNoticeHost(
     ) {
         displayedNotice?.let { current ->
             Surface(
-                color = FeedbackNoticeBackground,
-                contentColor = FeedbackNoticeForeground,
+                color = current.kind.background,
+                contentColor = current.kind.foreground,
                 shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
                 shadowElevation = MapControlElevation,
                 modifier = Modifier
@@ -616,9 +625,9 @@ private fun SpurApp() {
     var isHistoryVisible by rememberSaveable { mutableStateOf(false) }
     var feedbackNotice by remember { mutableStateOf<FeedbackNotice?>(null) }
     var feedbackNoticeId by remember { mutableLongStateOf(0L) }
-    val showFeedbackNotice: (String) -> Unit = { message ->
+    val showFeedbackNotice: ShowFeedbackNotice = { kind, message ->
         feedbackNoticeId++
-        feedbackNotice = FeedbackNotice(feedbackNoticeId, message)
+        feedbackNotice = FeedbackNotice(feedbackNoticeId, kind, message)
     }
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -963,7 +972,7 @@ private fun MapPage(
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
-    showFeedbackNotice: (String) -> Unit = {},
+    showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
     photoRevision: Long = 0L,
     onPhotoRotated: () -> Unit = {},
 ) {
@@ -1096,7 +1105,10 @@ private fun MapPage(
         if (granted) {
             showCamera = true
         } else {
-            showFeedbackNotice("Für Fotos braucht Spur Zugriff auf die Kamera.")
+            showFeedbackNotice(
+                FeedbackNoticeKind.PERMISSION,
+                "Für Fotos braucht Spur Zugriff auf die Kamera.",
+            )
         }
     }
     val videoCaptureLauncher = rememberLauncherForActivityResult(
@@ -1118,7 +1130,10 @@ private fun MapPage(
         }.onFailure {
             pendingVideoCapturePath = null
             video.delete()
-            showFeedbackNotice("Auf diesem Gerät ist keine Videoaufnahme verfügbar.")
+            showFeedbackNotice(
+                FeedbackNoticeKind.ERROR,
+                "Auf diesem Gerät ist keine Videoaufnahme verfügbar.",
+            )
         }
     }
     val videoPermissionLauncher = rememberLauncherForActivityResult(
@@ -1127,7 +1142,10 @@ private fun MapPage(
         if (granted) {
             startVideoCapture()
         } else {
-            showFeedbackNotice("Für Videos braucht Spur Zugriff auf die Kamera.")
+            showFeedbackNotice(
+                FeedbackNoticeKind.PERMISSION,
+                "Für Videos braucht Spur Zugriff auf die Kamera.",
+            )
         }
     }
     val audioPermissionLauncher = rememberLauncherForActivityResult(
@@ -1138,7 +1156,10 @@ private fun MapPage(
             voiceRecordingStartRequest++
         } else {
             showVoiceRecorder = false
-            showFeedbackNotice("Für Sprache braucht Spur Zugriff auf das Mikrofon.")
+            showFeedbackNotice(
+                FeedbackNoticeKind.PERMISSION,
+                "Für Sprache braucht Spur Zugriff auf das Mikrofon.",
+            )
         }
     }
 
@@ -1186,7 +1207,10 @@ private fun MapPage(
                 onMomentPlacementFailed = { failedMoment ->
                     failedMoment.file.delete()
                     pendingMoment = null
-                    showFeedbackNotice("Der Standort ist noch nicht verfügbar.")
+                    showFeedbackNotice(
+                        FeedbackNoticeKind.ERROR,
+                        "Der Standort ist noch nicht verfügbar.",
+                    )
                 },
                 onMomentClick = { moment, origin ->
                     isFollowingLocation = false
@@ -1522,7 +1546,10 @@ private fun MapPage(
                         modifier = Modifier.weight(1f),
                     ) {
                         showMomentSheet = false
-                        showFeedbackNotice("Emojimarker kommt als Nächstes.")
+                        showFeedbackNotice(
+                            FeedbackNoticeKind.PLACEHOLDER,
+                            "Emojimarker kommt als Nächstes.",
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(MomentSheetGridGap))
@@ -1882,6 +1909,7 @@ private fun MapPage(
                                     .onFailure {
                                         showAboutBottomSheet = false
                                         showFeedbackNotice(
+                                            FeedbackNoticeKind.ERROR,
                                             "LinkedIn konnte nicht geöffnet werden.",
                                         )
                                     }
@@ -1958,7 +1986,10 @@ private fun MapPage(
                         moments = mapMoments,
                     )
                     if (updatedMoments == null) {
-                        showFeedbackNotice("Das Bild konnte nicht gelöscht werden.")
+                        showFeedbackNotice(
+                            FeedbackNoticeKind.ERROR,
+                            "Das Bild konnte nicht gelöscht werden.",
+                        )
                     } else {
                         mapMoments = updatedMoments
                         photoDetail = null
@@ -1987,7 +2018,7 @@ private fun MapPage(
 private fun VoiceRecorderBottomSheet(
     startRecordingRequest: Long,
     hasRecordPermission: Boolean,
-    showFeedbackNotice: (String) -> Unit = {},
+    showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
     onRequestPermission: () -> Unit,
     onRecordingAccepted: (File) -> Unit,
     onDismiss: () -> Unit,
@@ -2040,7 +2071,10 @@ private fun VoiceRecorderBottomSheet(
             runCatching { nextRecorder.release() }
             output.delete()
             onDismiss()
-            showFeedbackNotice("Die Sprachaufnahme konnte nicht gestartet werden.")
+            showFeedbackNotice(
+                FeedbackNoticeKind.ERROR,
+                "Die Sprachaufnahme konnte nicht gestartet werden.",
+            )
         }
     }
 
@@ -3819,7 +3853,7 @@ private fun PhotoDetailPage(
     initialPhotoId: String,
     openOrigin: Offset? = null,
     photoRevision: Long = 0L,
-    showFeedbackNotice: (String) -> Unit,
+    showFeedbackNotice: ShowFeedbackNotice,
     onPhotoChanged: (MapMoment) -> Unit = {},
     onPhotoRotated: () -> Unit = {},
     onPhotoDeleted: (MapMoment) -> Unit,
@@ -3891,14 +3925,22 @@ private fun PhotoDetailPage(
             val saved = withContext(Dispatchers.IO) {
                 context.savePhotoToGallery(File(currentPhoto.payload))
             }
-            if (!saved) showFeedbackNotice("Foto konnte nicht gespeichert werden.")
+            if (!saved) {
+                showFeedbackNotice(
+                    FeedbackNoticeKind.ERROR,
+                    "Foto konnte nicht gespeichert werden.",
+                )
+            }
         }
     }
 
     fun sharePhoto() {
         val shared = context.sharePhoto(File(currentPhoto.payload))
         if (!shared) {
-            showFeedbackNotice("Das Foto konnte nicht geteilt werden.")
+            showFeedbackNotice(
+                FeedbackNoticeKind.ERROR,
+                "Das Foto konnte nicht geteilt werden.",
+            )
         }
     }
 
@@ -3912,7 +3954,10 @@ private fun PhotoDetailPage(
                 imageRevision++
                 hasRotatedPhoto = true
             } else {
-                showFeedbackNotice("Das Foto konnte nicht gedreht werden.")
+                showFeedbackNotice(
+                    FeedbackNoticeKind.ERROR,
+                    "Das Foto konnte nicht gedreht werden.",
+                )
             }
         }
     }
@@ -3922,7 +3967,10 @@ private fun PhotoDetailPage(
         if (granted) {
             savePhoto()
         } else {
-            showFeedbackNotice("Zum Speichern braucht Spur Zugriff auf deine Bilder.")
+            showFeedbackNotice(
+                FeedbackNoticeKind.PERMISSION,
+                "Zum Speichern braucht Spur Zugriff auf deine Bilder.",
+            )
         }
     }
     val requestSavePhoto: () -> Unit = {
@@ -5513,7 +5561,7 @@ private fun HistoryPage(
     onOpenTour: (Long) -> Unit,
     onEditTour: (Long) -> Unit,
     onDeleteTour: (Long) -> Unit,
-    showFeedbackNotice: (String) -> Unit = {},
+    showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
     photoRevision: Long = 0L,
     onPhotoRotated: () -> Unit = {},
 ) {
@@ -5803,7 +5851,10 @@ private fun HistoryPage(
                         moments = mapMoments,
                     )
                     if (updatedMoments == null) {
-                        showFeedbackNotice("Das Bild konnte nicht gelöscht werden.")
+                        showFeedbackNotice(
+                            FeedbackNoticeKind.ERROR,
+                            "Das Bild konnte nicht gelöscht werden.",
+                        )
                     } else {
                         mapMoments = updatedMoments
                         selectedPhoto = null
