@@ -22,5 +22,10 @@ class MapControlColorTest {
 
         assertEquals(Color.White, selected.inverted.background)
         assertEquals(Color(0xFF2563EB), selected.inverted.foreground)
+        assertEquals(Color.Black, MapControlColor.BLACK.colors.inverted.foreground)
+        assertEquals(
+            Color(0xFF7C3AED),
+            MapControlColor.VIOLET.colors.inverted.foreground,
+        )
     }
 }

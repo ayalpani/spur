@@ -939,6 +939,7 @@ private fun MapScreen(
                     ) {
                         Text(
                             text = "Tour starten",
+                            color = controlColors.foreground,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
                         )
