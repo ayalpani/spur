@@ -76,6 +76,15 @@ risk; do not turn irrelevant items into ceremony.
 - Reuse existing components, tokens, icons, helpers, and domain logic. Apply
   DRY where duplication would create multiple sources of truth; do not add an
   abstraction merely to avoid a harmless repeated line.
+- Use only the existing named Spur color tokens for UI changes. Never introduce
+  an ad-hoc color value or apply an existing palette color to a new semantic
+  role merely because it looks suitable. If the palette has no clearly
+  established token for the requested role, stop and ask Arash to choose the
+  color before implementing it. Alpha variants of an established token are
+  allowed only when they preserve that token's existing semantic role.
+- Inspect every UI diff for new `Color(...)` values and for existing colors
+  reused in a new context. Treat either as unfinished unless Arash explicitly
+  approved the color decision.
 - Keep the change scoped, remove obsolete code and dependencies, preserve
   naming and architecture conventions, and inspect adjacent callers for the
   same root cause.

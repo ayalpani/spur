@@ -1595,7 +1595,7 @@ private fun SheetMenuItem(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),
-        color = Mist,
+        color = Sand,
         shape = RoundedCornerShape(16.dp),
     ) {
         Row(
