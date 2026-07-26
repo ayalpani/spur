@@ -1735,6 +1735,12 @@ private fun HomeAutoStartBottomSheet(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
+                if (!context.hasBackgroundLocationPermission()) {
+                    Text(
+                        text = "Nach deiner Bestätigung öffnen sich die Android-Einstellungen. " +
+                            "Wähle dort Berechtigungen → Standort → Immer zulassen.",
+                    )
+                }
                 Button(
                     onClick = {
                         val home = candidateHome ?: return@Button
