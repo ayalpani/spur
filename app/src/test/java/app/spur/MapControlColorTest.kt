@@ -6,8 +6,29 @@ import org.junit.Test
 
 class MapControlColorTest {
     @Test
-    fun paletteHasNinePersistentOptionsAndDefaultsToBlack() {
-        assertEquals(9, MapControlColor.entries.size)
+    fun paletteHasSixteenRainbowOrderedPersistentOptionsAndDefaultsToBlack() {
+        assertEquals(16, MapControlColor.entries.size)
+        assertEquals(
+            listOf(
+                MapControlColor.RED,
+                MapControlColor.ORANGE,
+                MapControlColor.AMBER,
+                MapControlColor.YELLOW,
+                MapControlColor.LIME,
+                MapControlColor.GREEN,
+                MapControlColor.TEAL,
+                MapControlColor.CYAN,
+                MapControlColor.BLUE,
+                MapControlColor.INDIGO,
+                MapControlColor.VIOLET,
+                MapControlColor.PINK,
+                MapControlColor.BROWN,
+                MapControlColor.GRAY,
+                MapControlColor.BLACK,
+                MapControlColor.WHITE,
+            ),
+            MapControlColor.entries,
+        )
         assertEquals(MapControlColor.BLUE, mapControlColorFromStored("BLUE"))
         assertEquals(MapControlColor.BLACK, mapControlColorFromStored("invalid"))
         assertEquals(MapControlColor.BLACK, mapControlColorFromStored(null))

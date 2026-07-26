@@ -312,15 +312,22 @@ internal enum class MapControlColor(
     val label: String,
     val color: Color,
 ) {
-    BLACK("Schwarz", Color.Black),
-    WHITE("Weiß", Color.White),
-    GRAY("Grau", Color(0xFF64748B)),
     RED("Rot", Color(0xFFE53935)),
     ORANGE("Orange", Color(0xFFF97316)),
+    AMBER("Bernstein", Color(0xFFF59E0B)),
     YELLOW("Gelb", Color(0xFFF4C430)),
+    LIME("Limette", Color(0xFF84CC16)),
     GREEN("Grün", Color(0xFF23614A)),
+    TEAL("Türkisgrün", Color(0xFF0D9488)),
+    CYAN("Cyan", Color(0xFF06B6D4)),
     BLUE("Blau", Color(0xFF2563EB)),
+    INDIGO("Indigo", Color(0xFF4F46E5)),
     VIOLET("Violett", Color(0xFF7C3AED)),
+    PINK("Pink", Color(0xFFDB2777)),
+    BROWN("Braun", Color(0xFF795548)),
+    GRAY("Grau", Color(0xFF64748B)),
+    BLACK("Schwarz", Color.Black),
+    WHITE("Weiß", Color.White),
     ;
 
     val contrastColor: Color
@@ -869,7 +876,8 @@ private fun MapPage(
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
     var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
-    var showAppearanceBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var showButtonColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var showTrailColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
@@ -915,7 +923,9 @@ private fun MapPage(
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val homeAutoStartBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val appearanceBottomSheetState =
+    val buttonColorsBottomSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val trailColorsBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val directionBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -948,7 +958,8 @@ private fun MapPage(
             !showMomentSheet &&
             !showMainMenu &&
             !showHomeAutoStartBottomSheet &&
-            !showAppearanceBottomSheet &&
+            !showButtonColorsBottomSheet &&
+            !showTrailColorsBottomSheet &&
             !showDirectionBottomSheet &&
             !showAboutBottomSheet &&
             !showCamera &&
@@ -1381,11 +1392,18 @@ private fun MapPage(
                         showHomeAutoStartBottomSheet = true
                     }
                 },
-                onOpenAppearance = {
+                onOpenButtonColors = {
                     scope.launch {
                         mainMenuState.hide()
                         showMainMenu = false
-                        showAppearanceBottomSheet = true
+                        showButtonColorsBottomSheet = true
+                    }
+                },
+                onOpenTrailColors = {
+                    scope.launch {
+                        mainMenuState.hide()
+                        showMainMenu = false
+                        showTrailColorsBottomSheet = true
                     }
                 },
                 onOpenDirection = {
@@ -1426,7 +1444,14 @@ private fun MapPage(
         }
     }
 
-    if (showAppearanceBottomSheet) {
+    if (showButtonColorsBottomSheet) {
+        val closeButtonColors: () -> Unit = {
+            scope.launch {
+                buttonColorsBottomSheetState.hide()
+                showButtonColorsBottomSheet = false
+                showMainMenu = true
+            }
+        }
         val selectMapControlBackground: (MapControlColor) -> Unit = {
             mapControlBackground = it
             context.saveMapControlColor(it)
@@ -1435,21 +1460,14 @@ private fun MapPage(
             mapControlForeground = it
             context.saveMapControlForegroundColor(it)
         }
-        val selectTrailFill: (MapControlColor) -> Unit = {
-            trailFillColor = it
-            context.saveTrailFillColor(it)
-        }
-        val selectTrailStroke: (MapControlColor) -> Unit = {
-            trailStrokeColor = it
-            context.saveTrailStrokeColor(it)
-        }
         ModalBottomSheet(
             onDismissRequest = {
-                showAppearanceBottomSheet = false
+                showButtonColorsBottomSheet = false
                 showMainMenu = true
             },
-            sheetState = appearanceBottomSheetState,
+            sheetState = buttonColorsBottomSheetState,
         ) {
+            BackHandler(onBack = closeButtonColors)
             Column(
                 modifier = Modifier
                     .navigationBarsPadding()
@@ -1458,14 +1476,8 @@ private fun MapPage(
                     .verticalScroll(rememberScrollState()),
             ) {
                 BottomSheetHeader(
-                    title = "Darstellung wählen",
-                    onBack = {
-                        scope.launch {
-                            appearanceBottomSheetState.hide()
-                            showAppearanceBottomSheet = false
-                            showMainMenu = true
-                        }
-                    },
+                    title = "Buttonfarben wählen",
+                    onBack = closeButtonColors,
                 )
                 MapControlColorPreview(
                     colors = mapControlColors,
@@ -1497,13 +1509,45 @@ private fun MapPage(
                     onSelect = selectMapControlForeground,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(modifier = Modifier.height(32.dp))
-                Text(
-                    text = "Trail",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
+            }
+        }
+    }
+
+    if (showTrailColorsBottomSheet) {
+        val closeTrailColors: () -> Unit = {
+            scope.launch {
+                trailColorsBottomSheetState.hide()
+                showTrailColorsBottomSheet = false
+                showMainMenu = true
+            }
+        }
+        val selectTrailFill: (MapControlColor) -> Unit = {
+            trailFillColor = it
+            context.saveTrailFillColor(it)
+        }
+        val selectTrailStroke: (MapControlColor) -> Unit = {
+            trailStrokeColor = it
+            context.saveTrailStrokeColor(it)
+        }
+        ModalBottomSheet(
+            onDismissRequest = {
+                showTrailColorsBottomSheet = false
+                showMainMenu = true
+            },
+            sheetState = trailColorsBottomSheetState,
+        ) {
+            BackHandler(onBack = closeTrailColors)
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 24.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                BottomSheetHeader(
+                    title = "Trailfarben wählen",
+                    onBack = closeTrailColors,
                 )
-                Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = "Füllfarbe",
                     style = MaterialTheme.typography.titleMedium,
@@ -2041,7 +2085,8 @@ private fun TourActivityIcon(activity: String) {
 @Composable
 private fun MainMenu(
     onOpenHomeAutoStart: () -> Unit,
-    onOpenAppearance: () -> Unit,
+    onOpenButtonColors: () -> Unit,
+    onOpenTrailColors: () -> Unit,
     onOpenDirection: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
@@ -2058,7 +2103,8 @@ private fun MainMenu(
             leading = { HomeIcon() },
             onClick = onOpenHomeAutoStart,
         )
-        SheetMenuItem(label = "Darstellung", onClick = onOpenAppearance)
+        SheetMenuItem(label = "Buttonfarben", onClick = onOpenButtonColors)
+        SheetMenuItem(label = "Trail", onClick = onOpenTrailColors)
         SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
         SheetMenuItem(label = "Über Spur", onClick = onOpenAbout)
     }
@@ -2199,7 +2245,7 @@ private fun MapControlColorPicker(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        MapControlColor.entries.chunked(3).forEach { options ->
+        MapControlColor.entries.chunked(4).forEach { options ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
