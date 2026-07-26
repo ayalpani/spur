@@ -286,6 +286,7 @@ private fun decodePreviewBitmap(file: File): Bitmap? =
 private fun CloseCameraIcon() = LucideIcon(
     paths = listOf("M18 6 6 18", "m6 6 12 12"),
     modifier = Modifier.size(24.dp),
+    strokeWidth = LucideBoldStrokeWidth,
 )
 
 @Composable
@@ -298,4 +299,5 @@ private fun SwitchCameraIcon() = LucideIcon(
         "m6 2 3 3-3 3",
     ),
     modifier = Modifier.size(28.dp),
+    strokeWidth = LucideBoldStrokeWidth,
 )

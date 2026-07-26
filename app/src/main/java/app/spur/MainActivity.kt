@@ -238,6 +238,7 @@ private const val TourRouteWidthPixels = 6f
 private const val TourRouteBorderPerSidePixels = 2f
 private const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
+internal const val LucideBoldStrokeWidth = 3f
 private val MapControlElevation = 16.dp
 private val MapControlShadowColor = Color.Black
 private const val MapControlShadowLayers = 3
@@ -278,6 +279,7 @@ internal enum class MapControlColor(
 private val LocalMapControlColors = staticCompositionLocalOf {
     MapControlColors(background = Color.White, foreground = Ink)
 }
+private val LocalLucideStrokeWidth = staticCompositionLocalOf { 2f }
 
 private fun Modifier.mapControlShadow(shape: Shape): Modifier {
     var result = this
@@ -1383,8 +1385,12 @@ private fun MapIconButton(
             containerColor = controlColors.background,
             contentColor = controlColors.foreground,
         ),
-        content = content,
-    )
+    ) {
+        CompositionLocalProvider(
+            LocalLucideStrokeWidth provides LucideBoldStrokeWidth,
+            content = content,
+        )
+    }
 }
 
 @Composable
@@ -2057,6 +2063,7 @@ private fun PhotoDetailDialog(
                 ) {
                     LucideIcon(
                         paths = listOf("M18 6 6 18", "m6 6 12 12"),
+                        strokeWidth = LucideBoldStrokeWidth,
                         modifier = Modifier
                             .size(24.dp)
                             .semantics { contentDescription = "Foto schließen" },
@@ -3605,6 +3612,7 @@ private fun LucideStopIcon(color: Color) = LucideIcon(
         "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2",
     ),
     color = color,
+    strokeWidth = LucideBoldStrokeWidth,
     modifier = Modifier
         .size(24.dp)
         .semantics { contentDescription = "Tour beenden" },
@@ -3718,6 +3726,7 @@ internal fun LucideIcon(
     paths: List<String>,
     color: Color = LocalContentColor.current,
     modifier: Modifier = Modifier.size(32.dp),
+    strokeWidth: Float = LocalLucideStrokeWidth.current,
 ) {
     val parsedPaths = paths.map { path ->
         remember(path) { ComposePathParser().parsePathString(path).toPath() }
@@ -3732,7 +3741,7 @@ internal fun LucideIcon(
                     path = path,
                     color = color,
                     style = Stroke(
-                        width = 2f,
+                        width = strokeWidth,
                         cap = StrokeCap.Round,
                         join = androidx.compose.ui.graphics.StrokeJoin.Round,
                     ),
@@ -3745,7 +3754,7 @@ internal fun LucideIcon(
 @Composable
 private fun BackIcon() = LucideIcon(
     paths = listOf("m12 19-7-7 7-7", "M19 12H5"),
-    color = Ink,
+    strokeWidth = LucideBoldStrokeWidth,
     modifier = Modifier
         .size(24.dp)
         .semantics { contentDescription = "Zurück zur Karte" },
