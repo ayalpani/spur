@@ -5902,7 +5902,7 @@ private fun SwipeStopPrompt(
                     alpha = if (stopThresholdReached) 1f else swipePromptAlpha
                 },
                 color = color,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
             )
