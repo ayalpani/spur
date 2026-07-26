@@ -180,6 +180,7 @@ import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
 import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
 import org.maplibre.android.style.layers.PropertyFactory.iconImage
+import org.maplibre.android.style.layers.PropertyFactory.iconOffset
 import org.maplibre.android.style.layers.PropertyFactory.iconPitchAlignment
 import org.maplibre.android.style.layers.PropertyFactory.iconRotationAlignment
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
@@ -298,7 +299,7 @@ private object SpurRoute {
 private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
 private const val SatelliteMapStyleJson =
     """{"version":8,"glyphs":"https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf","sources":{"satellite-source":{"type":"raster","tiles":["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],"tileSize":256,"attribution":"Esri, Maxar, Earthstar Geographics, and the GIS User Community"}},"layers":[{"id":"satellite-layer","type":"raster","source":"satellite-source"}]}"""
-private const val MomentMarkerWidth = 62
+internal const val MomentMarkerWidth = 62
 private const val MomentMarkerHeight = 58
 private const val MomentMarkerStroke = 3f
 private const val MapPreviewPixels = 180
@@ -401,6 +402,26 @@ internal fun clusterStackOffsets(pointCount: Int): List<Float> = when {
     pointCount == 2 -> listOf(4f, 8f)
     else -> listOf(0f, 4f, 8f)
 }
+
+internal fun overlappingMomentOffsets(moments: List<MapMoment>): Map<String, Offset> =
+    moments
+        .groupBy { it.latitude to it.longitude }
+        .values
+        .filter { it.size > 1 }
+        .flatMap { group ->
+            val sorted = group.sortedBy(MapMoment::id)
+            val spacing = MomentMarkerWidth + 8f
+            val radius = spacing / (2f * sin(PI.toFloat() / sorted.size))
+            val startAngle = if (sorted.size == 2) PI.toFloat() else -PI.toFloat() / 2f
+            sorted.mapIndexed { index, moment ->
+                val angle = startAngle + 2f * PI.toFloat() * index / sorted.size
+                moment.id to Offset(
+                    x = cos(angle) * radius,
+                    y = sin(angle) * radius,
+                )
+            }
+        }
+        .toMap()
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -2346,7 +2367,9 @@ private fun Style.showMapMoments(
         ).also(::addSource)
     source.setGeoJson(FeatureCollection.fromFeatures(features))
 
-    if (getLayer(MapMomentLayer) == null) {
+    val momentOffset = momentOffsetExpression(moments)
+    val momentLayer = getLayerAs<SymbolLayer>(MapMomentLayer)
+    if (momentLayer == null) {
         addLayer(
             SymbolLayer(MapMomentLayer, MapMomentSource)
                 .withFilter(
@@ -2354,6 +2377,7 @@ private fun Style.showMapMoments(
                 )
                 .withProperties(
                     iconImage(Expression.get(MapMomentImageProperty)),
+                    iconOffset(momentOffset),
                     iconAnchor(Property.ICON_ANCHOR_BOTTOM),
                     iconAllowOverlap(true),
                     iconIgnorePlacement(true),
@@ -2362,6 +2386,8 @@ private fun Style.showMapMoments(
                     symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
                 ),
         )
+    } else {
+        momentLayer.setProperties(iconOffset(momentOffset))
     }
 
     val clusterImage = clusterMomentImageExpression(moments)
@@ -2434,6 +2460,20 @@ private fun representativeClusterImageExpression(
 
 private fun clusterMomentImageId(moment: MapMoment, stackSize: Int): String =
     "$MapMomentClusterImagePrefix$stackSize-${moment.id}"
+
+private fun momentOffsetExpression(moments: List<MapMoment>): Expression {
+    val offsets = overlappingMomentOffsets(moments)
+    val center = Expression.literal(arrayOf(0f, 0f))
+    if (offsets.isEmpty()) return center
+    val stops = offsets.map { (momentId, offset) ->
+        Expression.stop(momentId, Expression.literal(arrayOf(offset.x, offset.y)))
+    }.toTypedArray()
+    return Expression.match(
+        Expression.get(MapMomentIdProperty),
+        center,
+        *stops,
+    )
+}
 
 private fun Style.showTourRoute(points: List<TrackPoint>) {
     val source = getSourceAs<GeoJsonSource>(TourRouteSource)

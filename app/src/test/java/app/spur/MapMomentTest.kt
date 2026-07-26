@@ -2,6 +2,7 @@ package app.spur
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MapMomentTest {
@@ -64,5 +65,31 @@ class MapMomentTest {
         assertEquals(listOf(4f, 8f), clusterStackOffsets(2))
         assertEquals(listOf(0f, 4f, 8f), clusterStackOffsets(3))
         assertEquals(listOf(0f, 4f, 8f), clusterStackOffsets(12))
+    }
+
+    @Test
+    fun momentsAtTheSameLocationFanOutAroundTheirLocation() {
+        val moments = (1..4).map { index ->
+            MapMoment(
+                id = "moment-$index",
+                type = MomentType.PHOTO,
+                latitude = 52.52,
+                longitude = 13.405,
+                payload = "/photo-$index.jpg",
+            )
+        } + MapMoment(
+            id = "somewhere-else",
+            type = MomentType.PHOTO,
+            latitude = 52.53,
+            longitude = 13.406,
+            payload = "/other.jpg",
+        )
+
+        val offsets = overlappingMomentOffsets(moments)
+
+        assertEquals(moments.take(4).map(MapMoment::id).toSet(), offsets.keys)
+        offsets.values.forEach { offset ->
+            assertTrue(offset.getDistance() > MomentMarkerWidth / 2f)
+        }
     }
 }
