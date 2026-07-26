@@ -776,6 +776,7 @@ private fun MapScreen(
     var pendingPhoto by remember { mutableStateOf<File?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var photoDetailOrigin by remember { mutableStateOf<Offset?>(null) }
+    var focusedPhoto by remember { mutableStateOf<MapMoment?>(null) }
     var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
     var manualLocation by remember { mutableStateOf(context.loadManualLocation()) }
     val initialMapZoom = remember { context.loadDefaultMapZoom() }
@@ -879,7 +880,7 @@ private fun MapScreen(
                 mapMoments = mapMoments,
                 routePoints = routePoints,
                 photoToPlace = pendingPhoto,
-                focusedMoment = photoDetail,
+                focusedMoment = focusedPhoto,
                 onAlternateMapPreviewChanged = { alternateMapPreview = it },
                 onAlternateMapPreviewLoadingChanged = {
                     isAlternateMapPreviewLoading = it
@@ -1290,10 +1291,14 @@ private fun MapScreen(
             photos = photos,
             initialPhotoId = moment.id,
             openOrigin = photoDetailOrigin,
-            onPhotoChanged = { photoDetail = it },
+            onPhotoChanged = {
+                photoDetail = it
+                focusedPhoto = it
+            },
             onDismiss = {
                 photoDetail = null
                 photoDetailOrigin = null
+                focusedPhoto = null
             },
         )
     }
@@ -2194,8 +2199,12 @@ private fun PhotoDetailDialog(
     }
 
     LaunchedEffect(pagerState, photos) {
+        var lastPage = initialPage
         snapshotFlow { pagerState.settledPage }.collect { page ->
-            photos.getOrNull(page)?.let(currentOnPhotoChanged)
+            if (page != lastPage) {
+                photos.getOrNull(page)?.let(currentOnPhotoChanged)
+                lastPage = page
+            }
         }
     }
 
@@ -2241,6 +2250,11 @@ private fun PhotoDetailDialog(
                 val detailAlpha = if (openOrigin == null) {
                     1f
                 } else {
+                    if (progress >= 1f) 1f else 0f
+                }
+                val controlsAlpha = if (openOrigin == null) {
+                    1f
+                } else {
                     ((progress - 0.72f) / 0.28f).coerceIn(0f, 1f)
                 }
                 Box(
@@ -2259,7 +2273,13 @@ private fun PhotoDetailDialog(
                     val imageRequest = remember(photo.payload) {
                         ImageRequest.Builder(context)
                             .data(File(photo.payload))
-                            .crossfade(MotionDurationDefaultMillis)
+                            .let { builder ->
+                                if (openOrigin == null) {
+                                    builder.crossfade(MotionDurationDefaultMillis)
+                                } else {
+                                    builder
+                                }
+                            }
                             .build()
                     }
                     ZoomableAsyncImage(
@@ -2306,7 +2326,6 @@ private fun PhotoDetailDialog(
                                     (openOrigin.x - availableWidth / 2f) * (1f - progress)
                                 translationY =
                                     (openOrigin.y - availableHeight / 2f) * (1f - progress)
-                                alpha = 1f - detailAlpha
                             }
                             .clip(RoundedCornerShape(7.dp)),
                     )
@@ -2318,7 +2337,7 @@ private fun PhotoDetailDialog(
                         .statusBarsPadding()
                         .padding(16.dp)
                         .size(56.dp)
-                        .graphicsLayer { alpha = detailAlpha },
+                        .graphicsLayer { alpha = controlsAlpha },
                     colors = IconButtonDefaults.filledIconButtonColors(
                         containerColor = Color.White,
                         contentColor = Ink,
@@ -2352,7 +2371,7 @@ private fun PhotoDetailDialog(
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
                         .padding(20.dp)
-                        .graphicsLayer { alpha = detailAlpha },
+                        .graphicsLayer { alpha = controlsAlpha },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.White,
                         contentColor = Ink,
