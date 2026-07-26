@@ -32,7 +32,7 @@ state.
 - Device: Samsung Galaxy A54, model `SM_A546B`
 - Transport: Wi-Fi ADB
 - Static Wi-Fi IP: `192.168.178.162`
-- Last known ADB port: `36493`
+- Last known ADB port: `33239`
 - Application ID: `app.spur`
 - Launcher: `app.spur/.MainActivity`
 
