@@ -261,6 +261,7 @@ private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MotionDurationDefaultMillis = 200
 private const val PendingPhotoRevealDelayMillis = 1_000L
+private const val MinimumMapLoadingDurationMillis = 3_000L
 private const val DrawerMotionDurationMillis = 256
 private const val MapRotationAnimationMillis = 350L
 private val PhotoMapPreviewSize = 96.dp
@@ -840,13 +841,19 @@ private fun MapScreen(
     var mapControlForeground by remember {
         mutableStateOf(context.loadMapControlForegroundColor(mapControlBackground))
     }
-    var isMapReady by remember { mutableStateOf(false) }
+    var isMapRendered by remember { mutableStateOf(false) }
+    var minimumMapLoadingTimeElapsed by remember { mutableStateOf(false) }
+    val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
     var isMapGestureActive by remember { mutableStateOf(false) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val followOwnLocation: () -> Unit = {
         isTourOverview = false
         isFollowingLocation = true
         followRequest++
+    }
+    LaunchedEffect(Unit) {
+        delay(MinimumMapLoadingDurationMillis)
+        minimumMapLoadingTimeElapsed = true
     }
     BackHandler(
         enabled = isTourOverview &&
@@ -975,7 +982,7 @@ private fun MapScreen(
                     isFollowingLocation = false
                     isTourOverview = false
                 },
-                onMapReadyChanged = { isMapReady = it },
+                onMapReadyChanged = { isMapRendered = it },
                 onMapGestureActiveChanged = { isMapGestureActive = it },
             )
 
@@ -1037,7 +1044,7 @@ private fun MapScreen(
                             "Satellitenansicht anzeigen"
                         },
                         onClick = {
-                            isMapReady = false
+                            isMapRendered = false
                             isAlternateMapPreviewLoading = true
                             alternateMapPreview = null
                             isSatelliteView = !isSatelliteView
@@ -1161,7 +1168,7 @@ private fun MapScreen(
                 enter = fadeIn(tween(MotionDurationDefaultMillis / 2)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Sand)
@@ -1172,13 +1179,21 @@ private fun MapScreen(
                                 }
                             }
                         },
-                    contentAlignment = Alignment.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
                 ) {
                     RotatingAsterisk(
                         modifier = Modifier
                             .size(128.dp),
                         color = Ink,
                         contentDescription = "Karte wird geladen",
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(
+                        text = "Spur",
+                        color = Ink,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Medium,
                     )
                 }
             }
