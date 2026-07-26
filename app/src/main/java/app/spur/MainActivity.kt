@@ -232,9 +232,8 @@ private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
+private const val MotionDurationDefaultMillis = 200
 private const val MapRotationAnimationMillis = 350L
-private const val PhotoDetailEnterMillis = 320
-private const val PhotoDetailExitMillis = 240
 private const val TourRouteWidthPixels = 6f
 private const val TourRouteBorderPerSidePixels = 2f
 private const val TourRouteBorderWidthPixels =
@@ -2131,7 +2130,7 @@ private fun PhotoDetailDialog(
         isClosing = true
         isVisible = false
         scope.launch {
-            delay(PhotoDetailExitMillis.toLong())
+            delay(MotionDurationDefaultMillis.toLong())
             onDismiss()
         }
     }
@@ -2179,23 +2178,23 @@ private fun PhotoDetailDialog(
             visible = isVisible,
             enter = fadeIn(
                 animationSpec = tween(
-                    durationMillis = PhotoDetailEnterMillis,
+                    durationMillis = MotionDurationDefaultMillis,
                     easing = FastOutSlowInEasing,
                 ),
             ) + slideInVertically(
                 animationSpec = tween(
-                    durationMillis = PhotoDetailEnterMillis,
+                    durationMillis = MotionDurationDefaultMillis,
                     easing = FastOutSlowInEasing,
                 ),
                 initialOffsetY = { height -> height / 10 },
             ),
             exit = fadeOut(
                 animationSpec = tween(
-                    durationMillis = PhotoDetailExitMillis,
+                    durationMillis = MotionDurationDefaultMillis,
                 ),
             ) + slideOutVertically(
                 animationSpec = tween(
-                    durationMillis = PhotoDetailExitMillis,
+                    durationMillis = MotionDurationDefaultMillis,
                     easing = FastOutSlowInEasing,
                 ),
                 targetOffsetY = { height -> height / 10 },
@@ -2215,7 +2214,7 @@ private fun PhotoDetailDialog(
                     val imageRequest = remember(photo.payload) {
                         ImageRequest.Builder(context)
                             .data(File(photo.payload))
-                            .crossfade(PhotoDetailEnterMillis)
+                            .crossfade(MotionDurationDefaultMillis)
                             .build()
                     }
                     ZoomableAsyncImage(
