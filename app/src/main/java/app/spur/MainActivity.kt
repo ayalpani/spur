@@ -119,8 +119,10 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -244,12 +246,14 @@ private val Moss = Color(0xFF23614A)
 private val FollowGreen = Color(0xFF43A873)
 private val StopRed = Color(0xFFE53935)
 private val MapPinRed = Color(0xFFEA4335)
+private val MomentMarkerGreen = Color(0xFF43A047)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private val MapControlGap = 10.dp
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MotionDurationDefaultMillis = 200
+private const val PendingPhotoRevealDelayMillis = 1_000L
 private const val DrawerMotionDurationMillis = 256
 private const val MapRotationAnimationMillis = 350L
 private val PhotoMapPreviewSize = 80.dp
@@ -932,8 +936,6 @@ private fun MapScreen(
                     context.saveMapMoments(updatedMoments)
                     mapMoments = updatedMoments
                     pendingPhoto = null
-                    Toast.makeText(context, "Foto auf der Karte abgelegt.", Toast.LENGTH_SHORT)
-                        .show()
                 },
                 onPhotoPlacementFailed = { photo ->
                     photo.delete()
@@ -1780,6 +1782,8 @@ private fun MapSurface(
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
     }
+    var pendingPhotoMoment by remember { mutableStateOf<MapMoment?>(null) }
+    var pendingPhotoPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
     var awaitingMapRender by remember { mutableStateOf(false) }
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
@@ -1964,8 +1968,18 @@ private fun MapSurface(
             }
         }
 
+        fun publishPendingPhotoPosition() {
+            val readyMap = map ?: return
+            pendingPhotoPosition = pendingPhotoMoment?.let { moment ->
+                readyMap.projection.toScreenLocation(
+                    LatLng(moment.latitude, moment.longitude),
+                )
+            }
+        }
+
         val moveListener = MapLibreMap.OnCameraMoveListener {
             if (currentManualLocation != null) publishManualLocationPosition()
+            if (pendingPhotoMoment != null) publishPendingPhotoPosition()
         }
         var cameraMoveReason =
             MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
@@ -1985,6 +1999,7 @@ private fun MapSurface(
             isCameraMoving = false
             if (!isMapTouchActive) currentOnMapGestureActiveChanged(false)
             publishManualLocationPosition()
+            publishPendingPhotoPosition()
             previewCameraPosition = map?.cameraPosition
             if (shouldStopFollowing(cameraMoveReason)) {
                 map?.cameraPosition?.zoom?.let(context::saveDefaultMapZoom)
@@ -2053,6 +2068,7 @@ private fun MapSurface(
             readyMap.addOnMapLongClickListener(longClickListener)
             readyMap.addOnMapClickListener(clickListener)
             publishManualLocationPosition()
+            publishPendingPhotoPosition()
         }
         onDispose {
             currentOnMapGestureActiveChanged(false)
@@ -2106,25 +2122,42 @@ private fun MapSurface(
 
     LaunchedEffect(photoToPlace) {
         val photo = photoToPlace ?: return@LaunchedEffect
-        mapView.getMapAsync { map ->
-            val location = map.currentSpurCoordinate(
-                context = context,
-                manual = manualLocation,
-            )
-            if (location == null) {
-                currentOnPhotoPlacementFailed(photo)
-            } else {
-                currentOnMomentPlaced(
-                    MapMoment(
-                        id = photo.nameWithoutExtension,
-                        type = MomentType.PHOTO,
-                        latitude = location.latitude,
-                        longitude = location.longitude,
-                        payload = photo.absolutePath,
-                    ),
-                )
+        val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
+            mapView.getMapAsync { readyMap ->
+                if (continuation.isActive) continuation.resume(readyMap)
             }
         }
+        val location = map.currentSpurCoordinate(
+            context = context,
+            manual = manualLocation,
+        )
+        if (location == null) {
+            pendingPhotoMoment = null
+            pendingPhotoPosition = null
+            currentOnPhotoPlacementFailed(photo)
+            return@LaunchedEffect
+        }
+        val moment = MapMoment(
+            id = photo.nameWithoutExtension,
+            type = MomentType.PHOTO,
+            latitude = location.latitude,
+            longitude = location.longitude,
+            payload = photo.absolutePath,
+        )
+        pendingPhotoMoment = moment
+        pendingPhotoPosition = map.projection.toScreenLocation(
+            LatLng(location.latitude, location.longitude),
+        )
+        map.locationComponent.cameraMode = CameraMode.NONE
+        currentOnFollowingInterrupted()
+        map.animateCamera(
+            CameraUpdateFactory.newLatLng(
+                LatLng(location.latitude, location.longitude),
+            ),
+            MotionDurationDefaultMillis,
+        )
+        delay(PendingPhotoRevealDelayMillis)
+        currentOnMomentPlaced(moment)
     }
 
     LaunchedEffect(focusedMoment?.id) {
@@ -2156,6 +2189,11 @@ private fun MapSurface(
     LaunchedEffect(mapMoments, momentImageRevision) {
         mapView.getMapAsync { map ->
             map.style?.showMapMoments(context, mapMoments)
+            val pending = pendingPhotoMoment
+            if (pending != null && mapMoments.any { it.id == pending.id }) {
+                pendingPhotoMoment = null
+                pendingPhotoPosition = null
+            }
         }
     }
 
@@ -2205,6 +2243,67 @@ private fun MapSurface(
                 },
             )
         }
+
+        val pendingMarkerWidthPx = with(density) { MomentMarkerWidth.dp.roundToPx() }
+        val pendingMarkerHeightPx = with(density) { MomentMarkerHeight.dp.roundToPx() }
+        pendingPhotoPosition?.let { position ->
+            PendingPhotoMarker(
+                modifier = Modifier.offset {
+                    IntOffset(
+                        x = position.x.roundToInt() - pendingMarkerWidthPx / 2,
+                        y = position.y.roundToInt() - pendingMarkerHeightPx,
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PendingPhotoMarker(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(MomentMarkerWidth.dp, MomentMarkerHeight.dp)
+            .semantics { contentDescription = "Foto wird auf der Karte geladen" },
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val scale = size.width / MomentMarkerWidth
+            drawRoundRect(
+                color = MomentMarkerGreen,
+                topLeft = Offset(6f * scale, 2f * scale),
+                size = Size(50f * scale, 50f * scale),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                    10f * scale,
+                    10f * scale,
+                ),
+            )
+            drawPath(
+                path = Path().apply {
+                    moveTo(26f * scale, 50f * scale)
+                    lineTo(36f * scale, 50f * scale)
+                    lineTo(31f * scale, 57f * scale)
+                    close()
+                },
+                color = MomentMarkerGreen,
+            )
+            drawRoundRect(
+                color = Color.White,
+                topLeft = Offset(9f * scale, 5f * scale),
+                size = Size(44f * scale, 44f * scale),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                    7f * scale,
+                    7f * scale,
+                ),
+            )
+        }
+        CircularProgressIndicator(
+            modifier = Modifier
+                .padding(top = 15.dp)
+                .size(24.dp),
+            color = MomentMarkerGreen,
+            strokeWidth = 3.dp,
+        )
     }
 }
 
@@ -3450,7 +3549,7 @@ private fun createMomentMarkerBitmap(
             val scale = context.resources.displayMetrics.density
             val canvas = android.graphics.Canvas(bitmap)
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-            paint.color = android.graphics.Color.rgb(67, 160, 71)
+            paint.color = MomentMarkerGreen.toArgb()
             paint.style = android.graphics.Paint.Style.FILL
 
             if (selected) {
