@@ -263,6 +263,7 @@ private val MomentMarkerGreen = Color(0xFF43A047)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private val MapControlGap = 10.dp
+private val SheetMenuTextSize = 18.sp
 private val StopSwipeHandleSize = 52.dp
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
@@ -2013,16 +2014,16 @@ private fun StartTourBottomSheet(
     Column(
         modifier = Modifier
             .navigationBarsPadding()
-            .padding(horizontal = 24.dp)
             .padding(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        BottomSheetHeader(title = "Aktivität wählen")
+        BottomSheetHeader(
+            title = "Aktivität wählen",
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = 360.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(activities, key = { it.lowercase() }) { activity ->
                 SheetMenuItem(
@@ -2036,14 +2037,18 @@ private fun StartTourBottomSheet(
         OutlinedTextField(
             value = customActivity,
             onValueChange = { customActivity = it.take(40) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .fillMaxWidth(),
             label = { Text("Eigene Aktivität") },
             singleLine = true,
         )
+        Spacer(modifier = Modifier.height(12.dp))
         Button(
             onClick = { onStartTour(customActivity.trim()) },
             enabled = customActivity.isNotBlank(),
             modifier = Modifier
+                .padding(horizontal = 24.dp)
                 .fillMaxWidth()
                 .height(56.dp),
             shape = CircleShape,
@@ -2098,11 +2103,12 @@ private fun MainMenu(
     Column(
         modifier = Modifier
             .navigationBarsPadding()
-            .padding(horizontal = 24.dp)
             .padding(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        BottomSheetHeader(title = "Hauptmenü")
+        BottomSheetHeader(
+            title = "Hauptmenü",
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
         SheetMenuItem(
             label = "Tour beim Verlassen starten",
             leading = { HomeIcon() },
@@ -2118,10 +2124,11 @@ private fun MainMenu(
 @Composable
 private fun BottomSheetHeader(
     title: String,
+    modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(56.dp),
         contentAlignment = Alignment.Center,
@@ -2155,12 +2162,11 @@ private fun SheetMenuItem(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp),
-        color = Sand,
-        shape = RoundedCornerShape(16.dp),
+            .height(64.dp),
+        color = Color.Transparent,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
+            modifier = Modifier.padding(horizontal = 24.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -2169,7 +2175,9 @@ private fun SheetMenuItem(
                 text = label,
                 modifier = Modifier.weight(1f),
                 color = if (destructive) StopRed else Ink,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = SheetMenuTextSize,
+                ),
                 fontWeight = FontWeight.Medium,
             )
             if (trailing) {
@@ -3580,11 +3588,12 @@ private fun PhotoDetailPage(
             Column(
                 modifier = Modifier
                     .navigationBarsPadding()
-                    .padding(horizontal = 24.dp)
                     .padding(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                BottomSheetHeader(title = "Bildaktionen")
+                BottomSheetHeader(
+                    title = "Bildaktionen",
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                )
                 SheetMenuItem(
                     label = "Teilen",
                     trailing = false,
