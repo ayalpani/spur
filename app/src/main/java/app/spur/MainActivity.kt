@@ -74,6 +74,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
@@ -89,6 +90,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -100,6 +102,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -109,6 +112,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
@@ -123,6 +127,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -199,7 +204,6 @@ private val Sand = Color(0xFFF7F5F0)
 private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
 private val FollowGreen = Color(0xFF43A873)
-private val FollowSignalPink = Color(0xFFD81B60)
 private val StopRed = Color(0xFFE53935)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
@@ -210,6 +214,37 @@ private const val PanelAnimationMillis = 256
 private val MapControlElevation = 16.dp
 private val MapControlShadowColor = Color.Black
 private const val MapControlShadowLayers = 3
+
+internal data class MapControlColors(
+    val background: Color,
+    val foreground: Color,
+)
+
+internal enum class MapControlColor(
+    val label: String,
+    val background: Color,
+) {
+    BLACK("Schwarz", Color.Black),
+    WHITE("Weiß", Color.White),
+    GRAY("Grau", Color(0xFF64748B)),
+    RED("Rot", Color(0xFFE53935)),
+    ORANGE("Orange", Color(0xFFF97316)),
+    YELLOW("Gelb", Color(0xFFF4C430)),
+    GREEN("Grün", Color(0xFF23614A)),
+    BLUE("Blau", Color(0xFF2563EB)),
+    VIOLET("Violett", Color(0xFF7C3AED)),
+    ;
+
+    val colors: MapControlColors
+        get() = MapControlColors(
+            background = background,
+            foreground = if (background.luminance() > 0.3f) Ink else Color.White,
+        )
+}
+
+private val LocalMapControlColors = staticCompositionLocalOf {
+    MapControlColors(background = Color.White, foreground = Ink)
+}
 
 private fun Modifier.mapControlShadow(shape: Shape): Modifier {
     var result = this
@@ -258,6 +293,9 @@ internal enum class MapRotation(val label: String, val bearing: Double) {
 
 internal fun mapRotationFromStored(value: String?): MapRotation =
     MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH
+
+internal fun mapControlColorFromStored(value: String?): MapControlColor =
+    MapControlColor.entries.firstOrNull { it.name == value } ?: MapControlColor.BLACK
 
 internal fun nearestCompassRotation(current: Float, target: Float): Float {
     val delta = (target - current) % 360f
@@ -652,6 +690,9 @@ private fun MapScreen(
     var defaultMapRotation by remember {
         mutableStateOf(context.loadDefaultMapRotation())
     }
+    var mapControlColor by remember {
+        mutableStateOf(context.loadMapControlColor())
+    }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -667,10 +708,11 @@ private fun MapScreen(
         }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = false,
-        drawerContent = {
+    CompositionLocalProvider(LocalMapControlColors provides mapControlColor.colors) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            gesturesEnabled = false,
+            drawerContent = {
             ModalDrawerSheet {
                 Column(
                     modifier = Modifier
@@ -705,9 +747,9 @@ private fun MapScreen(
                     )
                 }
             }
-        },
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+            },
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
             MapSurface(
                 tourId = tour?.id,
                 followRequest = followRequest,
@@ -858,6 +900,7 @@ private fun MapScreen(
                         modifier = Modifier.weight(1f),
                     )
                 } else {
+                    val controlColors = LocalMapControlColors.current
                     Button(
                         onClick = onStartTour,
                         modifier = Modifier
@@ -866,8 +909,8 @@ private fun MapScreen(
                             .mapControlShadow(CircleShape),
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Ink,
-                            contentColor = Color.White,
+                            containerColor = controlColors.background,
+                            contentColor = controlColors.foreground,
                         ),
                         elevation = ButtonDefaults.buttonElevation(
                             defaultElevation = 0.dp,
@@ -898,7 +941,7 @@ private fun MapScreen(
                     FollowLocationIcon(selected = isFollowingLocation)
                 }
             }
-
+            }
         }
     }
 
@@ -967,6 +1010,10 @@ private fun MapScreen(
             defaultMapRotation = it
             context.saveDefaultMapRotation(it)
         }
+        val selectMapControlColor: (MapControlColor) -> Unit = {
+            mapControlColor = it
+            context.saveMapControlColor(it)
+        }
         ModalBottomSheet(
             onDismissRequest = { showSettingsSheet = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -977,6 +1024,18 @@ private fun MapScreen(
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 24.dp),
             ) {
+                Text(
+                    text = "Buttonfarbe",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                MapControlColorPicker(
+                    selectedColor = mapControlColor,
+                    onSelect = selectMapControlColor,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(28.dp))
                 MapRotationPicker(
                     compassRotation = compassRotation.value,
                     selectedRotation = defaultMapRotation,
@@ -1032,6 +1091,60 @@ private fun MapScreen(
             photoPath = moment.payload,
             onDismiss = { photoDetail = null },
         )
+    }
+}
+
+@Composable
+private fun MapControlColorPicker(
+    selectedColor: MapControlColor,
+    onSelect: (MapControlColor) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        MapControlColor.entries.chunked(3).forEach { options ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                options.forEach { option ->
+                    val selected = option == selectedColor
+                    Surface(
+                        onClick = { onSelect(option) },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .semantics {
+                                contentDescription = "Buttonfarbe ${option.label}"
+                                this.selected = selected
+                            },
+                        shape = CircleShape,
+                        color = option.background,
+                        border = BorderStroke(
+                            width = if (selected) 3.dp else 1.dp,
+                            color = if (selected) {
+                                option.colors.foreground
+                            } else {
+                                Ink.copy(alpha = 0.18f)
+                            },
+                        ),
+                    ) {
+                        if (selected) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                LucideIcon(
+                                    paths = listOf("M20 6 9 17l-5-5"),
+                                    color = option.colors.foreground,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1137,6 +1250,7 @@ private fun MapIconButton(
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val controlColors = LocalMapControlColors.current
     IconButton(
         onClick = onClick,
         modifier = Modifier
@@ -1144,8 +1258,8 @@ private fun MapIconButton(
             .mapControlShadow(CircleShape)
             .semantics { this.contentDescription = contentDescription },
         colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = Color.White,
-            contentColor = Ink,
+            containerColor = controlColors.background,
+            contentColor = controlColors.foreground,
         ),
         content = content,
     )
@@ -1159,6 +1273,7 @@ private fun MapStyleButton(
     fallbackPreview: Int,
     onClick: () -> Unit,
 ) {
+    val controlColors = LocalMapControlColors.current
     val screen = LocalConfiguration.current
     val aspectRatio = preview?.let { it.width.toFloat() / it.height }
         ?: screen.screenWidthDp.toFloat() / screen.screenHeightDp
@@ -1177,7 +1292,7 @@ private fun MapStyleButton(
             .semantics { this.contentDescription = contentDescription },
         shape = previewShape,
         color = Color.Transparent,
-        border = BorderStroke(3.dp, Color.White),
+        border = BorderStroke(3.dp, controlColors.background),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val previewModifier = Modifier
@@ -1994,6 +2109,7 @@ private fun Context.saveManualLocation(location: SpurCoordinate?) {
 private const val MapSettingsPreferences = "map-settings"
 private const val DefaultZoomPreference = "default-zoom"
 private const val DefaultRotationPreference = "default-rotation"
+private const val MapControlColorPreference = "map-control-color"
 
 private fun Context.loadDefaultMapZoom(): Double =
     getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
@@ -2017,6 +2133,19 @@ private fun Context.saveDefaultMapRotation(rotation: MapRotation) {
     getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
         .edit()
         .putString(DefaultRotationPreference, rotation.name)
+        .apply()
+}
+
+private fun Context.loadMapControlColor(): MapControlColor =
+    mapControlColorFromStored(
+        getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+            .getString(MapControlColorPreference, null),
+    )
+
+private fun Context.saveMapControlColor(color: MapControlColor) {
+    getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+        .edit()
+        .putString(MapControlColorPreference, color.name)
         .apply()
 }
 
@@ -2813,6 +2942,7 @@ private fun ActiveTourStopControl(
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val controlColors = LocalMapControlColors.current
     var armed by remember(tour.id) { mutableStateOf(false) }
     var dragOffset by remember(tour.id) { mutableFloatStateOf(0f) }
     var dragStartX by remember(tour.id) { mutableFloatStateOf(0f) }
@@ -2822,7 +2952,7 @@ private fun ActiveTourStopControl(
         modifier = modifier
             .height(60.dp)
             .mapControlShadow(CircleShape),
-        color = Color.White,
+        color = controlColors.background,
         shape = CircleShape,
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -2854,7 +2984,7 @@ private fun ActiveTourStopControl(
                         Column {
                             Text(
                                 text = formatKilometers(tour.distanceMeters),
-                                color = Moss,
+                                color = controlColors.foreground,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -2862,7 +2992,7 @@ private fun ActiveTourStopControl(
                                 text = "Seit ${formatClock(tour.startedAt)} · ${
                                     formatDuration(now - tour.startedAt)
                                 }",
-                                color = Ink.copy(alpha = 0.58f),
+                                color = controlColors.foreground.copy(alpha = 0.68f),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -2880,7 +3010,14 @@ private fun ActiveTourStopControl(
                         )
                     }
                     .size(handleSize)
-                    .background(if (readyToStop) StopRed else Mist, CircleShape)
+                    .background(
+                        if (readyToStop) {
+                            StopRed
+                        } else {
+                            controlColors.foreground.copy(alpha = 0.14f)
+                        },
+                        CircleShape,
+                    )
                     .semantics {
                         contentDescription = if (armed) {
                             "Nach rechts wischen, um die Tour zu beenden"
@@ -2917,7 +3054,9 @@ private fun ActiveTourStopControl(
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                StopIcon(color = if (readyToStop) Color.White else Moss)
+                StopIcon(
+                    color = if (readyToStop) Color.White else controlColors.foreground,
+                )
             }
         }
     }
@@ -2925,6 +3064,7 @@ private fun ActiveTourStopControl(
 
 @Composable
 private fun SwipeStopPrompt() {
+    val controlColors = LocalMapControlColors.current
     val transition = rememberInfiniteTransition(label = "Stop arrows")
     val arrowAlpha by transition.animateFloat(
         initialValue = 0.28f,
@@ -2944,13 +3084,13 @@ private fun SwipeStopPrompt() {
         Text(
             text = "Zum Stoppen wischen",
             modifier = Modifier.weight(1f),
-            color = Ink.copy(alpha = 0.68f),
+            color = controlColors.foreground.copy(alpha = 0.72f),
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Medium,
         )
         Text(
             text = "›››",
-            color = Moss.copy(alpha = arrowAlpha),
+            color = controlColors.foreground.copy(alpha = arrowAlpha),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
@@ -3047,7 +3187,7 @@ private fun FollowLocationIcon(selected: Boolean) {
                 "M7.753 16.239a6 6 0 0 1 0-8.478",
                 "M14 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
             ),
-            color = if (selected) FollowSignalPink else Ink,
+            color = LocalContentColor.current,
         )
     }
 }
@@ -3077,7 +3217,7 @@ private fun LucideLocateOffIcon() = LucideIcon(
 @Composable
 private fun LucideIcon(
     paths: List<String>,
-    color: Color = Ink,
+    color: Color = LocalContentColor.current,
 ) {
     val parsedPaths = paths.map { path ->
         remember(path) { PathParser().parsePathString(path).toPath() }
