@@ -25,18 +25,74 @@ data class TrackPoint(
     val recordedAt: Long,
 )
 
+internal data class GpsStartFix(
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyMeters: Float,
+)
+
+internal class GpsStartStabilizer(
+    private val requiredFixes: Int = 3,
+    private val maximumAccuracyMeters: Float = 12f,
+    private val maximumClusterRadiusMeters: Double = 20.0,
+) {
+    private var anchor: GpsStartFix? = null
+    private var consecutiveFixes = 0
+
+    fun isReady(fix: GpsStartFix): Boolean {
+        if (fix.accuracyMeters > maximumAccuracyMeters) {
+            reset()
+            return false
+        }
+        if (
+            anchor?.let {
+                coordinateDistanceMeters(
+                    fromLatitude = it.latitude,
+                    fromLongitude = it.longitude,
+                    toLatitude = fix.latitude,
+                    toLongitude = fix.longitude,
+                ) > maximumClusterRadiusMeters
+            } == true
+        ) {
+            reset()
+        }
+        if (anchor == null) anchor = fix
+        consecutiveFixes++
+        return consecutiveFixes >= requiredFixes
+    }
+
+    private fun reset() {
+        anchor = null
+        consecutiveFixes = 0
+    }
+}
+
+private fun coordinateDistanceMeters(
+    fromLatitude: Double,
+    fromLongitude: Double,
+    toLatitude: Double,
+    toLongitude: Double,
+): Double {
+    val earthRadiusMeters = 6_371_000.0
+    val latitudeDelta = Math.toRadians(toLatitude - fromLatitude)
+    val longitudeDelta = Math.toRadians(toLongitude - fromLongitude)
+    val fromLatitudeRadians = Math.toRadians(fromLatitude)
+    val toLatitudeRadians = Math.toRadians(toLatitude)
+    val a = sin(latitudeDelta / 2) * sin(latitudeDelta / 2) +
+        cos(fromLatitudeRadians) * cos(toLatitudeRadians) *
+        sin(longitudeDelta / 2) * sin(longitudeDelta / 2)
+    val normalized = a.coerceIn(0.0, 1.0)
+    return earthRadiusMeters * 2 * atan2(sqrt(normalized), sqrt(1 - normalized))
+}
+
 internal fun trackDistanceMeters(points: List<TrackPoint>): Double =
     points.zipWithNext().sumOf { (from, to) ->
-        val earthRadiusMeters = 6_371_000.0
-        val latitudeDelta = Math.toRadians(to.latitude - from.latitude)
-        val longitudeDelta = Math.toRadians(to.longitude - from.longitude)
-        val fromLatitude = Math.toRadians(from.latitude)
-        val toLatitude = Math.toRadians(to.latitude)
-        val a = sin(latitudeDelta / 2) * sin(latitudeDelta / 2) +
-            cos(fromLatitude) * cos(toLatitude) *
-            sin(longitudeDelta / 2) * sin(longitudeDelta / 2)
-        val normalized = a.coerceIn(0.0, 1.0)
-        earthRadiusMeters * 2 * atan2(sqrt(normalized), sqrt(1 - normalized))
+        coordinateDistanceMeters(
+            fromLatitude = from.latitude,
+            fromLongitude = from.longitude,
+            toLatitude = to.latitude,
+            toLongitude = to.longitude,
+        )
     }
 
 internal fun retainedPointIds(
@@ -66,6 +122,7 @@ internal fun shouldAcceptPoint(
 
 class TourStore(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "spur.db", null, 1) {
+    private val gpsStartStabilizers = mutableMapOf<Long, GpsStartStabilizer>()
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -97,6 +154,7 @@ class TourStore(context: Context) :
 
     @Synchronized
     fun startTour(now: Long = System.currentTimeMillis()): Long {
+        gpsStartStabilizers.clear()
         writableDatabase.execSQL(
             "UPDATE tours SET ended_at = ? WHERE ended_at IS NULL",
             arrayOf(now),
@@ -110,6 +168,7 @@ class TourStore(context: Context) :
 
     @Synchronized
     fun finishTour(id: Long, now: Long = System.currentTimeMillis()) {
+        gpsStartStabilizers.remove(id)
         writableDatabase.update(
             "tours",
             ContentValues().apply { put("ended_at", now) },
@@ -146,11 +205,30 @@ class TourStore(context: Context) :
             } else {
                 null
             }
+            val accuracyMeters = if (location.hasAccuracy()) {
+                location.accuracy
+            } else {
+                Float.POSITIVE_INFINITY
+            }
+            if (previous != null) gpsStartStabilizers.remove(tourId)
+            if (
+                previous == null &&
+                !allowFastMovement &&
+                !gpsStartStabilizers.getOrPut(tourId) { GpsStartStabilizer() }.isReady(
+                    GpsStartFix(
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        accuracyMeters = accuracyMeters,
+                    ),
+                )
+            ) {
+                return false
+            }
             val distance = previous?.distanceTo(location)
             val elapsed = previous?.let { location.time - it.time }
             if (
                 !shouldAcceptPoint(
-                    accuracyMeters = location.accuracy,
+                    accuracyMeters = accuracyMeters,
                     distanceMeters = distance,
                     elapsedMillis = elapsed,
                     allowFastMovement = allowFastMovement,
@@ -169,7 +247,7 @@ class TourStore(context: Context) :
                         put("latitude", location.latitude)
                         put("longitude", location.longitude)
                         put("recorded_at", location.time)
-                        put("accuracy_meters", location.accuracy)
+                        put("accuracy_meters", accuracyMeters)
                     },
                 )
                 if (distance != null) {
@@ -179,6 +257,7 @@ class TourStore(context: Context) :
                     )
                 }
                 db.setTransactionSuccessful()
+                gpsStartStabilizers.remove(tourId)
             } finally {
                 db.endTransaction()
             }
@@ -270,6 +349,7 @@ class TourStore(context: Context) :
 
     @Synchronized
     fun deleteTour(id: Long) {
+        gpsStartStabilizers.remove(id)
         val db = writableDatabase
         db.beginTransaction()
         try {
