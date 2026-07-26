@@ -972,27 +972,55 @@ private fun MapScreen(
                     text = "Was möchtest du an dieser Stelle festhalten?",
                     style = MaterialTheme.typography.bodyLarge,
                 )
-                MomentOption(label = "Sprachnachricht") {
-                    Toast.makeText(
-                        context,
-                        "Sprachaufnahme kommt als Nächstes.",
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    MomentOption(
+                        label = "Sprache",
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Toast.makeText(
+                            context,
+                            "Sprachaufnahme kommt als Nächstes.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                    MomentOption(
+                        label = "Emoji",
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Toast.makeText(
+                            context,
+                            "Emojimarker kommt als Nächstes.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
                 }
-                MomentOption(label = "Emoji") {
-                    Toast.makeText(context, "Emojimarker kommt als Nächstes.", Toast.LENGTH_SHORT)
-                        .show()
-                }
-                MomentOption(label = "Video") {
-                    Toast.makeText(context, "Videomarker kommt als Nächstes.", Toast.LENGTH_SHORT)
-                        .show()
-                }
-                MomentOption(label = "Foto") {
-                    showMomentSheet = false
-                    if (context.hasCameraPermission()) {
-                        showCamera = true
-                    } else {
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    MomentOption(
+                        label = "Video",
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Toast.makeText(
+                            context,
+                            "Videomarker kommt als Nächstes.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                    MomentOption(
+                        label = "Foto",
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        showMomentSheet = false
+                        if (context.hasCameraPermission()) {
+                            showCamera = true
+                        } else {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
                     }
                 }
             }
@@ -1237,16 +1265,19 @@ private fun CompassCircle() {
 @Composable
 private fun MomentOption(
     label: String,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
+        modifier = modifier.height(56.dp),
         shape = CircleShape,
     ) {
-        Text(label, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            fontSize = 24.sp,
+        )
     }
 }
 
