@@ -67,9 +67,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -77,7 +74,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
@@ -121,7 +117,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.graphics.vector.PathParser as ComposePathParser
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -188,7 +184,17 @@ import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.layers.PropertyFactory.symbolZOrder
+import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
+import org.maplibre.android.style.layers.PropertyFactory.textAnchor
+import org.maplibre.android.style.layers.PropertyFactory.textColor
+import org.maplibre.android.style.layers.PropertyFactory.textField
+import org.maplibre.android.style.layers.PropertyFactory.textHaloColor
+import org.maplibre.android.style.layers.PropertyFactory.textHaloWidth
+import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
+import org.maplibre.android.style.layers.PropertyFactory.textOffset
+import org.maplibre.android.style.layers.PropertyFactory.textSize
 import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.sources.GeoJsonOptions
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.geojson.Feature
@@ -295,9 +301,14 @@ private const val SelectedTrackPointSource = "selected-track-point-source"
 private const val SelectedTrackPointLayer = "selected-track-point-layer"
 private const val MapMomentSource = "map-moment-source"
 private const val MapMomentLayer = "map-moment-layer"
+private const val MapMomentClusterLayer = "map-moment-cluster-layer"
 private const val MapMomentIdProperty = "moment-id"
 private const val MapMomentImageProperty = "moment-image"
+private const val MapMomentRepresentativeProperty = "moment-representative"
 private const val MapMomentImagePrefix = "map-moment-"
+private const val MapMomentClusterImagePrefix = "map-moment-cluster-"
+private const val MapMomentClusterMaxZoom = 18
+private const val MapMomentClusterRadius = 54
 
 internal enum class MapRotation(val label: String, val bearing: Double) {
     NORTH("Norden", 0.0),
@@ -976,10 +987,12 @@ private fun MapScreen(
                     .padding(bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.LocationOn,
-                    contentDescription = null,
-                    tint = Color.Black,
+                LucideIcon(
+                    paths = listOf(
+                        "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
+                        "M15 10a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+                    ),
+                    color = Color.Black,
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
                         .size(64.dp),
@@ -1674,8 +1687,23 @@ private fun MapSurface(
         }
         val clickListener = MapLibreMap.OnMapClickListener { point ->
             val readyMap = map ?: return@OnMapClickListener false
+            val screenPoint = readyMap.projection.toScreenLocation(point)
+            val cluster = readyMap.queryRenderedFeatures(
+                screenPoint,
+                MapMomentClusterLayer,
+            ).firstOrNull()
+            if (cluster != null) {
+                val source = readyMap.style?.getSourceAs<GeoJsonSource>(MapMomentSource)
+                    ?: return@OnMapClickListener false
+                val expansionZoom = source.getClusterExpansionZoom(cluster).toDouble()
+                readyMap.animateCamera(
+                    CameraUpdateFactory.newLatLngZoom(point, expansionZoom),
+                    MapRotationAnimationMillis.toInt(),
+                )
+                return@OnMapClickListener true
+            }
             val momentId = readyMap.queryRenderedFeatures(
-                readyMap.projection.toScreenLocation(point),
+                screenPoint,
                 MapMomentLayer,
             ).firstOrNull()?.getStringProperty(MapMomentIdProperty)
             val moment = currentMapMoments.firstOrNull { it.id == momentId }
@@ -1910,9 +1938,11 @@ private fun PhotoDetailDialog(
                     contentColor = Ink,
                 ),
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Close,
-                    contentDescription = "Foto schließen",
+                LucideIcon(
+                    paths = listOf("M18 6 6 18", "m6 6 12 12"),
+                    modifier = Modifier
+                        .size(24.dp)
+                        .semantics { contentDescription = "Foto schließen" },
                 )
             }
             Button(
@@ -2048,36 +2078,100 @@ private fun Style.showMapMoments(
     context: Context,
     moments: List<MapMoment>,
 ) {
-    val images = HashMap<String, android.graphics.Bitmap>(moments.size)
-    val features = moments.map { moment ->
+    val images = HashMap<String, android.graphics.Bitmap>(moments.size * 2)
+    val features = moments.mapIndexed { index, moment ->
         val imageId = MapMomentImagePrefix + moment.id
-        images[imageId] = createMomentMarkerBitmap(context, moment, selected = false)
+        val marker = createMomentMarkerBitmap(context, moment, selected = false)
+        images[imageId] = marker
+        images[MapMomentClusterImagePrefix + moment.id] =
+            createMomentClusterBitmap(context, marker)
         Feature.fromGeometry(
             Point.fromLngLat(moment.longitude, moment.latitude),
         ).apply {
             addStringProperty(MapMomentIdProperty, moment.id)
             addStringProperty(MapMomentImageProperty, imageId)
+            addNumberProperty(MapMomentRepresentativeProperty, index)
         }
     }
     if (images.isNotEmpty()) addImages(images)
 
     val source = getSourceAs<GeoJsonSource>(MapMomentSource)
-        ?: GeoJsonSource(MapMomentSource).also(::addSource)
+        ?: GeoJsonSource(
+            MapMomentSource,
+            GeoJsonOptions()
+                .withMaxZoom(20)
+                .withCluster(true)
+                .withClusterMaxZoom(MapMomentClusterMaxZoom)
+                .withClusterRadius(MapMomentClusterRadius)
+                .withClusterProperty(
+                    MapMomentRepresentativeProperty,
+                    Expression.max(
+                        Expression.accumulated(),
+                        Expression.get(MapMomentRepresentativeProperty),
+                    ),
+                    Expression.get(MapMomentRepresentativeProperty),
+                ),
+        ).also(::addSource)
     source.setGeoJson(FeatureCollection.fromFeatures(features))
 
     if (getLayer(MapMomentLayer) == null) {
         addLayer(
-            SymbolLayer(MapMomentLayer, MapMomentSource).withProperties(
-                iconImage(Expression.get(MapMomentImageProperty)),
-                iconAnchor(Property.ICON_ANCHOR_BOTTOM),
-                iconAllowOverlap(true),
-                iconIgnorePlacement(true),
-                iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
-                iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
-                symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
-            ),
+            SymbolLayer(MapMomentLayer, MapMomentSource)
+                .withFilter(
+                    Expression.neq(Expression.get("cluster"), true),
+                )
+                .withProperties(
+                    iconImage(Expression.get(MapMomentImageProperty)),
+                    iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+                    iconAllowOverlap(true),
+                    iconIgnorePlacement(true),
+                    iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                    iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                    symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
+                ),
         )
     }
+
+    val clusterImage = clusterMomentImageExpression(moments)
+    val clusterLayer = getLayerAs<SymbolLayer>(MapMomentClusterLayer)
+    if (clusterLayer == null) {
+        addLayer(
+            SymbolLayer(MapMomentClusterLayer, MapMomentSource)
+                .withFilter(Expression.has("point_count"))
+                .withProperties(
+                    iconImage(clusterImage),
+                    iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+                    iconAllowOverlap(true),
+                    iconIgnorePlacement(true),
+                    iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                    iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                    textField(Expression.toString(Expression.get("point_count_abbreviated"))),
+                    textSize(13f),
+                    textColor(android.graphics.Color.WHITE),
+                    textHaloColor(android.graphics.Color.rgb(35, 97, 74)),
+                    textHaloWidth(5f),
+                    textOffset(arrayOf(1.45f, -2.25f)),
+                    textAnchor(Property.TEXT_ANCHOR_CENTER),
+                    textAllowOverlap(true),
+                    textIgnorePlacement(true),
+                    symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
+                ),
+        )
+    } else {
+        clusterLayer.setProperties(iconImage(clusterImage))
+    }
+}
+
+private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression {
+    val fallback = MapMomentClusterImagePrefix + moments.firstOrNull()?.id.orEmpty()
+    val stops = moments.mapIndexed { index, moment ->
+        Expression.stop(index, MapMomentClusterImagePrefix + moment.id)
+    }.toTypedArray()
+    return Expression.match(
+        Expression.toNumber(Expression.get(MapMomentRepresentativeProperty)),
+        Expression.literal(fallback),
+        *stops,
+    )
 }
 
 private fun Style.showTourRoute(points: List<TrackPoint>) {
@@ -2425,6 +2519,49 @@ private fun createMomentMarkerBitmap(
             }
         }
 
+private fun createMomentClusterBitmap(
+    context: Context,
+    marker: android.graphics.Bitmap,
+): android.graphics.Bitmap {
+    val scale = context.resources.displayMetrics.density
+    return android.graphics.Bitmap.createBitmap(
+        (70 * scale).toInt(),
+        (66 * scale).toInt(),
+        android.graphics.Bitmap.Config.ARGB_8888,
+    ).also { bitmap ->
+        val canvas = android.graphics.Canvas(bitmap)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        val cardWidth = 50 * scale
+        val cardHeight = 50 * scale
+
+        listOf(0f to 5f, 8f to 1f).forEach { (x, y) ->
+            paint.color = android.graphics.Color.rgb(67, 160, 71)
+            paint.style = android.graphics.Paint.Style.FILL
+            canvas.drawRoundRect(
+                x * scale,
+                y * scale,
+                x * scale + cardWidth,
+                y * scale + cardHeight,
+                10 * scale,
+                10 * scale,
+                paint,
+            )
+            paint.color = android.graphics.Color.WHITE
+            canvas.drawRoundRect(
+                (x + 3) * scale,
+                (y + 3) * scale,
+                x * scale + cardWidth - 3 * scale,
+                y * scale + cardHeight - 3 * scale,
+                7 * scale,
+                7 * scale,
+                paint,
+            )
+        }
+
+        canvas.drawBitmap(marker, 4 * scale, 8 * scale, paint)
+    }
+}
+
 private fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
     runCatching {
         val file = File(path)
@@ -2478,57 +2615,44 @@ private fun drawMomentGlyph(
     scale: Float,
     type: MomentType,
 ) {
-    when (type) {
-        MomentType.PHOTO -> {
-            canvas.drawRoundRect(
-                14 * scale,
-                20 * scale,
-                38 * scale,
-                35 * scale,
-                3 * scale,
-                3 * scale,
-                paint,
-            )
-            canvas.drawCircle(26 * scale, 27.5f * scale, 4.5f * scale, paint)
-            canvas.drawLine(19 * scale, 20 * scale, 22 * scale, 16 * scale, paint)
-            canvas.drawLine(22 * scale, 16 * scale, 30 * scale, 16 * scale, paint)
-            canvas.drawLine(30 * scale, 16 * scale, 33 * scale, 20 * scale, paint)
-        }
-        MomentType.VIDEO -> {
-            val path = android.graphics.Path().apply {
-                moveTo(21 * scale, 18 * scale)
-                lineTo(36 * scale, 26 * scale)
-                lineTo(21 * scale, 34 * scale)
-                close()
-            }
-            canvas.drawPath(path, paint)
-        }
-        MomentType.VOICE -> {
-            listOf(20f to 5f, 26f to 10f, 32f to 5f).forEach { (x, halfHeight) ->
-                canvas.drawLine(
-                    x * scale,
-                    (26 - halfHeight) * scale,
-                    x * scale,
-                    (26 + halfHeight) * scale,
-                    paint,
-                )
-            }
-        }
-        MomentType.EMOJI -> {
-            canvas.drawCircle(20 * scale, 22 * scale, 1.5f * scale, paint)
-            canvas.drawCircle(32 * scale, 22 * scale, 1.5f * scale, paint)
-            canvas.drawArc(
-                19 * scale,
-                21 * scale,
-                33 * scale,
-                34 * scale,
-                20f,
-                140f,
-                false,
-                paint,
-            )
+    val paths = when (type) {
+        MomentType.PHOTO -> listOf(
+            "M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z",
+            "M15 13a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+        )
+        MomentType.VIDEO -> listOf(
+            "m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5",
+            "M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2",
+        )
+        MomentType.VOICE -> listOf(
+            "M2 10v3",
+            "M6 6v11",
+            "M10 3v18",
+            "M14 8v7",
+            "M18 5v13",
+            "M22 10v3",
+        )
+        MomentType.EMOJI -> listOf(
+            "M22 12a10 10 0 1 1-20 0 10 10 0 1 1 20 0",
+            "M8 14s1.5 2 4 2 4-2 4-2",
+            "M9 9h.01",
+            "M15 9h.01",
+        )
+    }
+
+    paint.style = android.graphics.Paint.Style.STROKE
+    paint.strokeWidth = 2f
+    paint.strokeCap = android.graphics.Paint.Cap.ROUND
+    paint.strokeJoin = android.graphics.Paint.Join.ROUND
+    canvas.save()
+    canvas.translate(12 * scale, 12 * scale)
+    canvas.scale(1.17f * scale, 1.17f * scale)
+    paths.forEach { pathData ->
+        androidx.core.graphics.PathParser.createPathFromPathData(pathData)?.let {
+            canvas.drawPath(it, paint)
         }
     }
+    canvas.restore()
 }
 
 @Composable
@@ -3279,7 +3403,7 @@ private fun ActiveTourStopControl(
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                StopIcon(
+                LucideStopIcon(
                     color = if (readyToStop) Color.White else controlColors.foreground,
                 )
             }
@@ -3313,31 +3437,30 @@ private fun SwipeStopPrompt(controlColors: MapControlColors) {
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Medium,
         )
-        Text(
-            text = "›››",
-            color = controlColors.foreground.copy(alpha = arrowAlpha),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
+        Row {
+            repeat(3) {
+                LucideIcon(
+                    paths = listOf("m9 18 6-6-6-6"),
+                    color = controlColors.foreground,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .graphicsLayer { alpha = arrowAlpha },
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun StopIcon(color: Color) {
-    Canvas(
-        modifier = Modifier
-            .size(24.dp)
-            .semantics { contentDescription = "Tour beenden" },
-    ) {
-        val side = 14.dp.toPx()
-        drawRoundRect(
-            color = color,
-            topLeft = Offset((size.width - side) / 2f, (size.height - side) / 2f),
-            size = androidx.compose.ui.geometry.Size(side, side),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
-        )
-    }
-}
+private fun LucideStopIcon(color: Color) = LucideIcon(
+    paths = listOf(
+        "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2",
+    ),
+    color = color,
+    modifier = Modifier
+        .size(24.dp)
+        .semantics { contentDescription = "Tour beenden" },
+)
 
 internal fun formatKilometers(distanceMeters: Double): String =
     String.format(Locale.getDefault(), "%.2f km", distanceMeters / 1_000.0)
@@ -3443,14 +3566,15 @@ private fun LucideLocateOffIcon() = LucideIcon(
 )
 
 @Composable
-private fun LucideIcon(
+internal fun LucideIcon(
     paths: List<String>,
     color: Color = LocalContentColor.current,
+    modifier: Modifier = Modifier.size(32.dp),
 ) {
     val parsedPaths = paths.map { path ->
-        remember(path) { PathParser().parsePathString(path).toPath() }
+        remember(path) { ComposePathParser().parsePathString(path).toPath() }
     }
-    Canvas(modifier = Modifier.size(32.dp)) {
+    Canvas(modifier = modifier) {
         val scale = size.minDimension / 24f
         withTransform({
             scale(scaleX = scale, scaleY = scale, pivot = Offset.Zero)
@@ -3471,18 +3595,13 @@ private fun LucideIcon(
 }
 
 @Composable
-private fun BackIcon() {
-    Canvas(
-        modifier = Modifier
-            .size(24.dp)
-            .semantics { contentDescription = "Zurück zur Karte" },
-    ) {
-        val strokeWidth = 2.2.dp.toPx()
-        drawLine(Ink, Offset(19.dp.toPx(), 12.dp.toPx()), Offset(5.dp.toPx(), 12.dp.toPx()), strokeWidth)
-        drawLine(Ink, Offset(5.dp.toPx(), 12.dp.toPx()), Offset(11.dp.toPx(), 6.dp.toPx()), strokeWidth)
-        drawLine(Ink, Offset(5.dp.toPx(), 12.dp.toPx()), Offset(11.dp.toPx(), 18.dp.toPx()), strokeWidth)
-    }
-}
+private fun BackIcon() = LucideIcon(
+    paths = listOf("m12 19-7-7 7-7", "M19 12H5"),
+    color = Ink,
+    modifier = Modifier
+        .size(24.dp)
+        .semantics { contentDescription = "Zurück zur Karte" },
+)
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
