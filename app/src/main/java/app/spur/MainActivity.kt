@@ -279,7 +279,7 @@ private const val TourRouteWidthPixels = 6f
 private const val TourRouteBorderPerSidePixels = 4f
 private const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
-private const val TrailStrokeAlpha = 0.25f
+private const val TrailStrokeAlpha = 0.5f
 private const val SignalButtonPulseAlpha = 0.42f
 private const val SignalButtonPulseStartScale = 0.62f
 private val DefaultTourActivities = listOf(
