@@ -17,5 +17,6 @@ class StopSwipeTest {
     fun activeTourDistanceUsesWholeMeters() {
         assertEquals("93 m", formatMeters(92.6))
         assertEquals("0 m", formatMeters(-1.0))
+        assertEquals("22.027 m", formatMeters(22_027.0))
     }
 }

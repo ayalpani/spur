@@ -3022,7 +3022,7 @@ private fun ActiveTourStopControl(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(start = 68.dp, end = 12.dp),
-                        contentAlignment = Alignment.CenterStart,
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             text = formatMeters(tour.distanceMeters),
@@ -3152,7 +3152,7 @@ internal fun formatKilometers(distanceMeters: Double): String =
     String.format(Locale.getDefault(), "%.2f km", distanceMeters / 1_000.0)
 
 internal fun formatMeters(distanceMeters: Double): String =
-    String.format(Locale.getDefault(), "%.0f m", distanceMeters.coerceAtLeast(0.0))
+    String.format(Locale.GERMANY, "%,.0f m", distanceMeters.coerceAtLeast(0.0))
 
 private fun formatClock(timestamp: Long): String =
     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(timestamp))
