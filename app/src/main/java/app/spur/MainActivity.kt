@@ -118,6 +118,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser as ComposePathParser
@@ -233,6 +234,10 @@ private const val MapRotationAnimationMillis = 350L
 private const val PanelAnimationMillis = 256
 private const val PhotoDetailEnterMillis = 320
 private const val PhotoDetailExitMillis = 240
+private const val TourRouteWidthPixels = 6f
+private const val TourRouteBorderPerSidePixels = 2f
+private const val TourRouteBorderWidthPixels =
+    TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
 private val MapControlElevation = 16.dp
 private val MapControlShadowColor = Color.Black
 private const val MapControlShadowLayers = 3
@@ -303,6 +308,7 @@ private const val MomentMarkerStroke = 3f
 private const val MapPreviewPixels = 180
 private const val LocationPulseDurationMillis = 2_300
 private const val TourRouteSource = "tour-route-source"
+private const val TourRouteBorderLayer = "tour-route-border-layer"
 private const val TourRouteLayer = "tour-route-layer"
 private const val SelectedTrackPointSource = "selected-track-point-source"
 private const val SelectedTrackPointLayer = "selected-track-point-layer"
@@ -1930,10 +1936,9 @@ private fun SimulatedLocationPuck(modifier: Modifier = Modifier) {
             .size(52.dp)
             .semantics { contentDescription = "Simulierter Standort" },
     ) {
-        val purple = Color(0xFF6D28D9)
-        drawCircle(purple.copy(alpha = 0.2f), radius = size.minDimension / 2)
+        drawCircle(Ink.copy(alpha = 0.2f), radius = size.minDimension / 2)
         drawCircle(Color.White, radius = 10.dp.toPx())
-        drawCircle(purple, radius = 6.dp.toPx())
+        drawCircle(Ink, radius = 6.dp.toPx())
         drawCircle(
             color = Ink,
             radius = 10.dp.toPx(),
@@ -2290,11 +2295,24 @@ private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression {
 private fun Style.showTourRoute(points: List<TrackPoint>) {
     val source = getSourceAs<GeoJsonSource>(TourRouteSource)
         ?: GeoJsonSource(TourRouteSource).also(::addSource)
+    if (getLayer(TourRouteBorderLayer) == null) {
+        val borderLayer = LineLayer(TourRouteBorderLayer, TourRouteSource).withProperties(
+            lineColor(Color.White.toArgb()),
+            lineWidth(TourRouteBorderWidthPixels),
+            lineCap(Property.LINE_CAP_ROUND),
+            lineJoin(Property.LINE_JOIN_ROUND),
+        )
+        if (getLayer(TourRouteLayer) == null) {
+            addLayer(borderLayer)
+        } else {
+            addLayerBelow(borderLayer, TourRouteLayer)
+        }
+    }
     if (getLayer(TourRouteLayer) == null) {
         addLayer(
             LineLayer(TourRouteLayer, TourRouteSource).withProperties(
-                lineColor("#23614A"),
-                lineWidth(6f),
+                lineColor(Ink.toArgb()),
+                lineWidth(TourRouteWidthPixels),
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
             ),
@@ -2353,7 +2371,14 @@ private fun enableLocationTracking(
 
     val locationComponent = map.locationComponent
     val options = LocationComponentOptions.builder(context)
+        .foregroundTintColor(Ink.toArgb())
+        .backgroundTintColor(Color.White.toArgb())
+        .foregroundStaleTintColor(Ink.toArgb())
+        .backgroundStaleTintColor(Color.White.toArgb())
+        .bearingTintColor(Ink.toArgb())
+        .accuracyColor(Ink.toArgb())
         .pulseEnabled(true)
+        .pulseColor(Ink.toArgb())
         .pulseSingleDuration(LocationPulseDurationMillis.toFloat())
         .build()
     locationComponent.activateLocationComponent(
