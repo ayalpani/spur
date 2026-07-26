@@ -1911,7 +1911,6 @@ private fun MapSurface(
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     isMapTouchActive = true
-                    currentOnMapGestureActiveChanged(true)
                 }
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL,
