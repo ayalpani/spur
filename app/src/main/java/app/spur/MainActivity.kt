@@ -231,6 +231,7 @@ private val Ink = Color(0xFF18201C)
 private val Moss = Color(0xFF23614A)
 private val FollowGreen = Color(0xFF43A873)
 private val StopRed = Color(0xFFE53935)
+private val MapPinRed = Color(0xFFEA4335)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private val MapRotationOptionGap = 16.dp
@@ -1111,23 +1112,27 @@ private fun MapScreen(
                     .padding(bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                LucideIcon(
-                    paths = listOf(
-                        "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
-                        "M15 10a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
-                    ),
-                    color = Ink,
+                Column(
                     modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .size(64.dp),
-                )
-                Text(
-                    text = "Auf der Karte ablegen",
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                    color = Ink,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    LucideIcon(
+                        paths = listOf(
+                            "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
+                            "M15 10a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+                        ),
+                        color = MapPinRed,
+                        modifier = Modifier.size(64.dp),
+                    )
+                    Text(
+                        text = "Auf der Karte ablegen",
+                        color = Ink,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
