@@ -42,6 +42,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -423,7 +424,7 @@ internal fun stopSwipeProgress(offset: Float, maximum: Float): Float =
 internal fun stopSwipePromptAlpha(offset: Float, maximum: Float): Float {
     if (maximum <= 0f) return 1f
     val progress = stopSwipeProgress(offset, maximum)
-    return ((0.55f - progress) / 0.4f).coerceIn(0f, 1f)
+    return ((0.82f - progress) / 0.22f).coerceIn(0f, 1f)
 }
 
 internal fun clusterStackOffsets(pointCount: Int): List<Float> = when {
@@ -3744,18 +3745,23 @@ private fun HistoryScreen(
     onPhotoRotated: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var tours by remember { mutableStateOf(emptyList<Tour>()) }
     var mapMoments by remember { mutableStateOf(emptyList<MapMoment>()) }
     var selectedTour by remember { mutableStateOf<Tour?>(null) }
     var tourToDelete by remember { mutableStateOf<Tour?>(null) }
+    var deletingTourId by remember { mutableStateOf<Long?>(null) }
     var selectedPhoto by remember { mutableStateOf<MapMoment?>(null) }
-    BackHandler(enabled = isVisible, onBack = onBack)
+    BackHandler(enabled = isVisible) {
+        if (deletingTourId == null) onBack()
+    }
     LaunchedEffect(revision) {
         val (loadedTours, loadedMoments) = withContext(Dispatchers.IO) {
             store.tours() to context.loadMapMoments()
         }
         tours = loadedTours
         mapMoments = loadedMoments
+        if (loadedTours.none { it.id == deletingTourId }) deletingTourId = null
     }
 
     Column(
@@ -3767,7 +3773,10 @@ private fun HistoryScreen(
             .padding(horizontal = 18.dp, vertical = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
+            IconButton(
+                onClick = onBack,
+                enabled = deletingTourId == null,
+            ) {
                 BackIcon()
             }
             Text(
@@ -3804,54 +3813,69 @@ private fun HistoryScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(top = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(tours, key = { it.id }) { tour ->
                     val photos = photoMomentsForTour(mapMoments, tour)
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
-                                onClick = { selectedTour = tour },
-                                onLongClick = { selectedTour = tour },
-                            ),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        shape = RoundedCornerShape(20.dp),
+                    AnimatedVisibility(
+                        visible = deletingTourId != tour.id,
+                        exit = shrinkVertically(
+                            shrinkTowards = Alignment.Top,
+                            animationSpec = tween(MotionDurationDefaultMillis),
+                        ) + fadeOut(tween(MotionDurationDefaultMillis)),
                     ) {
-                        Column {
-                            Row(
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                        ) {
+                            Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(18.dp)
-                                    .padding(bottom = if (photos.isEmpty()) 0.dp else 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                                    .combinedClickable(
+                                        onClick = { selectedTour = tour },
+                                        onLongClick = { selectedTour = tour },
+                                    ),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                shape = RoundedCornerShape(20.dp),
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = formatDate(tour.startedAt),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Medium,
-                                    )
-                                    Text(
-                                        text = formatTourTime(tour),
-                                        modifier = Modifier.padding(top = 3.dp),
-                                        color = Ink.copy(alpha = 0.56f),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
+                                Column {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(18.dp)
+                                            .padding(
+                                                bottom = if (photos.isEmpty()) 0.dp else 4.dp,
+                                            ),
+                                        verticalAlignment = Alignment.Top,
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = formatDate(tour.startedAt),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Medium,
+                                            )
+                                            Text(
+                                                text = formatTourTime(tour),
+                                                modifier = Modifier.padding(top = 3.dp),
+                                                color = Ink.copy(alpha = 0.56f),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                            )
+                                        }
+                                        Text(
+                                            text = formatMeters(tour.distanceMeters),
+                                            color = Moss,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    }
+                                    if (photos.isNotEmpty()) {
+                                        TourPhotoStrip(
+                                            photos = photos,
+                                            photoRevision = photoRevision,
+                                            onOpen = { selectedPhoto = it },
+                                        )
+                                    }
                                 }
-                                Text(
-                                    text = formatMeters(tour.distanceMeters),
-                                    color = Moss,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                            if (photos.isNotEmpty()) {
-                                TourPhotoStrip(
-                                    photos = photos,
-                                    photoRevision = photoRevision,
-                                    onOpen = { selectedPhoto = it },
-                                )
                             }
                         }
                     }
@@ -3915,7 +3939,11 @@ private fun HistoryScreen(
                 TextButton(
                     onClick = {
                         tourToDelete = null
-                        onDeleteTour(tour.id)
+                        deletingTourId = tour.id
+                        scope.launch {
+                            delay(MotionDurationDefaultMillis.toLong())
+                            onDeleteTour(tour.id)
+                        }
                     },
                 ) {
                     Text("Löschen", color = Color(0xFFB3261E))
@@ -4427,6 +4455,7 @@ private fun ActiveTourStopControl(
                 }
                 val edgePaddingPixels = with(density) { edgePadding.toPx() }
                 val swipeProgress = stopSwipeProgress(dragOffset, maximum)
+                val stopThresholdReached = shouldCompleteStopSwipe(dragOffset, maximum)
                 val swipeColor = lerp(controlColors.background, StopRed, swipeProgress)
                 val swipeForeground = lerp(StopRed, Color.White, swipeProgress)
 
@@ -4447,9 +4476,8 @@ private fun ActiveTourStopControl(
                     if (confirmationVisible) {
                         SwipeStopPrompt(
                             color = swipeForeground,
-                            modifier = Modifier.graphicsLayer {
-                                alpha = stopSwipePromptAlpha(dragOffset, maximum)
-                            },
+                            stopThresholdReached = stopThresholdReached,
+                            swipePromptAlpha = stopSwipePromptAlpha(dragOffset, maximum),
                         )
                     } else {
                         Box(
@@ -4487,10 +4515,13 @@ private fun ActiveTourStopControl(
                             CircleShape,
                         )
                         .semantics {
-                            contentDescription = if (armed) {
-                                "Nach rechts wischen, um die Tour zu beenden"
-                            } else {
-                                "Tour beenden vorbereiten"
+                            contentDescription = when {
+                                stopThresholdReached ->
+                                    "Loslassen, um die Tour zu beenden"
+                                armed ->
+                                    "Nach rechts wischen, um die Tour zu beenden"
+                                else ->
+                                    "Tour beenden vorbereiten"
                             }
                         }
                         .pointerInteropFilter { event ->
@@ -4534,16 +4565,28 @@ private fun ActiveTourStopControl(
 @Composable
 private fun SwipeStopPrompt(
     color: Color,
+    stopThresholdReached: Boolean,
+    swipePromptAlpha: Float,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier
             .fillMaxSize()
-            .padding(start = 68.dp, end = 12.dp),
-        contentAlignment = Alignment.Center,
+            .padding(
+                start = if (stopThresholdReached) 20.dp else 68.dp,
+                end = if (stopThresholdReached) 68.dp else 12.dp,
+            ),
+        contentAlignment = if (stopThresholdReached) {
+            Alignment.CenterStart
+        } else {
+            Alignment.Center
+        },
     ) {
         Text(
-            text = "Swipe right",
+            text = if (stopThresholdReached) "Stop Tour" else "Swipe right",
+            modifier = Modifier.graphicsLayer {
+                alpha = if (stopThresholdReached) 1f else swipePromptAlpha
+            },
             color = color,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
