@@ -2956,6 +2956,12 @@ private fun ActiveTourStopControl(
     val mainControlHeight = 60.dp
     val timeCapHeight = 32.dp
     val capOverlap = 8.dp
+    val timeCapShape = RoundedCornerShape(
+        topStart = 16.dp,
+        topEnd = 16.dp,
+        bottomStart = 0.dp,
+        bottomEnd = 0.dp,
+    )
 
     Box(
         modifier = modifier.height(mainControlHeight + timeCapHeight - capOverlap),
@@ -2964,10 +2970,10 @@ private fun ActiveTourStopControl(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .height(timeCapHeight)
-                .mapControlShadow(CircleShape),
-            color = controlColors.background,
+                .mapControlShadow(timeCapShape),
+            color = controlColors.background.copy(alpha = 0.75f),
             contentColor = controlColors.foreground,
-            shape = CircleShape,
+            shape = timeCapShape,
         ) {
             Box(
                 modifier = Modifier.padding(horizontal = 18.dp),
@@ -2978,7 +2984,7 @@ private fun ActiveTourStopControl(
                         formatDuration(now - tour.startedAt)
                     }",
                     style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.Normal,
                 )
             }
         }
