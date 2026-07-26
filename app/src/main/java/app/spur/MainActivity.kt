@@ -248,6 +248,7 @@ private val FollowGreen = Color(0xFF43A873)
 private val StopRed = Color(0xFFE53935)
 private val MapPinRed = Color(0xFFEA4335)
 private val MomentMarkerGreen = Color(0xFF43A047)
+private val TourRouteGlow = Color(0xFFFFFF00).copy(alpha = 0.5f)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private val MapControlGap = 10.dp
@@ -3229,7 +3230,7 @@ private fun Style.showTourRoute(points: List<TrackPoint>) {
         ?: GeoJsonSource(TourRouteSource).also(::addSource)
     if (getLayer(TourRouteBorderLayer) == null) {
         val borderLayer = LineLayer(TourRouteBorderLayer, TourRouteSource).withProperties(
-            lineColor(Color.White.toArgb()),
+            lineColor(TourRouteGlow.toArgb()),
             lineWidth(TourRouteBorderWidthPixels),
             lineCap(Property.LINE_CAP_ROUND),
             lineJoin(Property.LINE_JOIN_ROUND),
