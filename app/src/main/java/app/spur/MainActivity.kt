@@ -191,6 +191,7 @@ import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.textAnchor
 import org.maplibre.android.style.layers.PropertyFactory.textColor
 import org.maplibre.android.style.layers.PropertyFactory.textField
+import org.maplibre.android.style.layers.PropertyFactory.textFont
 import org.maplibre.android.style.layers.PropertyFactory.textHaloColor
 import org.maplibre.android.style.layers.PropertyFactory.textHaloWidth
 import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
@@ -296,7 +297,7 @@ private object SpurRoute {
 }
 private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
 private const val SatelliteMapStyleJson =
-    """{"version":8,"sources":{"satellite-source":{"type":"raster","tiles":["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],"tileSize":256,"attribution":"Esri, Maxar, Earthstar Geographics, and the GIS User Community"}},"layers":[{"id":"satellite-layer","type":"raster","source":"satellite-source"}]}"""
+    """{"version":8,"glyphs":"https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf","sources":{"satellite-source":{"type":"raster","tiles":["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],"tileSize":256,"attribution":"Esri, Maxar, Earthstar Geographics, and the GIS User Community"}},"layers":[{"id":"satellite-layer","type":"raster","source":"satellite-source"}]}"""
 private const val MomentMarkerWidth = 62
 private const val MomentMarkerHeight = 58
 private const val MomentMarkerStroke = 3f
@@ -310,6 +311,7 @@ private const val SelectedTrackPointLayer = "selected-track-point-layer"
 private const val MapMomentSource = "map-moment-source"
 private const val MapMomentLayer = "map-moment-layer"
 private const val MapMomentClusterLayer = "map-moment-cluster-layer"
+private const val MapMomentClusterCountLayer = "map-moment-cluster-count-layer"
 private const val MapMomentIdProperty = "moment-id"
 private const val MapMomentImageProperty = "moment-image"
 private const val MapMomentRepresentativeProperty = "moment-representative"
@@ -2367,7 +2369,20 @@ private fun Style.showMapMoments(
                     iconIgnorePlacement(true),
                     iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
                     iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                    symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
+                ),
+        )
+    } else {
+        clusterLayer.setProperties(iconImage(clusterImage))
+    }
+
+    if (getLayer(MapMomentClusterCountLayer) == null) {
+        addLayer(
+            SymbolLayer(MapMomentClusterCountLayer, MapMomentSource)
+                .withFilter(Expression.has("point_count"))
+                .withProperties(
                     textField(Expression.toString(Expression.get("point_count_abbreviated"))),
+                    textFont(arrayOf("Noto Sans Bold")),
                     textSize(13f),
                     textColor(android.graphics.Color.WHITE),
                     textHaloColor(android.graphics.Color.rgb(35, 97, 74)),
@@ -2379,8 +2394,6 @@ private fun Style.showMapMoments(
                     symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
                 ),
         )
-    } else {
-        clusterLayer.setProperties(iconImage(clusterImage))
     }
 }
 
