@@ -197,6 +197,7 @@ private const val DefaultMapZoom = 17.5
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MapRotationAnimationMillis = 350L
+private const val PanelAnimationMillis = 256
 private val MapControlElevation = 16.dp
 private val MapControlShadowColor = Color.Black
 private const val MapControlShadowLayers = 3
@@ -477,10 +478,12 @@ private fun SpurApp() {
                             )
                             AnimatedVisibility(
                                 visible = showHistory,
-                                enter = slideInHorizontally(tween(340)) { it } +
-                                    fadeIn(tween(220)),
-                                exit = slideOutHorizontally(tween(340)) { it } +
-                                    fadeOut(tween(180)),
+                                enter = slideInHorizontally(
+                                    animationSpec = tween(PanelAnimationMillis),
+                                ) { it },
+                                exit = slideOutHorizontally(
+                                    animationSpec = tween(PanelAnimationMillis),
+                                ) { it },
                             ) {
                                 HistoryScreen(
                                     store = store,
