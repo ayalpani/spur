@@ -2804,34 +2804,9 @@ private fun createMomentClusterBitmap(
     ).also { bitmap ->
         val canvas = android.graphics.Canvas(bitmap)
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-        val cardWidth = 50 * scale
-        val cardHeight = 50 * scale
-
-        listOf(0f to 5f, 8f to 1f).forEach { (x, y) ->
-            paint.color = android.graphics.Color.rgb(67, 160, 71)
-            paint.style = android.graphics.Paint.Style.FILL
-            canvas.drawRoundRect(
-                x * scale,
-                y * scale,
-                x * scale + cardWidth,
-                y * scale + cardHeight,
-                10 * scale,
-                10 * scale,
-                paint,
-            )
-            paint.color = android.graphics.Color.WHITE
-            canvas.drawRoundRect(
-                (x + 3) * scale,
-                (y + 3) * scale,
-                x * scale + cardWidth - 3 * scale,
-                y * scale + cardHeight - 3 * scale,
-                7 * scale,
-                7 * scale,
-                paint,
-            )
+        listOf(0f, 4f, 8f).forEach { offset ->
+            canvas.drawBitmap(marker, offset * scale, offset * scale, paint)
         }
-
-        canvas.drawBitmap(marker, 4 * scale, 8 * scale, paint)
     }
 }
 
