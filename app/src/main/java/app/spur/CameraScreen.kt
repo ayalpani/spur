@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.os.Build
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -54,6 +53,7 @@ private val CameraChrome = Color.Black.copy(alpha = 0.42f)
 
 @Composable
 internal fun CameraScreen(
+    showFeedbackNotice: (String) -> Unit,
     onClose: () -> Unit,
     onPhotoAccepted: (File) -> Unit,
 ) {
@@ -101,11 +101,7 @@ internal fun CameraScreen(
                     provider.bindToLifecycle(lifecycleOwner, selector, preview, capture)
                     imageCapture = capture
                 }.onFailure {
-                    Toast.makeText(
-                        context,
-                        "Die Kamera konnte nicht geöffnet werden.",
-                        Toast.LENGTH_LONG,
-                    ).show()
+                    showFeedbackNotice("Die Kamera konnte nicht geöffnet werden.")
                 }
             },
             mainExecutor,
@@ -201,11 +197,9 @@ internal fun CameraScreen(
                                 override fun onError(exception: ImageCaptureException) {
                                     isCapturing = false
                                     output.delete()
-                                    Toast.makeText(
-                                        context,
+                                    showFeedbackNotice(
                                         "Das Foto konnte nicht gespeichert werden.",
-                                        Toast.LENGTH_LONG,
-                                    ).show()
+                                    )
                                 }
                             },
                         )

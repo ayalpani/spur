@@ -23,7 +23,6 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.MediaController
-import android.widget.Toast
 import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -161,6 +160,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -283,6 +284,7 @@ private val StopSwipeHandleSize = 52.dp
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MotionDurationDefaultMillis = 200
+private const val FeedbackNoticeDurationMillis = 2_500L
 private const val PendingPhotoRevealDelayMillis = 1_000L
 private const val MinimumMapLoadingDurationMillis = 3_000L
 private const val LoaderContentFadeInDurationMillis = 400
@@ -350,6 +352,9 @@ internal enum class MapControlColor(
         get() = if (color.luminance() > 0.3f) Ink else Color.White
 }
 
+private val FeedbackNoticeBackground = MapControlColor.YELLOW.color
+private val FeedbackNoticeForeground = Ink
+
 internal data class TrailColors(
     val fill: Color,
     val stroke: Color,
@@ -370,6 +375,57 @@ private data class PendingMapMoment(
     val type: MomentType,
     val file: File,
 )
+
+private data class FeedbackNotice(
+    val id: Long,
+    val message: String,
+)
+
+@Composable
+private fun FeedbackNoticeHost(
+    notice: FeedbackNotice?,
+    modifier: Modifier = Modifier,
+) {
+    var displayedNotice by remember { mutableStateOf(notice) }
+    LaunchedEffect(notice) {
+        if (notice != null) displayedNotice = notice
+    }
+
+    AnimatedVisibility(
+        visible = notice != null,
+        modifier = modifier,
+        enter = slideInVertically(
+            initialOffsetY = { it },
+            animationSpec = tween(MotionDurationDefaultMillis),
+        ) + fadeIn(tween(MotionDurationDefaultMillis)),
+        exit = slideOutVertically(
+            targetOffsetY = { it },
+            animationSpec = tween(MotionDurationDefaultMillis),
+        ) + fadeOut(tween(MotionDurationDefaultMillis)),
+    ) {
+        displayedNotice?.let { current ->
+            Surface(
+                color = FeedbackNoticeBackground,
+                contentColor = FeedbackNoticeForeground,
+                shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+                shadowElevation = MapControlElevation,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+            ) {
+                Text(
+                    text = current.message,
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(horizontal = 22.dp, vertical = 18.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
 
 private fun Modifier.mapControlShadow(shape: Shape): Modifier {
     var result = this
@@ -558,6 +614,12 @@ private fun SpurApp() {
     }
     val navController = rememberNavController()
     var isHistoryVisible by rememberSaveable { mutableStateOf(false) }
+    var feedbackNotice by remember { mutableStateOf<FeedbackNotice?>(null) }
+    var feedbackNoticeId by remember { mutableLongStateOf(0L) }
+    val showFeedbackNotice: (String) -> Unit = { message ->
+        feedbackNoticeId++
+        feedbackNotice = FeedbackNotice(feedbackNoticeId, message)
+    }
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
@@ -600,6 +662,12 @@ private fun SpurApp() {
             activeTour = result.first?.takeIf { it.endedAt == null }
             delay(1_000L)
         }
+    }
+
+    LaunchedEffect(feedbackNotice?.id) {
+        if (feedbackNotice == null) return@LaunchedEffect
+        delay(FeedbackNoticeDurationMillis)
+        feedbackNotice = null
     }
 
     MaterialTheme(
@@ -726,6 +794,7 @@ private fun SpurApp() {
                                 onOpenHistory = {
                                     isHistoryVisible = true
                                 },
+                                showFeedbackNotice = showFeedbackNotice,
                                 photoRevision = photoRevision,
                                 onPhotoRotated = { photoRevision++ },
                             )
@@ -799,10 +868,18 @@ private fun SpurApp() {
                                     historyRevision++
                                 }
                             },
+                            showFeedbackNotice = showFeedbackNotice,
                             photoRevision = photoRevision,
                             onPhotoRotated = { photoRevision++ },
                         )
                     }
+                    FeedbackNoticeHost(
+                        notice = feedbackNotice,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .zIndex(100f),
+                    )
                 }
             }
         }
@@ -886,6 +963,7 @@ private fun MapPage(
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
+    showFeedbackNotice: (String) -> Unit = {},
     photoRevision: Long = 0L,
     onPhotoRotated: () -> Unit = {},
 ) {
@@ -1018,11 +1096,7 @@ private fun MapPage(
         if (granted) {
             showCamera = true
         } else {
-            Toast.makeText(
-                context,
-                "Für Fotos braucht Spur Zugriff auf die Kamera.",
-                Toast.LENGTH_LONG,
-            ).show()
+            showFeedbackNotice("Für Fotos braucht Spur Zugriff auf die Kamera.")
         }
     }
     val videoCaptureLauncher = rememberLauncherForActivityResult(
@@ -1044,11 +1118,7 @@ private fun MapPage(
         }.onFailure {
             pendingVideoCapturePath = null
             video.delete()
-            Toast.makeText(
-                context,
-                "Auf diesem Gerät ist keine Videoaufnahme verfügbar.",
-                Toast.LENGTH_LONG,
-            ).show()
+            showFeedbackNotice("Auf diesem Gerät ist keine Videoaufnahme verfügbar.")
         }
     }
     val videoPermissionLauncher = rememberLauncherForActivityResult(
@@ -1057,11 +1127,7 @@ private fun MapPage(
         if (granted) {
             startVideoCapture()
         } else {
-            Toast.makeText(
-                context,
-                "Für Videos braucht Spur Zugriff auf die Kamera.",
-                Toast.LENGTH_LONG,
-            ).show()
+            showFeedbackNotice("Für Videos braucht Spur Zugriff auf die Kamera.")
         }
     }
     val audioPermissionLauncher = rememberLauncherForActivityResult(
@@ -1071,11 +1137,8 @@ private fun MapPage(
         if (granted) {
             voiceRecordingStartRequest++
         } else {
-            Toast.makeText(
-                context,
-                "Für Sprache braucht Spur Zugriff auf das Mikrofon.",
-                Toast.LENGTH_LONG,
-            ).show()
+            showVoiceRecorder = false
+            showFeedbackNotice("Für Sprache braucht Spur Zugriff auf das Mikrofon.")
         }
     }
 
@@ -1123,11 +1186,7 @@ private fun MapPage(
                 onMomentPlacementFailed = { failedMoment ->
                     failedMoment.file.delete()
                     pendingMoment = null
-                    Toast.makeText(
-                        context,
-                        "Der Standort ist noch nicht verfügbar.",
-                        Toast.LENGTH_LONG,
-                    ).show()
+                    showFeedbackNotice("Der Standort ist noch nicht verfügbar.")
                 },
                 onMomentClick = { moment, origin ->
                     isFollowingLocation = false
@@ -1143,11 +1202,6 @@ private fun MapPage(
                     context.saveManualLocation(location)
                     manualLocation = location
                     onSimulatedLocation(location)
-                    Toast.makeText(
-                        context,
-                        "Simulierter Standort gesetzt.",
-                        Toast.LENGTH_SHORT,
-                    ).show()
                 },
                 onFollowingInterrupted = {
                     isFollowingLocation = false
@@ -1238,11 +1292,6 @@ private fun MapPage(
                             onClick = {
                                 context.saveManualLocation(null)
                                 manualLocation = null
-                                Toast.makeText(
-                                    context,
-                                    "GPS-Standort wieder aktiv.",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
                             },
                         ) {
                             LucideLocateOffIcon()
@@ -1472,11 +1521,8 @@ private fun MapPage(
                         label = "Emoji",
                         modifier = Modifier.weight(1f),
                     ) {
-                        Toast.makeText(
-                            context,
-                            "Emojimarker kommt als Nächstes.",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        showMomentSheet = false
+                        showFeedbackNotice("Emojimarker kommt als Nächstes.")
                     }
                 }
                 Spacer(modifier = Modifier.height(MomentSheetGridGap))
@@ -1834,11 +1880,10 @@ private fun MapPage(
                             .clickable {
                                 runCatching { uriHandler.openUri(ArashLinkedInUrl) }
                                     .onFailure {
-                                        Toast.makeText(
-                                            context,
+                                        showAboutBottomSheet = false
+                                        showFeedbackNotice(
                                             "LinkedIn konnte nicht geöffnet werden.",
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
+                                        )
                                     }
                             }
                             .semantics {
@@ -1863,6 +1908,7 @@ private fun MapPage(
 
     if (showCamera) {
         CameraScreen(
+            showFeedbackNotice = showFeedbackNotice,
             onClose = { showCamera = false },
             onPhotoAccepted = { photo ->
                 showCamera = false
@@ -1879,6 +1925,7 @@ private fun MapPage(
             VoiceRecorderBottomSheet(
                 startRecordingRequest = voiceRecordingStartRequest,
                 hasRecordPermission = audioPermissionGranted,
+                showFeedbackNotice = showFeedbackNotice,
                 onRequestPermission = {
                     audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                 },
@@ -1902,6 +1949,7 @@ private fun MapPage(
                 photoDetail = it
                 focusedPhoto = it
             },
+            showFeedbackNotice = showFeedbackNotice,
             onPhotoRotated = onPhotoRotated,
             onPhotoDeleted = { deletedPhoto ->
                 scope.launch {
@@ -1910,11 +1958,7 @@ private fun MapPage(
                         moments = mapMoments,
                     )
                     if (updatedMoments == null) {
-                        Toast.makeText(
-                            context,
-                            "Das Bild konnte nicht gelöscht werden.",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        showFeedbackNotice("Das Bild konnte nicht gelöscht werden.")
                     } else {
                         mapMoments = updatedMoments
                         photoDetail = null
@@ -1943,6 +1987,7 @@ private fun MapPage(
 private fun VoiceRecorderBottomSheet(
     startRecordingRequest: Long,
     hasRecordPermission: Boolean,
+    showFeedbackNotice: (String) -> Unit = {},
     onRequestPermission: () -> Unit,
     onRecordingAccepted: (File) -> Unit,
     onDismiss: () -> Unit,
@@ -1994,11 +2039,8 @@ private fun VoiceRecorderBottomSheet(
         } else {
             runCatching { nextRecorder.release() }
             output.delete()
-            Toast.makeText(
-                context,
-                "Die Sprachaufnahme konnte nicht gestartet werden.",
-                Toast.LENGTH_LONG,
-            ).show()
+            onDismiss()
+            showFeedbackNotice("Die Sprachaufnahme konnte nicht gestartet werden.")
         }
     }
 
@@ -3777,6 +3819,7 @@ private fun PhotoDetailPage(
     initialPhotoId: String,
     openOrigin: Offset? = null,
     photoRevision: Long = 0L,
+    showFeedbackNotice: (String) -> Unit,
     onPhotoChanged: (MapMoment) -> Unit = {},
     onPhotoRotated: () -> Unit = {},
     onPhotoDeleted: (MapMoment) -> Unit,
@@ -3848,22 +3891,14 @@ private fun PhotoDetailPage(
             val saved = withContext(Dispatchers.IO) {
                 context.savePhotoToGallery(File(currentPhoto.payload))
             }
-            Toast.makeText(
-                context,
-                if (saved) "In Galerie gespeichert." else "Foto konnte nicht gespeichert werden.",
-                Toast.LENGTH_SHORT,
-            ).show()
+            if (!saved) showFeedbackNotice("Foto konnte nicht gespeichert werden.")
         }
     }
 
     fun sharePhoto() {
         val shared = context.sharePhoto(File(currentPhoto.payload))
         if (!shared) {
-            Toast.makeText(
-                context,
-                "Das Foto konnte nicht geteilt werden.",
-                Toast.LENGTH_SHORT,
-            ).show()
+            showFeedbackNotice("Das Foto konnte nicht geteilt werden.")
         }
     }
 
@@ -3876,24 +3911,19 @@ private fun PhotoDetailPage(
             if (rotated) {
                 imageRevision++
                 hasRotatedPhoto = true
-                Toast.makeText(context, "Foto um 90° gedreht.", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(
-                    context,
-                    "Das Foto konnte nicht gedreht werden.",
-                    Toast.LENGTH_SHORT,
-                ).show()
+                showFeedbackNotice("Das Foto konnte nicht gedreht werden.")
             }
         }
     }
     val storagePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted) savePhoto() else Toast.makeText(
-            context,
-            "Zum Speichern braucht Spur Zugriff auf deine Bilder.",
-            Toast.LENGTH_LONG,
-        ).show()
+        if (granted) {
+            savePhoto()
+        } else {
+            showFeedbackNotice("Zum Speichern braucht Spur Zugriff auf deine Bilder.")
+        }
     }
     val requestSavePhoto: () -> Unit = {
         if (
@@ -5483,6 +5513,7 @@ private fun HistoryPage(
     onOpenTour: (Long) -> Unit,
     onEditTour: (Long) -> Unit,
     onDeleteTour: (Long) -> Unit,
+    showFeedbackNotice: (String) -> Unit = {},
     photoRevision: Long = 0L,
     onPhotoRotated: () -> Unit = {},
 ) {
@@ -5761,6 +5792,7 @@ private fun HistoryPage(
         PhotoDetailPage(
             photos = historyPhotos,
             initialPhotoId = photo.id,
+            showFeedbackNotice = showFeedbackNotice,
             photoRevision = photoRevision,
             onPhotoChanged = { selectedPhoto = it },
             onPhotoRotated = onPhotoRotated,
@@ -5771,11 +5803,7 @@ private fun HistoryPage(
                         moments = mapMoments,
                     )
                     if (updatedMoments == null) {
-                        Toast.makeText(
-                            context,
-                            "Das Bild konnte nicht gelöscht werden.",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        showFeedbackNotice("Das Bild konnte nicht gelöscht werden.")
                     } else {
                         mapMoments = updatedMoments
                         selectedPhoto = null
