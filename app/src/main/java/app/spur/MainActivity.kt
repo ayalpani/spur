@@ -56,6 +56,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -258,7 +260,6 @@ private val FollowGreen = Color(0xFF43A873)
 private val StopRed = Color(0xFFE53935)
 private val MapPinRed = Color(0xFFEA4335)
 private val MomentMarkerGreen = Color(0xFF43A047)
-private val TourRouteGlow = Color(0xFFFFFF00).copy(alpha = 0.5f)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private val MapControlGap = 10.dp
@@ -277,6 +278,9 @@ private const val TourRouteWidthPixels = 6f
 private const val TourRouteBorderPerSidePixels = 2f
 private const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
+private const val TrailStrokeAlpha = 0.25f
+private const val SignalButtonPulseAlpha = 0.42f
+private const val SignalButtonPulseStartScale = 0.62f
 private val DefaultTourActivities = listOf(
     "Inline-Skaten",
     "Spazieren",
@@ -323,8 +327,19 @@ internal enum class MapControlColor(
         get() = if (color.luminance() > 0.3f) Ink else Color.White
 }
 
+internal data class TrailColors(
+    val fill: Color,
+    val stroke: Color,
+)
+
 private val LocalMapControlColors = staticCompositionLocalOf {
     MapControlColors(background = Color.White, foreground = Ink)
+}
+private val LocalTrailColors = staticCompositionLocalOf {
+    TrailColors(
+        fill = MapControlColor.YELLOW.color,
+        stroke = MapControlColor.BLACK.color.copy(alpha = TrailStrokeAlpha),
+    )
 }
 private val LocalLucideStrokeWidth = staticCompositionLocalOf { LucideRegularStrokeWidth }
 
@@ -384,8 +399,11 @@ internal enum class MapRotation(val label: String, val bearing: Double) {
 internal fun mapRotationFromStored(value: String?): MapRotation =
     MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH
 
-internal fun mapControlColorFromStored(value: String?): MapControlColor =
-    MapControlColor.entries.firstOrNull { it.name == value } ?: MapControlColor.BLACK
+internal fun mapControlColorFromStored(
+    value: String?,
+    fallback: MapControlColor = MapControlColor.BLACK,
+): MapControlColor =
+    MapControlColor.entries.firstOrNull { it.name == value } ?: fallback
 
 internal fun defaultMapControlForeground(background: MapControlColor): MapControlColor =
     when {
@@ -871,6 +889,12 @@ private fun MapPage(
     var mapControlForeground by remember {
         mutableStateOf(context.loadMapControlForegroundColor(mapControlBackground))
     }
+    var trailFillColor by remember {
+        mutableStateOf(context.loadTrailFillColor())
+    }
+    var trailStrokeColor by remember {
+        mutableStateOf(context.loadTrailStrokeColor())
+    }
     var isMapRendered by remember { mutableStateOf(false) }
     var minimumMapLoadingTimeElapsed by remember { mutableStateOf(false) }
     var loaderContentVisible by remember { mutableStateOf(false) }
@@ -949,7 +973,14 @@ private fun MapPage(
         background = mapControlBackground.color,
         foreground = mapControlForeground.color,
     )
-    CompositionLocalProvider(LocalMapControlColors provides mapControlColors) {
+    val trailColors = TrailColors(
+        fill = trailFillColor.color,
+        stroke = trailStrokeColor.color.copy(alpha = TrailStrokeAlpha),
+    )
+    CompositionLocalProvider(
+        LocalMapControlColors provides mapControlColors,
+        LocalTrailColors provides trailColors,
+    ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (mapInitializationStarted) {
             MapSurface(
@@ -966,6 +997,7 @@ private fun MapPage(
                 mapMoments = mapMoments,
                 momentImageRevision = photoRevision,
                 routePoints = routePoints,
+                trailColors = trailColors,
                 photoToPlace = pendingPhoto,
                 focusedMoment = focusedPhoto,
                 onAlternateMapPreviewChanged = { alternateMapPreview = it },
@@ -1403,6 +1435,14 @@ private fun MapPage(
             mapControlForeground = it
             context.saveMapControlForegroundColor(it)
         }
+        val selectTrailFill: (MapControlColor) -> Unit = {
+            trailFillColor = it
+            context.saveTrailFillColor(it)
+        }
+        val selectTrailStroke: (MapControlColor) -> Unit = {
+            trailStrokeColor = it
+            context.saveTrailStrokeColor(it)
+        }
         ModalBottomSheet(
             onDismissRequest = {
                 showAppearanceBottomSheet = false
@@ -1414,7 +1454,8 @@ private fun MapPage(
                 modifier = Modifier
                     .navigationBarsPadding()
                     .padding(horizontal = 24.dp)
-                    .padding(bottom = 24.dp),
+                    .padding(bottom = 24.dp)
+                    .verticalScroll(rememberScrollState()),
             ) {
                 BottomSheetHeader(
                     title = "Darstellung wählen",
@@ -1454,6 +1495,38 @@ private fun MapPage(
                     label = "Icon- und Textfarbe",
                     selectedColor = mapControlForeground,
                     onSelect = selectMapControlForeground,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(32.dp))
+                Text(
+                    text = "Trail",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Füllfarbe",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                MapControlColorPicker(
+                    label = "Trail-Füllfarbe",
+                    selectedColor = trailFillColor,
+                    onSelect = selectTrailFill,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "Randfarbe",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                MapControlColorPicker(
+                    label = "Trail-Randfarbe",
+                    selectedColor = trailStrokeColor,
+                    onSelect = selectTrailStroke,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -2403,6 +2476,7 @@ private fun MapSurface(
     mapMoments: List<MapMoment>,
     momentImageRevision: Long,
     routePoints: List<TrackPoint>,
+    trailColors: TrailColors,
     photoToPlace: File?,
     focusedMoment: MapMoment?,
     onAlternateMapPreviewChanged: (ImageBitmap) -> Unit,
@@ -2432,6 +2506,7 @@ private fun MapSurface(
     )
     val currentMapMoments by rememberUpdatedState(mapMoments)
     val currentRoutePoints by rememberUpdatedState(routePoints)
+    val currentTrailColors by rememberUpdatedState(trailColors)
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
@@ -2506,6 +2581,7 @@ private fun MapSurface(
                 initialMapZoom = initialMapZoom,
                 defaultMapBearing = defaultMapBearing,
                 routePoints = currentRoutePoints,
+                trailColors = currentTrailColors,
                 onLoaded = {
                     mapStyleRevision++
                     hasLoadedMapStyle = true
@@ -2856,9 +2932,20 @@ private fun MapSurface(
         }
     }
 
-    LaunchedEffect(routePoints) {
+    LaunchedEffect(routePoints, trailColors) {
+        val points = routePoints
+        val routeFeature = withContext(Dispatchers.Default) {
+            tourRouteFeature(points)
+        }
         mapView.getMapAsync { map ->
-            map.style?.showTourRoute(routePoints)
+            if (points !== currentRoutePoints) return@getMapAsync
+            map.style?.showTourRoute(routeFeature, currentTrailColors)
+        }
+    }
+
+    LaunchedEffect(trailColors.fill) {
+        mapView.getMapAsync { map ->
+            map.updateLocationPulseColor(currentTrailColors.fill)
         }
     }
 
@@ -3895,6 +3982,7 @@ private fun setMapStyle(
     initialMapZoom: Double,
     defaultMapBearing: Double,
     routePoints: List<TrackPoint>,
+    trailColors: TrailColors,
     onLoaded: () -> Unit,
 ) {
     val cameraPosition = map.cameraPosition
@@ -3907,8 +3995,9 @@ private fun setMapStyle(
             manualLocation = manualLocation,
             initialMapZoom = initialMapZoom,
             defaultMapBearing = defaultMapBearing,
+            pulseColor = trailColors.fill,
         )
-        style.showTourRoute(routePoints)
+        style.showTourRoute(routePoints, trailColors)
         if (!centerOnLocation) {
             map.moveCamera(CameraUpdateFactory.newCameraPosition(cameraPosition))
         }
@@ -4092,12 +4181,34 @@ private fun momentOffsetExpression(moments: List<MapMoment>): Expression {
     )
 }
 
-private fun Style.showTourRoute(points: List<TrackPoint>) {
+private fun Style.showTourRoute(
+    points: List<TrackPoint>,
+    colors: TrailColors,
+) {
+    showTourRoute(tourRouteFeature(points), colors)
+}
+
+internal fun tourRouteFeature(points: List<TrackPoint>): Feature? =
+    if (points.size >= 2) {
+        Feature.fromGeometry(
+            LineString.fromLngLats(
+                points.map { Point.fromLngLat(it.longitude, it.latitude) },
+            ),
+        )
+    } else {
+        null
+    }
+
+private fun Style.showTourRoute(
+    route: Feature?,
+    colors: TrailColors,
+) {
     val source = getSourceAs<GeoJsonSource>(TourRouteSource)
         ?: GeoJsonSource(TourRouteSource).also(::addSource)
-    if (getLayer(TourRouteBorderLayer) == null) {
+    val borderLayer = getLayerAs<LineLayer>(TourRouteBorderLayer)
+    if (borderLayer == null) {
         val borderLayer = LineLayer(TourRouteBorderLayer, TourRouteSource).withProperties(
-            lineColor(TourRouteGlow.toArgb()),
+            lineColor(colors.stroke.toArgb()),
             lineWidth(TourRouteBorderWidthPixels),
             lineCap(Property.LINE_CAP_ROUND),
             lineJoin(Property.LINE_JOIN_ROUND),
@@ -4107,25 +4218,24 @@ private fun Style.showTourRoute(points: List<TrackPoint>) {
         } else {
             addLayerBelow(borderLayer, TourRouteLayer)
         }
+    } else {
+        borderLayer.setProperties(lineColor(colors.stroke.toArgb()))
     }
-    if (getLayer(TourRouteLayer) == null) {
+    val routeLayer = getLayerAs<LineLayer>(TourRouteLayer)
+    if (routeLayer == null) {
         addLayer(
             LineLayer(TourRouteLayer, TourRouteSource).withProperties(
-                lineColor(Ink.toArgb()),
+                lineColor(colors.fill.toArgb()),
                 lineWidth(TourRouteWidthPixels),
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
             ),
         )
+    } else {
+        routeLayer.setProperties(lineColor(colors.fill.toArgb()))
     }
-    if (points.size >= 2) {
-        source.setGeoJson(
-            Feature.fromGeometry(
-                LineString.fromLngLats(
-                    points.map { Point.fromLngLat(it.longitude, it.latitude) },
-                ),
-            ),
-        )
+    if (route != null) {
+        source.setGeoJson(route)
     } else {
         source.setGeoJson("""{"type":"FeatureCollection","features":[]}""")
     }
@@ -4166,6 +4276,7 @@ private fun enableLocationTracking(
     manualLocation: SpurCoordinate?,
     initialMapZoom: Double,
     defaultMapBearing: Double,
+    pulseColor: Color,
 ) {
     if (!context.hasLocationPermission()) return
 
@@ -4179,7 +4290,7 @@ private fun enableLocationTracking(
         .accuracyColor(Ink.toArgb())
         .pulseEnabled(true)
         .pulseFadeEnabled(true)
-        .pulseColor(Ink.toArgb())
+        .pulseColor(pulseColor.toArgb())
         .pulseSingleDuration(MapLocationPulseDurationMillis.toFloat())
         .pulseInterpolator(AccelerateDecelerateInterpolator())
         .build()
@@ -4208,6 +4319,17 @@ private fun enableLocationTracking(
             ),
         )
     }
+}
+
+private fun MapLibreMap.updateLocationPulseColor(color: Color) {
+    val component = locationComponent
+    if (!component.isLocationComponentActivated) return
+    component.applyStyle(
+        component.locationComponentOptions
+            .toBuilder()
+            .pulseColor(color.toArgb())
+            .build(),
+    )
 }
 
 private fun MapLibreMap.followLocation(
@@ -4322,6 +4444,8 @@ private const val DefaultZoomPreference = "default-zoom"
 private const val DefaultRotationPreference = "default-rotation"
 private const val MapControlColorPreference = "map-control-color"
 private const val MapControlForegroundColorPreference = "map-control-foreground-color"
+private const val TrailFillColorPreference = "trail-fill-color"
+private const val TrailStrokeColorPreference = "trail-stroke-color"
 
 private fun Context.loadDefaultMapZoom(): Double =
     getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
@@ -4377,6 +4501,40 @@ private fun Context.saveMapControlForegroundColor(color: MapControlColor) {
         .putString(MapControlForegroundColorPreference, color.name)
         .apply()
 }
+
+private fun Context.loadTrailFillColor(): MapControlColor =
+    mapControlColorFromStored(
+        getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+            .getString(TrailFillColorPreference, null),
+        fallback = MapControlColor.YELLOW,
+    )
+
+private fun Context.saveTrailFillColor(color: MapControlColor) {
+    getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+        .edit()
+        .putString(TrailFillColorPreference, color.name)
+        .apply()
+}
+
+private fun Context.loadTrailStrokeColor(): MapControlColor =
+    mapControlColorFromStored(
+        getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+            .getString(TrailStrokeColorPreference, null),
+        fallback = MapControlColor.BLACK,
+    )
+
+private fun Context.saveTrailStrokeColor(color: MapControlColor) {
+    getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)
+        .edit()
+        .putString(TrailStrokeColorPreference, color.name)
+        .apply()
+}
+
+private fun Context.loadTrailColors(): TrailColors =
+    TrailColors(
+        fill = loadTrailFillColor().color,
+        stroke = loadTrailStrokeColor().color.copy(alpha = TrailStrokeAlpha),
+    )
 
 private const val MapMomentPreferences = "map-moments"
 private const val MapMomentEntries = "entries"
@@ -5234,6 +5392,7 @@ private fun TourEditorMap(
     selectedPoint: TrackPoint?,
 ) {
     val context = LocalContext.current
+    val trailColors = remember { context.loadTrailColors() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentPoints by rememberUpdatedState(points)
     val currentSelectedPoint by rememberUpdatedState(selectedPoint)
@@ -5269,7 +5428,7 @@ private fun TourEditorMap(
         mapView.getMapAsync { map ->
             map.uiSettings.isCompassEnabled = false
             map.setStyle(StreetMapStyle) { style ->
-                style.showTourRoute(currentPoints)
+                style.showTourRoute(currentPoints, trailColors)
                 style.showSelectedTrackPoint(currentSelectedPoint)
                 mapView.post {
                     map.fitTourRoute(currentPoints, cameraPadding, animated = false)
@@ -5294,7 +5453,7 @@ private fun TourEditorMap(
 
     LaunchedEffect(points) {
         mapView.getMapAsync { map ->
-            map.style?.showTourRoute(points)
+            map.style?.showTourRoute(points, trailColors)
             mapView.post { map.fitTourRoute(points, cameraPadding, animated = true) }
         }
     }
@@ -5682,6 +5841,7 @@ private fun PlusIcon() = LucideIcon(
 @Composable
 private fun FollowLocationIcon(selected: Boolean) {
     val transition = rememberInfiniteTransition(label = "Location following signal")
+    val pulseColor = LocalTrailColors.current.fill
     val scale by transition.animateFloat(
         initialValue = if (selected) FollowLocationPulseMinScale else 1f,
         targetValue = if (selected) FollowLocationPulseMaxScale else 1f,
@@ -5694,18 +5854,50 @@ private fun FollowLocationIcon(selected: Boolean) {
         ),
         label = "Location following signal scale",
     )
-    Box(modifier = Modifier.scale(scale)) {
-        LucideIcon(
-            paths = listOf(
-                "M16.247 7.761a6 6 0 0 1 0 8.478",
-                "M19.075 4.933a10 10 0 0 1 0 14.134",
-                "M4.925 19.067a10 10 0 0 1 0-14.134",
-                "M7.753 16.239a6 6 0 0 1 0-8.478",
-                "M14 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
+    val backgroundProgress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = if (selected) 1f else 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = MapLocationPulseDurationMillis,
+                easing = FastOutSlowInEasing,
             ),
-            color = LocalContentColor.current,
-            strokeWidth = LucideRegularStrokeWidth,
+        ),
+        label = "Location following background pulse",
+    )
+    Box(
+        modifier = Modifier.size(52.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val pulseScale = SignalButtonPulseStartScale +
+                        (1f - SignalButtonPulseStartScale) * backgroundProgress
+                    scaleX = pulseScale
+                    scaleY = pulseScale
+                    alpha = if (selected) {
+                        SignalButtonPulseAlpha * (1f - backgroundProgress)
+                    } else {
+                        0f
+                    }
+                }
+                .background(pulseColor, CircleShape),
         )
+        Box(modifier = Modifier.scale(scale)) {
+            LucideIcon(
+                paths = listOf(
+                    "M16.247 7.761a6 6 0 0 1 0 8.478",
+                    "M19.075 4.933a10 10 0 0 1 0 14.134",
+                    "M4.925 19.067a10 10 0 0 1 0-14.134",
+                    "M7.753 16.239a6 6 0 0 1 0-8.478",
+                    "M14 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
+                ),
+                color = LocalContentColor.current,
+                strokeWidth = LucideRegularStrokeWidth,
+            )
+        }
     }
 }
 

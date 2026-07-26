@@ -11,6 +11,10 @@ class MapControlColorTest {
         assertEquals(MapControlColor.BLUE, mapControlColorFromStored("BLUE"))
         assertEquals(MapControlColor.BLACK, mapControlColorFromStored("invalid"))
         assertEquals(MapControlColor.BLACK, mapControlColorFromStored(null))
+        assertEquals(
+            MapControlColor.YELLOW,
+            mapControlColorFromStored("invalid", fallback = MapControlColor.YELLOW),
+        )
     }
 
     @Test
