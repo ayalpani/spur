@@ -19,6 +19,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -354,7 +355,8 @@ internal const val MomentMarkerWidth = 62
 private const val MomentMarkerHeight = 58
 private const val MomentMarkerStroke = 3f
 private const val MapPreviewPixels = 180
-private const val LocationPulseDurationMillis = 2_300
+private const val FollowLocationPulseDurationMillis = 2_300
+private const val MapLocationPulseDurationMillis = 3_000
 private const val TourRouteSource = "tour-route-source"
 private const val TourRouteBorderLayer = "tour-route-border-layer"
 private const val TourRouteLayer = "tour-route-layer"
@@ -4176,8 +4178,10 @@ private fun enableLocationTracking(
         .bearingTintColor(Ink.toArgb())
         .accuracyColor(Ink.toArgb())
         .pulseEnabled(true)
+        .pulseFadeEnabled(true)
         .pulseColor(Ink.toArgb())
-        .pulseSingleDuration(LocationPulseDurationMillis.toFloat())
+        .pulseSingleDuration(MapLocationPulseDurationMillis.toFloat())
+        .pulseInterpolator(AccelerateDecelerateInterpolator())
         .build()
     locationComponent.activateLocationComponent(
         LocationComponentActivationOptions.builder(context, style)
@@ -5683,7 +5687,7 @@ private fun FollowLocationIcon(selected: Boolean) {
         targetValue = if (selected) FollowLocationPulseMaxScale else 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = LocationPulseDurationMillis / 2,
+                durationMillis = FollowLocationPulseDurationMillis / 2,
                 easing = FastOutSlowInEasing,
             ),
             repeatMode = RepeatMode.Reverse,
