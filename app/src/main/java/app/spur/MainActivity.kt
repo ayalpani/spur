@@ -150,6 +150,7 @@ import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -286,6 +287,7 @@ internal const val LucideBoldStrokeWidth = 3f
 private const val LucideRegularStrokeWidth = 2f
 private const val FollowLocationPulseMinScale = 0.78f
 private const val FollowLocationPulseMaxScale = 1.28f
+private const val ArashLinkedInUrl = "https://www.linkedin.com/in/arash-yalpani-3367258"
 private val MapControlElevation = 16.dp
 private val MapControlShadowColor = Color.Black
 private const val MapControlShadowLayers = 3
@@ -1507,6 +1509,7 @@ private fun MapPage(
     }
 
     if (showAboutBottomSheet) {
+        val uriHandler = LocalUriHandler.current
         ModalBottomSheet(
             onDismissRequest = {
                 showAboutBottomSheet = false
@@ -1532,11 +1535,43 @@ private fun MapPage(
                     text = "Spur hält deine Wege und Erinnerungen privat auf deinem Gerät fest.",
                     style = MaterialTheme.typography.bodyLarge,
                 )
-                Text(
-                    text = "Entwickelt von Arash.",
-                    color = Ink.copy(alpha = 0.62f),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Entwickelt von ",
+                        color = Ink.copy(alpha = 0.62f),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Row(
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .clickable {
+                                runCatching { uriHandler.openUri(ArashLinkedInUrl) }
+                                    .onFailure {
+                                        Toast.makeText(
+                                            context,
+                                            "LinkedIn konnte nicht geöffnet werden.",
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                            }
+                            .semantics {
+                                contentDescription =
+                                    "LinkedIn-Profil von Arash Yalpani öffnen"
+                            },
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Arash Yalpani.",
+                            color = Ink,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        ExternalLinkIcon()
+                    }
+                }
             }
         }
     }
@@ -5609,6 +5644,17 @@ private fun ShareIcon() = LucideIcon(
         "M8.59 13.51 15.42 17.49",
         "M15.41 6.51 8.59 10.49",
     ),
+)
+
+@Composable
+private fun ExternalLinkIcon() = LucideIcon(
+    paths = listOf(
+        "M15 3h6v6",
+        "M10 14 21 3",
+        "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6",
+    ),
+    modifier = Modifier.size(18.dp),
+    strokeWidth = LucideRegularStrokeWidth,
 )
 
 @Composable
