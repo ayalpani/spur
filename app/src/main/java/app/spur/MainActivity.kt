@@ -283,6 +283,9 @@ private val DefaultTourActivities = listOf(
     "Wandern",
 )
 internal const val LucideBoldStrokeWidth = 3f
+private const val LucideRegularStrokeWidth = 2f
+private const val FollowLocationPulseMinScale = 0.78f
+private const val FollowLocationPulseMaxScale = 1.28f
 private val MapControlElevation = 16.dp
 private val MapControlShadowColor = Color.Black
 private const val MapControlShadowLayers = 3
@@ -320,7 +323,7 @@ internal enum class MapControlColor(
 private val LocalMapControlColors = staticCompositionLocalOf {
     MapControlColors(background = Color.White, foreground = Ink)
 }
-private val LocalLucideStrokeWidth = staticCompositionLocalOf { 2f }
+private val LocalLucideStrokeWidth = staticCompositionLocalOf { LucideRegularStrokeWidth }
 
 private fun Modifier.mapControlShadow(shape: Shape): Modifier {
     var result = this
@@ -5630,8 +5633,8 @@ private fun PlusIcon() = LucideIcon(
 private fun FollowLocationIcon(selected: Boolean) {
     val transition = rememberInfiniteTransition(label = "Location following signal")
     val scale by transition.animateFloat(
-        initialValue = if (selected) 0.94f else 1f,
-        targetValue = if (selected) 1.08f else 1f,
+        initialValue = if (selected) FollowLocationPulseMinScale else 1f,
+        targetValue = if (selected) FollowLocationPulseMaxScale else 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(
                 durationMillis = LocationPulseDurationMillis / 2,
@@ -5651,6 +5654,7 @@ private fun FollowLocationIcon(selected: Boolean) {
                 "M14 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
             ),
             color = LocalContentColor.current,
+            strokeWidth = LucideRegularStrokeWidth,
         )
     }
 }
