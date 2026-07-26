@@ -318,7 +318,7 @@ private const val MapMomentRepresentativeProperty = "moment-representative"
 private const val MapMomentImagePrefix = "map-moment-"
 private const val MapMomentClusterImagePrefix = "map-moment-cluster-"
 private const val MapMomentClusterMaxZoom = 18
-private const val MapMomentClusterRadius = 54
+private const val MapMomentClusterRadius = MomentMarkerHeight / 2 - 1
 
 internal enum class MapRotation(val label: String, val bearing: Double) {
     NORTH("Norden", 0.0),
@@ -394,6 +394,12 @@ internal fun stopSwipePromptAlpha(offset: Float, maximum: Float): Float {
     if (maximum <= 0f) return 1f
     val progress = (offset / maximum).coerceIn(0f, 1f)
     return ((0.55f - progress) / 0.4f).coerceIn(0f, 1f)
+}
+
+internal fun clusterStackOffsets(pointCount: Int): List<Float> = when {
+    pointCount <= 1 -> listOf(8f)
+    pointCount == 2 -> listOf(4f, 8f)
+    else -> listOf(0f, 4f, 8f)
 }
 
 class MainActivity : ComponentActivity() {
@@ -2302,13 +2308,15 @@ private fun Style.showMapMoments(
     context: Context,
     moments: List<MapMoment>,
 ) {
-    val images = HashMap<String, android.graphics.Bitmap>(moments.size * 2)
+    val images = HashMap<String, android.graphics.Bitmap>(moments.size * 3)
     val features = moments.mapIndexed { index, moment ->
         val imageId = MapMomentImagePrefix + moment.id
         val marker = createMomentMarkerBitmap(context, moment, selected = false)
         images[imageId] = marker
-        images[MapMomentClusterImagePrefix + moment.id] =
-            createMomentClusterBitmap(context, marker)
+        listOf(2, 3).forEach { stackSize ->
+            images[clusterMomentImageId(moment, stackSize)] =
+                createMomentClusterBitmap(context, marker, stackSize)
+        }
         Feature.fromGeometry(
             Point.fromLngLat(moment.longitude, moment.latitude),
         ).apply {
@@ -2397,10 +2405,25 @@ private fun Style.showMapMoments(
     }
 }
 
-private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression {
-    val fallback = MapMomentClusterImagePrefix + moments.firstOrNull()?.id.orEmpty()
+private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression =
+    Expression.switchCase(
+        Expression.eq(
+            Expression.toNumber(Expression.get("point_count")),
+            Expression.literal(2),
+        ),
+        representativeClusterImageExpression(moments, 2),
+        representativeClusterImageExpression(moments, 3),
+    )
+
+private fun representativeClusterImageExpression(
+    moments: List<MapMoment>,
+    stackSize: Int,
+): Expression {
+    val fallback = moments.firstOrNull()?.let {
+        clusterMomentImageId(it, stackSize)
+    }.orEmpty()
     val stops = moments.mapIndexed { index, moment ->
-        Expression.stop(index, MapMomentClusterImagePrefix + moment.id)
+        Expression.stop(index, clusterMomentImageId(moment, stackSize))
     }.toTypedArray()
     return Expression.match(
         Expression.toNumber(Expression.get(MapMomentRepresentativeProperty)),
@@ -2408,6 +2431,9 @@ private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression {
         *stops,
     )
 }
+
+private fun clusterMomentImageId(moment: MapMoment, stackSize: Int): String =
+    "$MapMomentClusterImagePrefix$stackSize-${moment.id}"
 
 private fun Style.showTourRoute(points: List<TrackPoint>) {
     val source = getSourceAs<GeoJsonSource>(TourRouteSource)
@@ -2795,6 +2821,7 @@ private fun createMomentMarkerBitmap(
 private fun createMomentClusterBitmap(
     context: Context,
     marker: android.graphics.Bitmap,
+    stackSize: Int,
 ): android.graphics.Bitmap {
     val scale = context.resources.displayMetrics.density
     return android.graphics.Bitmap.createBitmap(
@@ -2804,7 +2831,7 @@ private fun createMomentClusterBitmap(
     ).also { bitmap ->
         val canvas = android.graphics.Canvas(bitmap)
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-        listOf(0f, 4f, 8f).forEach { offset ->
+        clusterStackOffsets(stackSize).forEach { offset ->
             canvas.drawBitmap(marker, offset * scale, offset * scale, paint)
         }
     }

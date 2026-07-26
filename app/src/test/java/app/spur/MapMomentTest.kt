@@ -57,4 +57,12 @@ class MapMomentTest {
 
         assertEquals(listOf(legacy, explicit), photoMomentsForTour(listOf(explicit, outside, legacy), tour))
     }
+
+    @Test
+    fun clusterStackShowsAtMostThreeMarkers() {
+        assertEquals(listOf(8f), clusterStackOffsets(1))
+        assertEquals(listOf(4f, 8f), clusterStackOffsets(2))
+        assertEquals(listOf(0f, 4f, 8f), clusterStackOffsets(3))
+        assertEquals(listOf(0f, 4f, 8f), clusterStackOffsets(12))
+    }
 }
