@@ -35,7 +35,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -147,6 +149,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -226,6 +230,8 @@ private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MapRotationAnimationMillis = 350L
 private const val PanelAnimationMillis = 256
+private const val PhotoDetailEnterMillis = 320
+private const val PhotoDetailExitMillis = 240
 private val MapControlElevation = 16.dp
 private val MapControlShadowColor = Color.Black
 private const val MapControlShadowLayers = 3
@@ -1885,6 +1891,24 @@ private fun PhotoDetailDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val imageRequest = remember(photoPath) {
+        ImageRequest.Builder(context)
+            .data(File(photoPath))
+            .crossfade(PhotoDetailEnterMillis)
+            .build()
+    }
+    var isVisible by remember(photoPath) { mutableStateOf(false) }
+    var isClosing by remember(photoPath) { mutableStateOf(false) }
+
+    fun dismissAnimated() {
+        if (isClosing) return
+        isClosing = true
+        isVisible = false
+        scope.launch {
+            delay(PhotoDetailExitMillis.toLong())
+            onDismiss()
+        }
+    }
 
     fun savePhoto() {
         scope.launch {
@@ -1908,69 +1932,100 @@ private fun PhotoDetailDialog(
         ).show()
     }
 
+    LaunchedEffect(photoPath) {
+        isVisible = true
+    }
+
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = ::dismissAnimated,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false,
         ),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black),
+        AnimatedVisibility(
+            visible = isVisible,
+            enter = fadeIn(
+                animationSpec = tween(
+                    durationMillis = PhotoDetailEnterMillis,
+                    easing = FastOutSlowInEasing,
+                ),
+            ) + slideInVertically(
+                animationSpec = tween(
+                    durationMillis = PhotoDetailEnterMillis,
+                    easing = FastOutSlowInEasing,
+                ),
+                initialOffsetY = { height -> height / 10 },
+            ),
+            exit = fadeOut(
+                animationSpec = tween(
+                    durationMillis = PhotoDetailExitMillis,
+                ),
+            ) + slideOutVertically(
+                animationSpec = tween(
+                    durationMillis = PhotoDetailExitMillis,
+                    easing = FastOutSlowInEasing,
+                ),
+                targetOffsetY = { height -> height / 10 },
+            ),
         ) {
-            ZoomableAsyncImage(
-                model = File(photoPath),
-                contentDescription = "Zoombares Foto in Vollbildansicht",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-            )
-            IconButton(
-                onClick = onDismiss,
+            Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(16.dp)
-                    .size(56.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = Color.White,
-                    contentColor = Ink,
-                ),
+                    .fillMaxSize()
+                    .background(Color.Black),
             ) {
-                LucideIcon(
-                    paths = listOf("M18 6 6 18", "m6 6 12 12"),
-                    modifier = Modifier
-                        .size(24.dp)
-                        .semantics { contentDescription = "Foto schließen" },
+                ZoomableAsyncImage(
+                    model = imageRequest,
+                    contentDescription = "Zoombares Foto in Vollbildansicht",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
                 )
-            }
-            Button(
-                onClick = {
-                    if (
-                        Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-                        ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                        ) != PackageManager.PERMISSION_GRANTED
-                    ) {
-                        storagePermissionLauncher.launch(
-                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                        )
-                    } else {
-                        savePhoto()
-                    }
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(20.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White,
-                    contentColor = Ink,
-                ),
-            ) {
-                Text("In Galerie speichern")
+                IconButton(
+                    onClick = ::dismissAnimated,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(16.dp)
+                        .size(56.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = Color.White,
+                        contentColor = Ink,
+                    ),
+                ) {
+                    LucideIcon(
+                        paths = listOf("M18 6 6 18", "m6 6 12 12"),
+                        modifier = Modifier
+                            .size(24.dp)
+                            .semantics { contentDescription = "Foto schließen" },
+                    )
+                }
+                Button(
+                    onClick = {
+                        if (
+                            Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                            ) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            storagePermissionLauncher.launch(
+                                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                            )
+                        } else {
+                            savePhoto()
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(20.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Ink,
+                    ),
+                ) {
+                    Text("In Galerie speichern")
+                }
             }
         }
     }
