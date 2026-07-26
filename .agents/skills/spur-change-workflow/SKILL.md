@@ -1,6 +1,6 @@
 ---
 name: spur-change-workflow
-description: Manage code changes in the Spur project with one isolated Codex worktree, branch, and draft pull request per thread. Use whenever implementing, fixing, refactoring, reviewing, committing, pushing, or preparing a pull request for Spur, when parallel threads may touch the repository, or when deciding which thread's version to deploy to the phone.
+description: Manage and quality-check code changes in the Spur project with one isolated Codex worktree, branch, and draft pull request per thread. Use whenever implementing, fixing, refactoring, reviewing, committing, pushing, or preparing a pull request for Spur, when parallel threads may touch the repository, or when deciding which thread's version to deploy to the phone.
 ---
 
 # Spur Change Workflow
@@ -47,10 +47,65 @@ the current worktree.
 - Explain only when useful that the previous build disappears from the phone,
   while its worktree, branch, and draft pull request remain intact.
 
+## Mandatory completion quality gate
+
+Before declaring any code-changing feature request complete, inspect the final
+diff and verify every applicable item below. Use evidence proportionate to the
+risk; do not turn irrelevant items into ceremony.
+
+### Safety and security
+
+- Check permissions, exported components, intents, file/URI handling, input
+  boundaries, secrets, logs, and storage touched by the change.
+- Keep access least-privileged. Do not expose private location, photo, tour, or
+  user data through logs, screenshots, temporary files, shares, or backups.
+- Clean up diagnostic artifacts and temporary captures. Never retain unrelated
+  content encountered during device testing.
+
+### Navigation and lifecycle
+
+- Exercise every changed entry and exit path: visible back/up controls, Android
+  system back, dismiss gestures, cancellation, and repeated open/close.
+- Confirm routing still reaches the intended screen, has no dead ends, does not
+  create duplicate destinations, and restores the expected prior state.
+- Check configuration/lifecycle-sensitive work for stale callbacks, leaked
+  resources, duplicate jobs, and state loss.
+
+### Design and maintainability
+
+- Reuse existing components, tokens, icons, helpers, and domain logic. Apply
+  DRY where duplication would create multiple sources of truth; do not add an
+  abstraction merely to avoid a harmless repeated line.
+- Keep the change scoped, remove obsolete code and dependencies, preserve
+  naming and architecture conventions, and inspect adjacent callers for the
+  same root cause.
+
+### Product quality
+
+- Check relevant loading, empty, error, offline, permission-denied, retry,
+  cancellation, and rapid-interaction states.
+- Verify accessibility basics: meaningful semantics, touch targets, readable
+  contrast, and no essential information conveyed only by color or motion.
+- Check likely performance risks: main-thread I/O, unnecessary recomposition,
+  repeated decoding/allocation, map-layer churn, unbounded work, and leaks.
+- Check compatibility for the Android versions and device behavior the changed
+  APIs or permissions affect.
+
+### Evidence and completion
+
+- Run the smallest relevant automated tests plus a build; add a focused
+  regression test for non-trivial logic when practical.
+- Visually inspect changed UI on the best available surface. For navigation or
+  lifecycle changes, exercise the real device when reachable.
+- Review `git diff`, `git diff --check`, and repository status so only intended
+  files remain.
+- Report any skipped or blocked check explicitly. A successful build, push, or
+  deployment alone is not proof that the feature is complete.
+
 ## Finishing a change
 
-When the user declares the change finished, update it against current `main`,
-run the relevant checks, push the final branch, and move the draft pull request
-to review-ready state. Merge only when the user requests or approves the merge.
-After merge, remove the obsolete branch and worktree through the normal
-recoverable cleanup flow.
+Pass the mandatory completion quality gate. When the user declares the change
+finished, also update it against current `main`, push the final branch, and move
+the draft pull request to review-ready state. Merge only when the user requests
+or approves the merge. After merge, remove the obsolete branch and worktree
+through the normal recoverable cleanup flow.

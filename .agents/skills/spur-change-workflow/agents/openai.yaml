@@ -1,4 +1,4 @@
 interface:
   display_name: "Spur Change Workflow"
-  short_description: "Code-Änderungen sicher parallel bearbeiten"
-  default_prompt: "Nutze $spur-change-workflow, um diese Spur-Änderung in einem isolierten Worktree mit Branch und Draft-PR umzusetzen."
+  short_description: "Spur-Änderungen isoliert und qualitätsgeprüft"
+  default_prompt: "Nutze $spur-change-workflow, um diese Spur-Änderung isoliert umzusetzen und vor dem Abschluss das verpflichtende Qualitäts-Gate zu prüfen."

@@ -27,6 +27,25 @@ registered phone. A phone preview includes uncommitted files and requires
 neither a commit nor a push. Report the source worktree, device, and final
 state.
 
+## Feature validation on the device
+
+For a deployed feature, use the real device to check the applicable interaction
+paths from the mandatory completion quality gate in `spur-change-workflow`.
+Prioritize:
+
+- changed entry points and primary interaction;
+- visible back/up controls and Android system back;
+- dismiss, cancel, repeated open/close, and rapid interaction;
+- permission prompts and denial when the change touches permissions;
+- app background/foreground or restart when lifecycle or persistence changed;
+- visual result and any obvious crash, freeze, stale state, or private-data
+  exposure.
+
+Do not capture or retain unrelated private device content. Stop recording and
+delete the artifact immediately if another app or unrelated content appears.
+Deployment or launch success alone never means the feature is complete. Report
+which device checks passed and which could not be performed.
+
 ## Registered device
 
 - Device: Samsung Galaxy A54, model `SM_A546B`
