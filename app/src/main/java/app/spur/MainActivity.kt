@@ -391,6 +391,12 @@ internal fun mapPreviewZoom(
 internal fun shouldCompleteStopSwipe(offset: Float, maximum: Float): Boolean =
     maximum > 0f && offset >= maximum * 0.82f
 
+internal fun stopSwipePromptAlpha(offset: Float, maximum: Float): Float {
+    if (maximum <= 0f) return 1f
+    val progress = (offset / maximum).coerceIn(0f, 1f)
+    return ((0.55f - progress) / 0.4f).coerceIn(0f, 1f)
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -3598,7 +3604,11 @@ private fun ActiveTourStopControl(
                     modifier = Modifier.fillMaxSize(),
                 ) { confirmationVisible ->
                     if (confirmationVisible) {
-                        SwipeStopPrompt()
+                        SwipeStopPrompt(
+                            modifier = Modifier.graphicsLayer {
+                                alpha = stopSwipePromptAlpha(dragOffset, maximum)
+                            },
+                        )
                     } else {
                         Box(
                             modifier = Modifier
@@ -3680,11 +3690,11 @@ private fun ActiveTourStopControl(
 }
 
 @Composable
-private fun SwipeStopPrompt() {
+private fun SwipeStopPrompt(modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .padding(start = 66.dp, end = 14.dp),
+            .padding(start = 68.dp, end = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(

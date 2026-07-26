@@ -14,6 +14,14 @@ class StopSwipeTest {
     }
 
     @Test
+    fun promptFadesBeforeTheHandleCanCrossIt() {
+        assertEquals(1f, stopSwipePromptAlpha(offset = 0f, maximum = 100f), 0.001f)
+        assertEquals(1f, stopSwipePromptAlpha(offset = 15f, maximum = 100f), 0.001f)
+        assertEquals(0.5f, stopSwipePromptAlpha(offset = 35f, maximum = 100f), 0.001f)
+        assertEquals(0f, stopSwipePromptAlpha(offset = 55f, maximum = 100f), 0.001f)
+    }
+
+    @Test
     fun activeTourDistanceUsesWholeMeters() {
         assertEquals("93 m", formatMeters(92.6))
         assertEquals("0 m", formatMeters(-1.0))
