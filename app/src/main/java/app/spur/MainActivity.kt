@@ -11,6 +11,8 @@ import android.location.Address
 import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
+import android.media.MediaPlayer
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -20,7 +22,9 @@ import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.widget.MediaController
 import android.widget.Toast
+import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -102,6 +106,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -349,6 +354,11 @@ private val LocalTrailColors = staticCompositionLocalOf {
     )
 }
 private val LocalLucideStrokeWidth = staticCompositionLocalOf { LucideRegularStrokeWidth }
+
+private data class PendingMapMoment(
+    val type: MomentType,
+    val file: File,
+)
 
 private fun Modifier.mapControlShadow(shape: Shape): Modifier {
     var result = this
@@ -881,8 +891,15 @@ private fun MapPage(
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
-    var pendingPhoto by remember { mutableStateOf<File?>(null) }
+    var showVoiceRecorder by rememberSaveable { mutableStateOf(false) }
+    var pendingMoment by remember { mutableStateOf<PendingMapMoment?>(null) }
+    var pendingVideoCapturePath by rememberSaveable { mutableStateOf<String?>(null) }
+    var audioPermissionGranted by remember {
+        mutableStateOf(context.hasAudioRecordingPermission())
+    }
+    var voiceRecordingStartRequest by remember { mutableLongStateOf(0L) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
+    var mediaDetail by remember { mutableStateOf<MapMoment?>(null) }
     var photoDetailOrigin by remember { mutableStateOf<Offset?>(null) }
     var focusedPhoto by remember { mutableStateOf<MapMoment?>(null) }
     var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
@@ -965,7 +982,9 @@ private fun MapPage(
             !showDirectionBottomSheet &&
             !showAboutBottomSheet &&
             !showCamera &&
-            photoDetail == null,
+            !showVoiceRecorder &&
+            photoDetail == null &&
+            mediaDetail == null,
         onBack = followOwnLocation,
     )
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -977,6 +996,59 @@ private fun MapPage(
             Toast.makeText(
                 context,
                 "Für Fotos braucht Spur Zugriff auf die Kamera.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+    val videoCaptureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CaptureVideo(),
+    ) { saved ->
+        val video = pendingVideoCapturePath?.let(::File)
+        pendingVideoCapturePath = null
+        if (saved && video?.isFile == true && video.length() > 0L) {
+            pendingMoment = PendingMapMoment(MomentType.VIDEO, video)
+        } else {
+            video?.delete()
+        }
+    }
+    val startVideoCapture: () -> Unit = {
+        val video = context.createMomentFile(MomentType.VIDEO)
+        pendingVideoCapturePath = video.absolutePath
+        runCatching {
+            videoCaptureLauncher.launch(context.momentContentUri(video))
+        }.onFailure {
+            pendingVideoCapturePath = null
+            video.delete()
+            Toast.makeText(
+                context,
+                "Auf diesem Gerät ist keine Videoaufnahme verfügbar.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+    val videoPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            startVideoCapture()
+        } else {
+            Toast.makeText(
+                context,
+                "Für Videos braucht Spur Zugriff auf die Kamera.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        audioPermissionGranted = granted
+        if (granted) {
+            voiceRecordingStartRequest++
+        } else {
+            Toast.makeText(
+                context,
+                "Für Sprache braucht Spur Zugriff auf das Mikrofon.",
                 Toast.LENGTH_LONG,
             ).show()
         }
@@ -1011,7 +1083,7 @@ private fun MapPage(
                 momentImageRevision = photoRevision,
                 routePoints = routePoints,
                 trailColors = trailColors,
-                photoToPlace = pendingPhoto,
+                momentToPlace = pendingMoment,
                 focusedMoment = focusedPhoto,
                 onAlternateMapPreviewChanged = { alternateMapPreview = it },
                 onAlternateMapPreviewLoadingChanged = {
@@ -1021,11 +1093,11 @@ private fun MapPage(
                     val updatedMoments = mapMoments + moment.copy(tourId = tour?.id)
                     context.saveMapMoments(updatedMoments)
                     mapMoments = updatedMoments
-                    pendingPhoto = null
+                    pendingMoment = null
                 },
-                onPhotoPlacementFailed = { photo ->
-                    photo.delete()
-                    pendingPhoto = null
+                onMomentPlacementFailed = { failedMoment ->
+                    failedMoment.file.delete()
+                    pendingMoment = null
                     Toast.makeText(
                         context,
                         "Der Standort ist noch nicht verfügbar.",
@@ -1033,11 +1105,13 @@ private fun MapPage(
                     ).show()
                 },
                 onMomentClick = { moment, origin ->
+                    isFollowingLocation = false
+                    isTourOverview = false
                     if (moment.type == MomentType.PHOTO) {
-                        isFollowingLocation = false
-                        isTourOverview = false
                         photoDetailOrigin = origin
                         photoDetail = moment
+                    } else if (moment.type == MomentType.VIDEO || moment.type == MomentType.VOICE) {
+                        mediaDetail = moment
                     }
                 },
                 onManualLocationChanged = { location ->
@@ -1334,11 +1408,9 @@ private fun MapPage(
                         label = "Sprache",
                         modifier = Modifier.weight(1f),
                     ) {
-                        Toast.makeText(
-                            context,
-                            "Sprachaufnahme kommt als Nächstes.",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        showMomentSheet = false
+                        voiceRecordingStartRequest = 0L
+                        showVoiceRecorder = true
                     }
                     MomentOption(
                         label = "Emoji",
@@ -1359,11 +1431,12 @@ private fun MapPage(
                         label = "Video",
                         modifier = Modifier.weight(1f),
                     ) {
-                        Toast.makeText(
-                            context,
-                            "Videomarker kommt als Nächstes.",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        showMomentSheet = false
+                        if (context.hasCameraPermission()) {
+                            startVideoCapture()
+                        } else {
+                            videoPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
                     }
                     MomentOption(
                         label = "Foto",
@@ -1736,9 +1809,29 @@ private fun MapPage(
             onClose = { showCamera = false },
             onPhotoAccepted = { photo ->
                 showCamera = false
-                pendingPhoto = photo
+                pendingMoment = PendingMapMoment(MomentType.PHOTO, photo)
             },
         )
+    }
+
+    if (showVoiceRecorder) {
+        ModalBottomSheet(
+            onDismissRequest = { showVoiceRecorder = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            VoiceRecorderBottomSheet(
+                startRecordingRequest = voiceRecordingStartRequest,
+                hasRecordPermission = audioPermissionGranted,
+                onRequestPermission = {
+                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                },
+                onRecordingAccepted = { recording ->
+                    showVoiceRecorder = false
+                    pendingMoment = PendingMapMoment(MomentType.VOICE, recording)
+                },
+                onDismiss = { showVoiceRecorder = false },
+            )
+        }
     }
 
     photoDetail?.let { moment ->
@@ -1779,6 +1872,341 @@ private fun MapPage(
                 focusedPhoto = null
             },
         )
+    }
+
+    mediaDetail?.let { moment ->
+        MediaMomentDetailPage(
+            moment = moment,
+            onDismiss = { mediaDetail = null },
+        )
+    }
+}
+
+@Composable
+private fun VoiceRecorderBottomSheet(
+    startRecordingRequest: Long,
+    hasRecordPermission: Boolean,
+    onRequestPermission: () -> Unit,
+    onRecordingAccepted: (File) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
+    var recording by remember { mutableStateOf<File?>(null) }
+    var isRecording by remember { mutableStateOf(false) }
+    var elapsedSeconds by remember { mutableLongStateOf(0L) }
+    var accepted by remember { mutableStateOf(false) }
+
+    fun stopRecording(keep: Boolean) {
+        val activeRecorder = recorder
+        recorder = null
+        isRecording = false
+        val stopped = runCatching { activeRecorder?.stop() }.isSuccess
+        runCatching { activeRecorder?.release() }
+        if (!keep || !stopped) {
+            recording?.delete()
+            recording = null
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    fun startRecording() {
+        if (isRecording) return
+        recording?.delete()
+        val output = context.createMomentFile(MomentType.VOICE)
+        val nextRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(context)
+        } else {
+            MediaRecorder()
+        }
+        val started = runCatching {
+            nextRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            nextRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            nextRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            nextRecorder.setAudioEncodingBitRate(128_000)
+            nextRecorder.setAudioSamplingRate(44_100)
+            nextRecorder.setOutputFile(output.absolutePath)
+            nextRecorder.prepare()
+            nextRecorder.start()
+        }.isSuccess
+        if (started) {
+            recorder = nextRecorder
+            recording = output
+            elapsedSeconds = 0L
+            isRecording = true
+        } else {
+            runCatching { nextRecorder.release() }
+            output.delete()
+            Toast.makeText(
+                context,
+                "Die Sprachaufnahme konnte nicht gestartet werden.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
+    LaunchedEffect(startRecordingRequest) {
+        if (startRecordingRequest > 0L && hasRecordPermission) startRecording()
+    }
+    LaunchedEffect(isRecording) {
+        while (isRecording) {
+            delay(1_000)
+            if (isRecording) elapsedSeconds++
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            if (isRecording) stopRecording(keep = false)
+            if (!accepted) recording?.delete()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        BottomSheetHeader(title = "Sprache aufnehmen")
+        Text(
+            text = when {
+                isRecording -> formatPlayerDuration(elapsedSeconds * 1_000)
+                recording != null -> "Aufnahme bereit"
+                else -> "Spur benötigt das Mikrofon nur während dieser Aufnahme."
+            },
+            color = Ink,
+            style = if (isRecording) {
+                MaterialTheme.typography.headlineMedium
+            } else {
+                MaterialTheme.typography.bodyLarge
+            },
+            textAlign = TextAlign.Center,
+        )
+        recording?.takeIf { !isRecording }?.let { AudioPlaybackControl(it) }
+        Button(
+            onClick = {
+                when {
+                    isRecording -> stopRecording(keep = true)
+                    hasRecordPermission -> startRecording()
+                    else -> onRequestPermission()
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isRecording) StopRed else Ink,
+                contentColor = Color.White,
+            ),
+            shape = CircleShape,
+        ) {
+            if (isRecording) {
+                LucideStopIcon(Color.White)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text("Aufnahme beenden", style = MaterialTheme.typography.titleMedium)
+            } else {
+                MicrophoneIcon()
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    if (recording == null) "Aufnahme starten" else "Neu aufnehmen",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+        }
+        if (recording != null && !isRecording) {
+            Button(
+                onClick = {
+                    recording?.let {
+                        accepted = true
+                        onRecordingAccepted(it)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Ink,
+                    contentColor = Color.White,
+                ),
+                shape = CircleShape,
+            ) {
+                Text("Auf der Karte ablegen", style = MaterialTheme.typography.titleMedium)
+            }
+        }
+        TextButton(
+            onClick = {
+                stopRecording(keep = false)
+                onDismiss()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Abbrechen", color = Ink)
+        }
+    }
+}
+
+@Composable
+private fun AudioPlaybackControl(
+    file: File,
+    foreground: Color = Ink,
+    buttonBackground: Color = Ink,
+    buttonForeground: Color = Color.White,
+) {
+    val context = LocalContext.current
+    val player = remember(file) {
+        runCatching { MediaPlayer.create(context, Uri.fromFile(file)) }.getOrNull()
+    }
+    var isPlaying by remember { mutableStateOf(false) }
+    var position by remember { mutableFloatStateOf(0f) }
+    val duration = runCatching { player?.duration ?: 0 }.getOrDefault(0)
+
+    DisposableEffect(player) {
+        val current = player
+        current?.setOnCompletionListener {
+            isPlaying = false
+            position = 0f
+        }
+        onDispose {
+            runCatching { current?.release() }
+        }
+    }
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            position = runCatching { player?.currentPosition?.toFloat() ?: 0f }
+                .getOrDefault(0f)
+            delay(100)
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        IconButton(
+            onClick = {
+                val current = player ?: return@IconButton
+                if (current.isPlaying) {
+                    current.pause()
+                    isPlaying = false
+                } else {
+                    current.start()
+                    isPlaying = true
+                }
+            },
+            modifier = Modifier.size(52.dp),
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = buttonBackground,
+                contentColor = buttonForeground,
+            ),
+        ) {
+            if (isPlaying) PauseIcon() else PlayIcon()
+        }
+        Slider(
+            value = position.coerceIn(0f, duration.coerceAtLeast(1).toFloat()),
+            onValueChange = {
+                position = it
+                runCatching { player?.seekTo(it.roundToInt()) }
+            },
+            valueRange = 0f..duration.coerceAtLeast(1).toFloat(),
+            modifier = Modifier.weight(1f),
+            colors = SliderDefaults.colors(
+                thumbColor = foreground,
+                activeTrackColor = foreground,
+                inactiveTrackColor = foreground.copy(alpha = 0.24f),
+            ),
+        )
+        Text(
+            text = formatDuration(duration.toLong()),
+            color = foreground,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+@Composable
+private fun MediaMomentDetailPage(
+    moment: MapMoment,
+    onDismiss: () -> Unit,
+) {
+    BackHandler(onBack = onDismiss)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Ink),
+        ) {
+            when (moment.type) {
+                MomentType.VIDEO -> {
+                    val context = LocalContext.current
+                    var videoView by remember { mutableStateOf<VideoView?>(null) }
+                    AndroidView(
+                        factory = {
+                            VideoView(context).apply {
+                                val controls = MediaController(context)
+                                controls.setAnchorView(this)
+                                setMediaController(controls)
+                                setVideoPath(moment.payload)
+                                setOnPreparedListener { player ->
+                                    player.isLooping = false
+                                    start()
+                                }
+                                videoView = this
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { contentDescription = "Video" },
+                    )
+                    DisposableEffect(Unit) {
+                        onDispose {
+                            runCatching { videoView?.stopPlayback() }
+                            videoView = null
+                        }
+                    }
+                }
+                MomentType.VOICE -> {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(24.dp)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(24.dp),
+                    ) {
+                        MicrophoneIcon(
+                            modifier = Modifier.size(72.dp),
+                            color = Color.White,
+                        )
+                        AudioPlaybackControl(
+                            file = File(moment.payload),
+                            foreground = Color.White,
+                            buttonBackground = Color.White,
+                            buttonForeground = Ink,
+                        )
+                    }
+                }
+                else -> Unit
+            }
+            MapIconButton(
+                contentDescription = "Detail schließen",
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(18.dp),
+            ) {
+                PhotoCloseIcon()
+            }
+        }
     }
 }
 
@@ -2515,12 +2943,13 @@ private fun MomentOption(
 private fun MapIconButton(
     contentDescription: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val controlColors = LocalMapControlColors.current
     IconButton(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .size(60.dp)
             .mapControlShadow(CircleShape)
             .semantics { this.contentDescription = contentDescription },
@@ -2644,12 +3073,12 @@ private fun MapSurface(
     momentImageRevision: Long,
     routePoints: List<TrackPoint>,
     trailColors: TrailColors,
-    photoToPlace: File?,
+    momentToPlace: PendingMapMoment?,
     focusedMoment: MapMoment?,
     onAlternateMapPreviewChanged: (ImageBitmap) -> Unit,
     onAlternateMapPreviewLoadingChanged: (Boolean) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
-    onPhotoPlacementFailed: (File) -> Unit,
+    onMomentPlacementFailed: (PendingMapMoment) -> Unit,
     onMomentClick: (MapMoment, Offset) -> Unit,
     onManualLocationChanged: (SpurCoordinate) -> Unit,
     onFollowingInterrupted: () -> Unit,
@@ -2659,7 +3088,7 @@ private fun MapSurface(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
-    val currentOnPhotoPlacementFailed by rememberUpdatedState(onPhotoPlacementFailed)
+    val currentOnMomentPlacementFailed by rememberUpdatedState(onMomentPlacementFailed)
     val currentOnMomentClick by rememberUpdatedState(onMomentClick)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentOnFollowingInterrupted by rememberUpdatedState(onFollowingInterrupted)
@@ -2682,8 +3111,8 @@ private fun MapSurface(
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
     }
-    var pendingPhotoMoment by remember { mutableStateOf<MapMoment?>(null) }
-    var pendingPhotoPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
+    var pendingMapMoment by remember { mutableStateOf<MapMoment?>(null) }
+    var pendingMomentPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var preparedMapMoments by remember { mutableStateOf<PreparedMapMoments?>(null) }
     var mapStyleRevision by remember { mutableStateOf(0) }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
@@ -2863,9 +3292,9 @@ private fun MapSurface(
             }
         }
 
-        fun publishPendingPhotoPosition() {
+        fun publishPendingMomentPosition() {
             val readyMap = map ?: return
-            pendingPhotoPosition = pendingPhotoMoment?.let { moment ->
+            pendingMomentPosition = pendingMapMoment?.let { moment ->
                 readyMap.projection.toScreenLocation(
                     LatLng(moment.latitude, moment.longitude),
                 )
@@ -2874,7 +3303,7 @@ private fun MapSurface(
 
         val moveListener = MapLibreMap.OnCameraMoveListener {
             if (currentManualLocation != null) publishManualLocationPosition()
-            if (pendingPhotoMoment != null) publishPendingPhotoPosition()
+            if (pendingMapMoment != null) publishPendingMomentPosition()
         }
         var cameraMoveReason =
             MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
@@ -2894,7 +3323,7 @@ private fun MapSurface(
             isCameraMoving = false
             if (!isMapTouchActive) currentOnMapGestureActiveChanged(false)
             publishManualLocationPosition()
-            publishPendingPhotoPosition()
+            publishPendingMomentPosition()
             previewCameraPosition = map?.cameraPosition
             if (shouldStopFollowing(cameraMoveReason)) {
                 map?.cameraPosition?.zoom?.let(context::saveDefaultMapZoom)
@@ -2963,7 +3392,7 @@ private fun MapSurface(
             readyMap.addOnMapLongClickListener(longClickListener)
             readyMap.addOnMapClickListener(clickListener)
             publishManualLocationPosition()
-            publishPendingPhotoPosition()
+            publishPendingMomentPosition()
         }
         onDispose {
             currentOnMapGestureActiveChanged(false)
@@ -3014,8 +3443,8 @@ private fun MapSurface(
         }
     }
 
-    LaunchedEffect(photoToPlace) {
-        val photo = photoToPlace ?: return@LaunchedEffect
+    LaunchedEffect(momentToPlace) {
+        val pending = momentToPlace ?: return@LaunchedEffect
         val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
             mapView.getMapAsync { readyMap ->
                 if (continuation.isActive) continuation.resume(readyMap)
@@ -3026,20 +3455,20 @@ private fun MapSurface(
             manual = manualLocation,
         )
         if (location == null) {
-            pendingPhotoMoment = null
-            pendingPhotoPosition = null
-            currentOnPhotoPlacementFailed(photo)
+            pendingMapMoment = null
+            pendingMomentPosition = null
+            currentOnMomentPlacementFailed(pending)
             return@LaunchedEffect
         }
         val moment = MapMoment(
-            id = photo.nameWithoutExtension,
-            type = MomentType.PHOTO,
+            id = pending.file.nameWithoutExtension,
+            type = pending.type,
             latitude = location.latitude,
             longitude = location.longitude,
-            payload = photo.absolutePath,
+            payload = pending.file.absolutePath,
         )
-        pendingPhotoMoment = moment
-        pendingPhotoPosition = map.projection.toScreenLocation(
+        pendingMapMoment = moment
+        pendingMomentPosition = map.projection.toScreenLocation(
             LatLng(location.latitude, location.longitude),
         )
         map.locationComponent.cameraMode = CameraMode.NONE
@@ -3091,10 +3520,10 @@ private fun MapSurface(
         if (mapStyleRevision == 0) return@LaunchedEffect
         mapView.getMapAsync { map ->
             map.style?.showMapMoments(prepared)
-            val pending = pendingPhotoMoment
+            val pending = pendingMapMoment
             if (pending != null && prepared.moments.any { it.id == pending.id }) {
-                pendingPhotoMoment = null
-                pendingPhotoPosition = null
+                pendingMapMoment = null
+                pendingMomentPosition = null
             }
         }
     }
@@ -3165,8 +3594,9 @@ private fun MapSurface(
 
         val pendingMarkerWidthPx = with(density) { MomentMarkerWidth.dp.roundToPx() }
         val pendingMarkerHeightPx = with(density) { MomentMarkerHeight.dp.roundToPx() }
-        pendingPhotoPosition?.let { position ->
-            PendingPhotoMarker(
+        pendingMomentPosition?.let { position ->
+            PendingMomentMarker(
+                type = pendingMapMoment?.type ?: MomentType.PHOTO,
                 modifier = Modifier.offset {
                     IntOffset(
                         x = position.x.roundToInt() - pendingMarkerWidthPx / 2,
@@ -3179,7 +3609,10 @@ private fun MapSurface(
 }
 
 @Composable
-private fun PendingPhotoMarker(modifier: Modifier = Modifier) {
+private fun PendingMomentMarker(
+    type: MomentType,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = modifier
             .size(MomentMarkerWidth.dp, MomentMarkerHeight.dp),
@@ -3220,7 +3653,12 @@ private fun PendingPhotoMarker(modifier: Modifier = Modifier) {
                 .padding(top = 15.dp)
                 .size(24.dp),
             color = MomentMarkerGreen,
-            contentDescription = "Foto wird geladen",
+            contentDescription = when (type) {
+                MomentType.PHOTO -> "Foto wird geladen"
+                MomentType.VIDEO -> "Video wird geladen"
+                MomentType.VOICE -> "Sprache wird geladen"
+                MomentType.EMOJI -> "Moment wird geladen"
+            },
         )
     }
 }
@@ -4548,6 +4986,23 @@ private fun Context.hasLocationPermission(): Boolean =
 private fun Context.hasCameraPermission(): Boolean =
     checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
+private fun Context.hasAudioRecordingPermission(): Boolean =
+    checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+private fun Context.createMomentFile(type: MomentType): File {
+    val (directoryName, extension) = when (type) {
+        MomentType.PHOTO -> "photos" to "jpg"
+        MomentType.VIDEO -> "videos" to "mp4"
+        MomentType.VOICE -> "voice" to "m4a"
+        MomentType.EMOJI -> error("Emoji moments do not use files")
+    }
+    val directory = File(filesDir, "moments/$directoryName").apply { mkdirs() }
+    return File(directory, "${type.name.lowercase()}-${System.currentTimeMillis()}.$extension")
+}
+
+private fun Context.momentContentUri(file: File): Uri =
+    FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+
 private fun Location.toSpurCoordinate() =
     SpurCoordinate(latitude = latitude, longitude = longitude)
 
@@ -4736,10 +5191,17 @@ private suspend fun Context.deleteMapMoment(
     moment: MapMoment,
     moments: List<MapMoment>,
 ): List<MapMoment>? = withContext(Dispatchers.IO) {
-    val photoDirectory = File(filesDir, "moments/photos").canonicalFile
-    val photo = File(moment.payload).canonicalFile
-    if (photo.parentFile != photoDirectory) return@withContext null
-    if (photo.exists() && !photo.delete()) return@withContext null
+    val allowedDirectory = when (moment.type) {
+        MomentType.PHOTO -> "photos"
+        MomentType.VIDEO -> "videos"
+        MomentType.VOICE -> "voice"
+        MomentType.EMOJI -> null
+    }?.let { File(filesDir, "moments/$it").canonicalFile }
+    val mediaFile = File(moment.payload).canonicalFile
+    if (allowedDirectory == null || mediaFile.parentFile != allowedDirectory) {
+        return@withContext null
+    }
+    if (mediaFile.exists() && !mediaFile.delete()) return@withContext null
     val updatedMoments = moments.filterNot { it.id == moment.id }
     saveMapMoments(updatedMoments)
     getSharedPreferences(PhotoPlacePreferences, Context.MODE_PRIVATE)
@@ -6020,6 +6482,30 @@ private fun MapPinIcon(
 @Composable
 private fun PlusIcon() = LucideIcon(
     paths = listOf("M5 12h14", "M12 5v14"),
+)
+
+@Composable
+private fun MicrophoneIcon(
+    modifier: Modifier = Modifier.size(24.dp),
+    color: Color = LocalContentColor.current,
+) = LucideIcon(
+    paths = listOf(
+        "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3",
+        "M19 10v2a7 7 0 0 1-14 0v-2",
+        "M12 19v3",
+    ),
+    modifier = modifier,
+    color = color,
+)
+
+@Composable
+private fun PlayIcon() = LucideIcon(
+    paths = listOf("m6 3 14 9-14 9z"),
+)
+
+@Composable
+private fun PauseIcon() = LucideIcon(
+    paths = listOf("M8 5v14", "M16 5v14"),
 )
 
 @Composable

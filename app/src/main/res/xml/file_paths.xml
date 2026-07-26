@@ -3,4 +3,10 @@
     <files-path
         name="moment_photos"
         path="moments/photos/" />
+    <files-path
+        name="moment_videos"
+        path="moments/videos/" />
+    <files-path
+        name="moment_voice"
+        path="moments/voice/" />
 </paths>

@@ -37,6 +37,22 @@ class MapMomentTest {
     }
 
     @Test
+    fun fileBackedMomentsExposeTheirCaptureTime() {
+        MomentType.entries
+            .filterNot { it == MomentType.EMOJI }
+            .forEach { type ->
+                val moment = MapMoment(
+                    id = "${type.name.lowercase()}-1700000000000",
+                    type = type,
+                    latitude = 0.0,
+                    longitude = 0.0,
+                    payload = "/moment",
+                )
+                assertEquals(1_700_000_000_000L, moment.captureTimeMillis())
+            }
+    }
+
+    @Test
     fun photosUseStoredTourIdAndLegacyCaptureTime() {
         val tour = Tour(
             id = 7,

@@ -60,4 +60,6 @@ internal fun orderedPhotoMoments(moments: List<MapMoment>): List<MapMoment> =
         )
 
 internal fun MapMoment.captureTimeMillis(): Long? =
-    id.removePrefix("photo-").toLongOrNull()
+    id.removePrefix("${type.name.lowercase()}-")
+        .takeIf { it != id }
+        ?.toLongOrNull()
