@@ -2389,10 +2389,29 @@ private fun photoAspectRatio(photo: File): Float {
         inJustDecodeBounds = true
     }
     android.graphics.BitmapFactory.decodeFile(photo.absolutePath, options)
-    return if (options.outWidth > 0 && options.outHeight > 0) {
-        options.outWidth.toFloat() / options.outHeight
+    val orientation = runCatching {
+        android.media.ExifInterface(photo.absolutePath).getAttributeInt(
+            android.media.ExifInterface.TAG_ORIENTATION,
+            android.media.ExifInterface.ORIENTATION_NORMAL,
+        )
+    }.getOrDefault(android.media.ExifInterface.ORIENTATION_NORMAL)
+    return orientedPhotoAspectRatio(options.outWidth, options.outHeight, orientation)
+}
+
+internal fun orientedPhotoAspectRatio(width: Int, height: Int, orientation: Int): Float {
+    if (width <= 0 || height <= 0) return 1f
+    val swapsDimensions = when (orientation) {
+        android.media.ExifInterface.ORIENTATION_TRANSPOSE,
+        android.media.ExifInterface.ORIENTATION_ROTATE_90,
+        android.media.ExifInterface.ORIENTATION_TRANSVERSE,
+        android.media.ExifInterface.ORIENTATION_ROTATE_270,
+        -> true
+        else -> false
+    }
+    return if (swapsDimensions) {
+        height.toFloat() / width
     } else {
-        1f
+        width.toFloat() / height
     }
 }
 
