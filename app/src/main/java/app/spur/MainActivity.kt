@@ -218,7 +218,13 @@ private const val MapControlShadowLayers = 3
 internal data class MapControlColors(
     val background: Color,
     val foreground: Color,
-)
+) {
+    val inverted: MapControlColors
+        get() = MapControlColors(
+            background = foreground,
+            foreground = background,
+        )
+}
 
 internal enum class MapControlColor(
     val label: String,
@@ -900,7 +906,7 @@ private fun MapScreen(
                         modifier = Modifier.weight(1f),
                     )
                 } else {
-                    val controlColors = LocalMapControlColors.current
+                    val controlColors = LocalMapControlColors.current.inverted
                     Button(
                         onClick = onStartTour,
                         modifier = Modifier
@@ -2942,7 +2948,7 @@ private fun ActiveTourStopControl(
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val controlColors = LocalMapControlColors.current
+    val controlColors = LocalMapControlColors.current.inverted
     var armed by remember(tour.id) { mutableStateOf(false) }
     var dragOffset by remember(tour.id) { mutableFloatStateOf(0f) }
     var dragStartX by remember(tour.id) { mutableFloatStateOf(0f) }
@@ -3004,7 +3010,7 @@ private fun ActiveTourStopControl(
                 modifier = Modifier.fillMaxSize(),
             ) { confirmationVisible ->
                 if (confirmationVisible) {
-                    SwipeStopPrompt()
+                    SwipeStopPrompt(controlColors)
                 } else {
                     Box(
                         modifier = Modifier
@@ -3086,8 +3092,7 @@ private fun ActiveTourStopControl(
 }
 
 @Composable
-private fun SwipeStopPrompt() {
-    val controlColors = LocalMapControlColors.current
+private fun SwipeStopPrompt(controlColors: MapControlColors) {
     val transition = rememberInfiniteTransition(label = "Stop arrows")
     val arrowAlpha by transition.animateFloat(
         initialValue = 0.28f,
