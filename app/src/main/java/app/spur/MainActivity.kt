@@ -2,6 +2,7 @@ package app.spur
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ClipData
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -153,7 +154,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import coil3.compose.AsyncImage
+import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import androidx.navigation.NavType
@@ -213,6 +216,8 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import java.io.File
@@ -448,6 +453,7 @@ private fun SpurApp() {
     var displayedTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
     var historyRevision by remember { mutableLongStateOf(0L) }
+    var photoRevision by remember { mutableLongStateOf(0L) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var hasLocationPermission by rememberSaveable {
@@ -618,6 +624,8 @@ private fun SpurApp() {
                                 onOpenHistory = {
                                     isHistoryVisible = true
                                 },
+                                photoRevision = photoRevision,
+                                onPhotoRotated = { photoRevision++ },
                             )
                         }
                         composable(
@@ -686,6 +694,8 @@ private fun SpurApp() {
                                     historyRevision++
                                 }
                             },
+                            photoRevision = photoRevision,
+                            onPhotoRotated = { photoRevision++ },
                         )
                     }
                 }
@@ -770,6 +780,8 @@ private fun MapScreen(
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
+    photoRevision: Long = 0L,
+    onPhotoRotated: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val drawerState = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
@@ -893,6 +905,7 @@ private fun MapScreen(
                 defaultMapBearing = defaultMapRotation.bearing,
                 mapSettingsVisible = showSettingsSheet,
                 mapMoments = mapMoments,
+                momentImageRevision = photoRevision,
                 routePoints = routePoints,
                 photoToPlace = pendingPhoto,
                 focusedMoment = focusedPhoto,
@@ -1310,10 +1323,12 @@ private fun MapScreen(
             photos = photos,
             initialPhotoId = moment.id,
             openOrigin = photoDetailOrigin,
+            photoRevision = photoRevision,
             onPhotoChanged = {
                 photoDetail = it
                 focusedPhoto = it
             },
+            onPhotoRotated = onPhotoRotated,
             onDismiss = {
                 photoDetail = null
                 photoDetailOrigin = null
@@ -1665,6 +1680,7 @@ private fun MapSurface(
     defaultMapBearing: Double,
     mapSettingsVisible: Boolean,
     mapMoments: List<MapMoment>,
+    momentImageRevision: Long,
     routePoints: List<TrackPoint>,
     photoToPlace: File?,
     focusedMoment: MapMoment?,
@@ -2062,7 +2078,7 @@ private fun MapSurface(
         }
     }
 
-    LaunchedEffect(mapMoments) {
+    LaunchedEffect(mapMoments, momentImageRevision) {
         mapView.getMapAsync { map ->
             map.style?.showMapMoments(context, mapMoments)
         }
@@ -2140,7 +2156,9 @@ private fun PhotoDetailDialog(
     photos: List<MapMoment>,
     initialPhotoId: String,
     openOrigin: Offset? = null,
+    photoRevision: Long = 0L,
     onPhotoChanged: (MapMoment) -> Unit = {},
+    onPhotoRotated: () -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     if (photos.isEmpty()) return
@@ -2156,6 +2174,10 @@ private fun PhotoDetailDialog(
     val selectedPhoto = photos[pagerState.currentPage.coerceIn(photos.indices)]
     val currentPhoto by rememberUpdatedState(selectedPhoto)
     val currentOnPhotoChanged by rememberUpdatedState(onPhotoChanged)
+    val currentOnPhotoRotated by rememberUpdatedState(onPhotoRotated)
+    val rotationMutex = remember { Mutex() }
+    var imageRevision by remember(photoRevision) { mutableLongStateOf(photoRevision) }
+    var hasRotatedPhoto by remember { mutableStateOf(false) }
     val openProgress = remember(openOrigin) {
         Animatable(if (openOrigin == null) 1f else 0f)
     }
@@ -2170,6 +2192,7 @@ private fun PhotoDetailDialog(
         isVisible = false
         scope.launch {
             delay(MotionDurationDefaultMillis.toLong())
+            if (hasRotatedPhoto) currentOnPhotoRotated()
             onDismiss()
         }
     }
@@ -2184,6 +2207,37 @@ private fun PhotoDetailDialog(
                 if (saved) "In Galerie gespeichert." else "Foto konnte nicht gespeichert werden.",
                 Toast.LENGTH_SHORT,
             ).show()
+        }
+    }
+
+    fun sharePhoto() {
+        val shared = context.sharePhoto(File(currentPhoto.payload))
+        if (!shared) {
+            Toast.makeText(
+                context,
+                "Das Foto konnte nicht geteilt werden.",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    fun rotatePhotoLeft() {
+        val photo = File(currentPhoto.payload)
+        scope.launch {
+            val rotated = withContext(Dispatchers.IO) {
+                rotationMutex.withLock { rotatePhotoLeftAndSave(photo) }
+            }
+            if (rotated) {
+                imageRevision++
+                hasRotatedPhoto = true
+                Toast.makeText(context, "Foto um 90° gedreht.", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(
+                    context,
+                    "Das Foto konnte nicht gedreht werden.",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
         }
     }
     val storagePermissionLauncher = rememberLauncherForActivityResult(
@@ -2289,9 +2343,11 @@ private fun PhotoDetailDialog(
                     key = { photos[it].id },
                 ) { page ->
                     val photo = photos[page]
-                    val imageRequest = remember(photo.payload) {
+                    val imageRequest = remember(photo.payload, imageRevision, openOrigin) {
                         ImageRequest.Builder(context)
                             .data(File(photo.payload))
+                            .memoryCacheKey("${photo.payload}:$imageRevision")
+                            .diskCachePolicy(CachePolicy.DISABLED)
                             .let { builder ->
                                 if (openOrigin == null) {
                                     builder.crossfade(MotionDurationDefaultMillis)
@@ -2349,59 +2405,204 @@ private fun PhotoDetailDialog(
                             .clip(RoundedCornerShape(7.dp)),
                     )
                 }
-                IconButton(
-                    onClick = ::dismissAnimated,
+                Column(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
+                        .align(Alignment.TopStart)
                         .statusBarsPadding()
-                        .padding(16.dp)
-                        .size(56.dp)
-                        .graphicsLayer { alpha = controlsAlpha },
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = Color.White,
-                        contentColor = Ink,
-                    ),
+                        .padding(18.dp)
+                        .graphicsLayer { alpha = controlsAlpha }
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.Black.copy(alpha = 0.58f))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
                 ) {
-                    LucideIcon(
-                        paths = listOf("M18 6 6 18", "m6 6 12 12"),
-                        strokeWidth = LucideBoldStrokeWidth,
-                        modifier = Modifier
-                            .size(24.dp)
-                            .semantics { contentDescription = "Foto schließen" },
+                    Text(
+                        text = photoCaptureLabel(selectedPhoto),
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        text = formatPhotoLocation(selectedPhoto),
+                        modifier = Modifier.padding(top = 2.dp),
+                        color = Color.White.copy(alpha = 0.72f),
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Button(
-                    onClick = {
-                        if (
-                            Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-                            ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                            ) != PackageManager.PERMISSION_GRANTED
-                        ) {
-                            storagePermissionLauncher.launch(
-                                Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                            )
-                        } else {
-                            savePhoto()
-                        }
-                    },
+                Row(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
+                        .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
-                        .padding(20.dp)
+                        .padding(16.dp)
                         .graphicsLayer { alpha = controlsAlpha },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Ink,
-                    ),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text("In Galerie speichern")
+                    PhotoActionButton(
+                        contentDescription = "Foto teilen",
+                        onClick = ::sharePhoto,
+                    ) {
+                        ShareIcon()
+                    }
+                    PhotoActionButton(
+                        contentDescription = "Foto in Galerie speichern",
+                        onClick = {
+                            if (
+                                Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                                ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                ) != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                storagePermissionLauncher.launch(
+                                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                )
+                            } else {
+                                savePhoto()
+                            }
+                        },
+                    ) {
+                        PhotoDownloadIcon()
+                    }
+                    PhotoActionButton(
+                        contentDescription = "Foto 90 Grad nach links drehen",
+                        onClick = ::rotatePhotoLeft,
+                    ) {
+                        PhotoRotateLeftIcon()
+                    }
+                    PhotoActionButton(
+                        contentDescription = "Foto schließen",
+                        onClick = ::dismissAnimated,
+                    ) {
+                        PhotoCloseIcon()
+                    }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun PhotoActionButton(
+    contentDescription: String,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(56.dp)
+            .semantics { this.contentDescription = contentDescription },
+        colors = IconButtonDefaults.filledIconButtonColors(
+            containerColor = Color.White,
+            contentColor = Ink,
+        ),
+        content = {
+            CompositionLocalProvider(
+                LocalLucideStrokeWidth provides LucideBoldStrokeWidth,
+                content = content,
+            )
+        },
+    )
+}
+
+@Composable
+private fun PhotoDownloadIcon() = LucideIcon(
+    paths = listOf(
+        "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4",
+        "m7 10 5 5 5-5",
+        "M12 15V3",
+    ),
+)
+
+@Composable
+private fun PhotoRotateLeftIcon() = LucideIcon(
+    paths = listOf(
+        "M3 12a9 9 0 1 0 3-6.7L3 8",
+        "M3 3v5h5",
+    ),
+)
+
+@Composable
+private fun PhotoCloseIcon() = LucideIcon(
+    paths = listOf("M18 6 6 18", "m6 6 12 12"),
+)
+
+private fun photoCaptureLabel(photo: MapMoment): String {
+    val capturedAt = photo.captureTimeMillis()
+        ?: File(photo.payload).lastModified().takeIf { it > 0L }
+        ?: return "Aufnahmezeit unbekannt"
+    return "Aufgenommen ${
+        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+            .format(Date(capturedAt))
+    }"
+}
+
+internal fun formatPhotoLocation(photo: MapMoment): String {
+    val latitudeDirection = if (photo.latitude >= 0) "N" else "S"
+    val longitudeDirection = if (photo.longitude >= 0) "E" else "W"
+    return String.format(
+        Locale.GERMANY,
+        "%.5f° %s · %.5f° %s",
+        abs(photo.latitude),
+        latitudeDirection,
+        abs(photo.longitude),
+        longitudeDirection,
+    )
+}
+
+private fun Context.sharePhoto(source: File): Boolean = runCatching {
+    if (!source.isFile) return false
+    val uri = FileProvider.getUriForFile(
+        this,
+        "$packageName.fileprovider",
+        source,
+    )
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "image/jpeg"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        clipData = ClipData.newRawUri("Spur Foto", uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    startActivity(Intent.createChooser(shareIntent, "Foto teilen"))
+    true
+}.getOrDefault(false)
+
+private fun rotatePhotoLeftAndSave(source: File): Boolean = runCatching {
+    if (!source.isFile) return false
+    val originalLastModified = source.lastModified()
+    val exif = android.media.ExifInterface(source.absolutePath)
+    val orientation = exif.getAttributeInt(
+        android.media.ExifInterface.TAG_ORIENTATION,
+        android.media.ExifInterface.ORIENTATION_NORMAL,
+    )
+    exif.setAttribute(
+        android.media.ExifInterface.TAG_ORIENTATION,
+        exifOrientationAfterLeftRotation(orientation).toString(),
+    )
+    exif.saveAttributes()
+    if (originalLastModified > 0L) source.setLastModified(originalLastModified)
+    true
+}.getOrDefault(false)
+
+internal fun exifOrientationAfterLeftRotation(orientation: Int): Int =
+    when (orientation) {
+        android.media.ExifInterface.ORIENTATION_NORMAL ->
+            android.media.ExifInterface.ORIENTATION_ROTATE_270
+        android.media.ExifInterface.ORIENTATION_ROTATE_270 ->
+            android.media.ExifInterface.ORIENTATION_ROTATE_180
+        android.media.ExifInterface.ORIENTATION_ROTATE_180 ->
+            android.media.ExifInterface.ORIENTATION_ROTATE_90
+        android.media.ExifInterface.ORIENTATION_ROTATE_90 ->
+            android.media.ExifInterface.ORIENTATION_NORMAL
+        android.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL ->
+            android.media.ExifInterface.ORIENTATION_TRANSPOSE
+        android.media.ExifInterface.ORIENTATION_TRANSPOSE ->
+            android.media.ExifInterface.ORIENTATION_FLIP_VERTICAL
+        android.media.ExifInterface.ORIENTATION_FLIP_VERTICAL ->
+            android.media.ExifInterface.ORIENTATION_TRANSVERSE
+        android.media.ExifInterface.ORIENTATION_TRANSVERSE ->
+            android.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL
+        else -> android.media.ExifInterface.ORIENTATION_ROTATE_270
+    }
 
 private fun photoAspectRatio(photo: File): Float {
     val options = android.graphics.BitmapFactory.Options().apply {
@@ -3187,6 +3388,8 @@ private fun HistoryScreen(
     onOpenTour: (Long) -> Unit,
     onEditTour: (Long) -> Unit,
     onDeleteTour: (Long) -> Unit,
+    photoRevision: Long = 0L,
+    onPhotoRotated: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var tours by remember { mutableStateOf(emptyList<Tour>()) }
@@ -3294,6 +3497,7 @@ private fun HistoryScreen(
                             if (photos.isNotEmpty()) {
                                 TourPhotoStrip(
                                     photos = photos,
+                                    photoRevision = photoRevision,
                                     onOpen = { selectedPhoto = it },
                                 )
                             }
@@ -3377,6 +3581,8 @@ private fun HistoryScreen(
         PhotoDetailDialog(
             photos = listOf(photo),
             initialPhotoId = photo.id,
+            photoRevision = photoRevision,
+            onPhotoRotated = onPhotoRotated,
             onDismiss = { selectedPhoto = null },
         )
     }
@@ -3385,8 +3591,10 @@ private fun HistoryScreen(
 @Composable
 private fun TourPhotoStrip(
     photos: List<MapMoment>,
+    photoRevision: Long,
     onOpen: (MapMoment) -> Unit,
 ) {
+    val context = LocalContext.current
     LazyRow(
         contentPadding = PaddingValues(
             start = 18.dp,
@@ -3396,8 +3604,15 @@ private fun TourPhotoStrip(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(photos, key = { it.id }) { photo ->
+            val imageRequest = remember(photo.payload, photoRevision) {
+                ImageRequest.Builder(context)
+                    .data(File(photo.payload))
+                    .memoryCacheKey("${photo.payload}:$photoRevision")
+                    .diskCachePolicy(CachePolicy.DISABLED)
+                    .build()
+            }
             AsyncImage(
-                model = File(photo.payload),
+                model = imageRequest,
                 contentDescription = "Foto dieser Tour öffnen",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

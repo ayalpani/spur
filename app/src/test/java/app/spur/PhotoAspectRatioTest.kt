@@ -24,4 +24,15 @@ class PhotoAspectRatioTest {
             orientedPhotoAspectRatio(4_000, 3_000, ExifInterface.ORIENTATION_NORMAL),
         )
     }
+
+    @Test
+    fun fourLeftRotationsReturnToTheOriginalExifOrientation() {
+        var orientation = ExifInterface.ORIENTATION_NORMAL
+
+        repeat(4) {
+            orientation = exifOrientationAfterLeftRotation(orientation)
+        }
+
+        assertEquals(ExifInterface.ORIENTATION_NORMAL, orientation)
+    }
 }

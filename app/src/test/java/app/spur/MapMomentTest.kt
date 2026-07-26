@@ -111,4 +111,18 @@ class MapMomentTest {
             orderedPhotoMoments(listOf(newest, voice, oldest, middle)),
         )
     }
+
+    @Test
+    fun photoMetadataUsesCaptureTimestampAndDirectionalCoordinates() {
+        val photo = MapMoment(
+            id = "photo-1700000000000",
+            type = MomentType.PHOTO,
+            latitude = 52.52,
+            longitude = -13.405,
+            payload = "/photo.jpg",
+        )
+
+        assertEquals(1_700_000_000_000, photo.captureTimeMillis())
+        assertEquals("52,52000° N · 13,40500° W", formatPhotoLocation(photo))
+    }
 }

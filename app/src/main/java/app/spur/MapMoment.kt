@@ -59,5 +59,5 @@ internal fun orderedPhotoMoments(moments: List<MapMoment>): List<MapMoment> =
                 .thenBy(MapMoment::id),
         )
 
-private fun MapMoment.captureTimeMillis(): Long? =
+internal fun MapMoment.captureTimeMillis(): Long? =
     id.removePrefix("photo-").toLongOrNull()
