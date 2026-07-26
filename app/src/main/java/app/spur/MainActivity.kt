@@ -111,7 +111,6 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
@@ -3589,23 +3588,6 @@ private fun ActiveTourStopControl(
                     (maxWidth - handleSize - edgePadding * 2).toPx().coerceAtLeast(0f)
                 }
                 val edgePaddingPixels = with(density) { edgePadding.toPx() }
-                val handleSizePixels = with(density) { handleSize.toPx() }
-                val gradientFeatherPixels = with(density) { 12.dp.toPx() }
-                val readyToStop = shouldCompleteStopSwipe(dragOffset, maximum)
-
-                if (armed) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val gradientCenter =
-                            edgePaddingPixels + dragOffset + handleSizePixels / 2f
-                        drawRect(
-                            brush = Brush.horizontalGradient(
-                                colors = listOf(StopRed, controlColors.background),
-                                startX = gradientCenter - gradientFeatherPixels,
-                                endX = gradientCenter + gradientFeatherPixels,
-                            ),
-                        )
-                    }
-                }
 
                 AnimatedContent(
                     targetState = armed,
@@ -3616,7 +3598,7 @@ private fun ActiveTourStopControl(
                     modifier = Modifier.fillMaxSize(),
                 ) { confirmationVisible ->
                     if (confirmationVisible) {
-                        SwipeStopPrompt(controlColors)
+                        SwipeStopPrompt()
                     } else {
                         Box(
                             modifier = Modifier
@@ -3645,8 +3627,8 @@ private fun ActiveTourStopControl(
                         }
                         .size(handleSize)
                         .background(
-                            if (readyToStop) {
-                                StopRed
+                            if (armed) {
+                                StopRed.copy(alpha = 0.14f)
                             } else {
                                 controlColors.foreground.copy(alpha = 0.14f)
                             },
@@ -3689,7 +3671,7 @@ private fun ActiveTourStopControl(
                     contentAlignment = Alignment.Center,
                 ) {
                     LucideStopIcon(
-                        color = if (readyToStop) Color.White else controlColors.foreground,
+                        color = if (armed) StopRed else controlColors.foreground,
                     )
                 }
             }
@@ -3698,7 +3680,7 @@ private fun ActiveTourStopControl(
 }
 
 @Composable
-private fun SwipeStopPrompt(controlColors: MapControlColors) {
+private fun SwipeStopPrompt() {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -3707,7 +3689,7 @@ private fun SwipeStopPrompt(controlColors: MapControlColors) {
     ) {
         Text(
             text = "Swipe right",
-            color = controlColors.foreground.copy(alpha = 0.72f),
+            color = StopRed,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
