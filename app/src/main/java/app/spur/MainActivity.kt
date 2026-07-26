@@ -1367,7 +1367,10 @@ private fun MapScreen(
             context.saveMapControlForegroundColor(it)
         }
         ModalBottomSheet(
-            onDismissRequest = { showAppearanceSettingsSheet = false },
+            onDismissRequest = {
+                showAppearanceSettingsSheet = false
+                showSettingsSheet = true
+            },
             sheetState = appearanceSettingsSheetState,
         ) {
             Column(
@@ -1438,7 +1441,10 @@ private fun MapScreen(
             context.saveDefaultMapRotation(it)
         }
         ModalBottomSheet(
-            onDismissRequest = { showDirectionSettingsSheet = false },
+            onDismissRequest = {
+                showDirectionSettingsSheet = false
+                showSettingsSheet = true
+            },
             sheetState = directionSettingsSheetState,
         ) {
             Column(
