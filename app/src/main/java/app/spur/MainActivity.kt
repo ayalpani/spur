@@ -1265,7 +1265,7 @@ private fun MapPage(
                 }
                 val playerControl: @Composable (Modifier) -> Unit = { modifier ->
                     if (isTourActive && tour != null) {
-                        ActiveTourStopControl(
+                        TourPlayer(
                             tour = tour,
                             now = now,
                             onStop = onEndTour,
@@ -6235,7 +6235,7 @@ private fun MapLibreMap.fitTourRoute(
 
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
-private fun ActiveTourStopControl(
+private fun TourPlayer(
     tour: Tour,
     now: Long,
     onStop: () -> Unit,
