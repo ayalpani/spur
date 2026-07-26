@@ -1176,7 +1176,7 @@ private fun MapScreen(
                 ) {
                     RotatingAsterisk(
                         modifier = Modifier
-                            .size(48.dp),
+                            .size(128.dp),
                         color = Ink,
                         contentDescription = "Karte wird geladen",
                     )
