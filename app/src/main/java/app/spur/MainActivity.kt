@@ -69,6 +69,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -975,13 +976,21 @@ private fun MapScreen(
                     .padding(bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                Icon(
+                    imageVector = Icons.Rounded.LocationOn,
+                    contentDescription = null,
+                    tint = Color.Black,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .size(64.dp),
+                )
                 Text(
                     text = "Auf der Karte ablegen",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "Was möchtest du an dieser Stelle festhalten?",
+                    text = "Was möchtest du hier festhalten?",
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Row(
@@ -1282,8 +1291,8 @@ private fun MomentOption(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.height(56.dp),
-        shape = CircleShape,
+        modifier = modifier.aspectRatio(1f),
+        shape = RoundedCornerShape(20.dp),
     ) {
         Text(
             text = label,
