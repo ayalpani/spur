@@ -35,4 +35,27 @@ class StopSwipeTest {
         assertEquals("0 m", formatMeters(-1.0))
         assertEquals("22.027 m", formatMeters(22_027.0))
     }
+
+    @Test
+    fun activeTourPlayerSwitchesBetweenDistanceAndTrackingTime() {
+        val tour = Tour(
+            id = 1,
+            startedAt = 1_000L,
+            endedAt = null,
+            distanceMeters = 1_234.0,
+            pointCount = 2,
+        )
+
+        assertEquals(
+            "1.234 m",
+            activeTourPlayerText(tour, now = 3_662_000L, showTrackingTime = false),
+        )
+        val trackingTime = activeTourPlayerText(
+            tour,
+            now = 3_662_000L,
+            showTrackingTime = true,
+        )
+        assertTrue(trackingTime.startsWith("Seit "))
+        assertTrue(trackingTime.endsWith("1:01:01"))
+    }
 }

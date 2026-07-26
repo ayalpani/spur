@@ -5719,53 +5719,18 @@ private fun ActiveTourStopControl(
 ) {
     val controlColors = LocalMapControlColors.current.inverted
     var armed by remember(tour.id) { mutableStateOf(false) }
+    var showTrackingTime by rememberSaveable(tour.id) { mutableStateOf(false) }
     var dragOffset by remember(tour.id) { mutableFloatStateOf(0f) }
     var dragStartX by remember(tour.id) { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
     val mainControlHeight = 60.dp
-    val timeCapHeight = 32.dp
-    val capOverlap = 8.dp
-    val timeCapShape = RoundedCornerShape(
-        topStart = 16.dp,
-        topEnd = 16.dp,
-        bottomStart = 0.dp,
-        bottomEnd = 0.dp,
-    )
 
     Box(
-        modifier = modifier.height(mainControlHeight + timeCapHeight - capOverlap),
+        modifier = modifier.height(mainControlHeight),
     ) {
         Surface(
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .height(timeCapHeight)
-                .mapControlShadow(timeCapShape)
-                .graphicsLayer { alpha = 0.75f },
-            color = controlColors.background,
-            contentColor = controlColors.foreground,
-            shape = timeCapShape,
-        ) {
-            Box(
-                modifier = Modifier.padding(
-                    start = 18.dp,
-                    end = 18.dp,
-                    bottom = capOverlap,
-                ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "Seit ${formatClock(tour.startedAt)} · ${
-                        formatDuration(now - tour.startedAt)
-                    }",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Normal,
-                )
-            }
-        }
-
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
+                .align(Alignment.Center)
                 .fillMaxWidth()
                 .height(mainControlHeight)
                 .mapControlShadow(CircleShape),
@@ -5808,14 +5773,32 @@ private fun ActiveTourStopControl(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(start = 68.dp, end = 12.dp),
+                                .padding(start = 68.dp, end = 12.dp)
+                                .clickable(
+                                    onClickLabel = if (showTrackingTime) {
+                                        "Distanz anzeigen"
+                                    } else {
+                                        "Trackingzeit anzeigen"
+                                    },
+                                ) {
+                                    showTrackingTime = !showTrackingTime
+                                },
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = formatMeters(tour.distanceMeters),
+                                text = activeTourPlayerText(
+                                    tour = tour,
+                                    now = now,
+                                    showTrackingTime = showTrackingTime,
+                                ),
                                 color = controlColors.foreground,
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                fontSize = if (showTrackingTime) 18.sp else 28.sp,
+                                fontWeight = if (showTrackingTime) {
+                                    FontWeight.Normal
+                                } else {
+                                    FontWeight.SemiBold
+                                },
+                                maxLines = 1,
                             )
                         }
                     }
@@ -5937,6 +5920,17 @@ internal fun formatKilometers(distanceMeters: Double): String =
 
 internal fun formatMeters(distanceMeters: Double): String =
     String.format(Locale.GERMANY, "%,.0f m", distanceMeters.coerceAtLeast(0.0))
+
+internal fun activeTourPlayerText(
+    tour: Tour,
+    now: Long,
+    showTrackingTime: Boolean,
+): String =
+    if (showTrackingTime) {
+        "Seit ${formatClock(tour.startedAt)} · ${formatDuration(now - tour.startedAt)}"
+    } else {
+        formatMeters(tour.distanceMeters)
+    }
 
 private fun formatClock(timestamp: Long): String =
     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(timestamp))
