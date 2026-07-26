@@ -268,6 +268,7 @@ private val MomentMarkerGreen = Color(0xFF43A047)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private val MapControlGap = 10.dp
+private val MapControlSize = 60.dp
 private val SheetMenuTextSize = 18.sp
 private val StopSwipeHandleSize = 52.dp
 private val MapRotationOptionGap = 16.dp
@@ -287,7 +288,8 @@ private const val TourRouteBorderWidthPixels =
 private const val TrailStrokeAlpha = 0.5f
 private const val SignalButtonPulseAlpha = 0.42f
 private const val SignalButtonSecondaryPulseAlpha = 0.24f
-private const val SignalButtonWobbleDistanceDp = 7f
+private const val SignalButtonBaseAlpha = 0.18f
+private val SignalButtonWobbleDistance = 7.dp
 private val DefaultTourActivities = listOf(
     "Inline-Skaten",
     "Spazieren",
@@ -2950,7 +2952,7 @@ private fun MapIconButton(
     IconButton(
         onClick = onClick,
         modifier = modifier
-            .size(60.dp)
+            .size(MapControlSize)
             .mapControlShadow(CircleShape)
             .semantics { this.contentDescription = contentDescription },
         colors = IconButtonDefaults.filledIconButtonColors(
@@ -6528,17 +6530,24 @@ private fun FollowLocationIcon(selected: Boolean) {
         0f
     }
     val wobbleDistance = with(LocalDensity.current) {
-        SignalButtonWobbleDistanceDp.dp.toPx()
+        SignalButtonWobbleDistance.toPx()
     }
+    val primaryWaveWidth = MapControlSize + SignalButtonWobbleDistance * 4
+    val primaryWaveHeight = MapControlSize + SignalButtonWobbleDistance * 2
+    val secondaryWaveWidth = MapControlSize + SignalButtonWobbleDistance * 3
+    val secondaryWaveHeight = MapControlSize + SignalButtonWobbleDistance
     Box(
         modifier = Modifier
-            .size(52.dp)
-            .clip(CircleShape),
+            .size(MapControlSize)
+            .clip(CircleShape)
+            .background(
+                pulseColor.copy(alpha = if (selected) SignalButtonBaseAlpha else 0f),
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
-                .size(width = 72.dp, height = 54.dp)
+                .size(width = primaryWaveWidth, height = primaryWaveHeight)
                 .graphicsLayer {
                     translationX = cos(phase) * wobbleDistance
                     translationY = sin(phase) * wobbleDistance
@@ -6549,7 +6558,7 @@ private fun FollowLocationIcon(selected: Boolean) {
         )
         Box(
             modifier = Modifier
-                .size(width = 66.dp, height = 48.dp)
+                .size(width = secondaryWaveWidth, height = secondaryWaveHeight)
                 .graphicsLayer {
                     translationX = -sin(phase) * wobbleDistance
                     translationY = cos(phase) * wobbleDistance
