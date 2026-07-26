@@ -123,6 +123,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -410,9 +411,12 @@ internal fun mapPreviewZoom(
 internal fun shouldCompleteStopSwipe(offset: Float, maximum: Float): Boolean =
     maximum > 0f && offset >= maximum * 0.82f
 
+internal fun stopSwipeProgress(offset: Float, maximum: Float): Float =
+    if (maximum <= 0f) 0f else (offset / maximum).coerceIn(0f, 1f)
+
 internal fun stopSwipePromptAlpha(offset: Float, maximum: Float): Float {
     if (maximum <= 0f) return 1f
-    val progress = (offset / maximum).coerceIn(0f, 1f)
+    val progress = stopSwipeProgress(offset, maximum)
     return ((0.55f - progress) / 0.4f).coerceIn(0f, 1f)
 }
 
@@ -4245,7 +4249,7 @@ private fun ActiveTourStopControl(
                 .fillMaxWidth()
                 .height(mainControlHeight)
                 .mapControlShadow(CircleShape),
-            color = controlColors.background,
+            color = Color.Transparent,
             shape = CircleShape,
         ) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -4255,6 +4259,15 @@ private fun ActiveTourStopControl(
                     (maxWidth - handleSize - edgePadding * 2).toPx().coerceAtLeast(0f)
                 }
                 val edgePaddingPixels = with(density) { edgePadding.toPx() }
+                val swipeProgress = stopSwipeProgress(dragOffset, maximum)
+                val swipeColor = lerp(controlColors.background, StopRed, swipeProgress)
+                val swipeForeground = lerp(StopRed, Color.White, swipeProgress)
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(swipeColor),
+                )
 
                 AnimatedContent(
                     targetState = armed,
@@ -4266,6 +4279,7 @@ private fun ActiveTourStopControl(
                 ) { confirmationVisible ->
                     if (confirmationVisible) {
                         SwipeStopPrompt(
+                            color = swipeForeground,
                             modifier = Modifier.graphicsLayer {
                                 alpha = stopSwipePromptAlpha(dragOffset, maximum)
                             },
@@ -4299,7 +4313,7 @@ private fun ActiveTourStopControl(
                         .size(handleSize)
                         .background(
                             if (armed) {
-                                StopRed.copy(alpha = 0.14f)
+                                swipeForeground.copy(alpha = 0.14f)
                             } else {
                                 controlColors.foreground.copy(alpha = 0.14f)
                             },
@@ -4342,7 +4356,7 @@ private fun ActiveTourStopControl(
                     contentAlignment = Alignment.Center,
                 ) {
                     LucideStopIcon(
-                        color = if (armed) StopRed else controlColors.foreground,
+                        color = if (armed) swipeForeground else controlColors.foreground,
                     )
                 }
             }
@@ -4351,7 +4365,10 @@ private fun ActiveTourStopControl(
 }
 
 @Composable
-private fun SwipeStopPrompt(modifier: Modifier = Modifier) {
+private fun SwipeStopPrompt(
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -4360,7 +4377,7 @@ private fun SwipeStopPrompt(modifier: Modifier = Modifier) {
     ) {
         Text(
             text = "Swipe right",
-            color = StopRed,
+            color = color,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
