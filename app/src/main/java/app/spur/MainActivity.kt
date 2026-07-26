@@ -144,6 +144,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -706,6 +707,7 @@ private fun MapScreen(
     var mapControlColor by remember {
         mutableStateOf(context.loadMapControlColor())
     }
+    var isMapGestureActive by remember { mutableStateOf(false) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -764,6 +766,7 @@ private fun MapScreen(
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
             MapSurface(
+                modifier = Modifier.zIndex(if (isMapGestureActive) 1f else 0f),
                 tourId = tour?.id,
                 followRequest = followRequest,
                 isFollowingLocation = isFollowingLocation,
@@ -810,6 +813,7 @@ private fun MapScreen(
                     ).show()
                 },
                 onFollowingInterrupted = { isFollowingLocation = false },
+                onMapGestureActiveChanged = { isMapGestureActive = it },
             )
 
             Row(
@@ -1403,6 +1407,7 @@ private fun MapPreviewLoadingOverlay() {
 
 @Composable
 private fun MapSurface(
+    modifier: Modifier = Modifier,
     tourId: Long?,
     followRequest: Int,
     isFollowingLocation: Boolean,
@@ -1421,6 +1426,7 @@ private fun MapSurface(
     onMomentClick: (MapMoment) -> Unit,
     onManualLocationChanged: (SpurCoordinate) -> Unit,
     onFollowingInterrupted: () -> Unit,
+    onMapGestureActiveChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -1429,6 +1435,7 @@ private fun MapSurface(
     val currentOnMomentClick by rememberUpdatedState(onMomentClick)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentOnFollowingInterrupted by rememberUpdatedState(onFollowingInterrupted)
+    val currentOnMapGestureActiveChanged by rememberUpdatedState(onMapGestureActiveChanged)
     val currentOnAlternateMapPreviewChanged by rememberUpdatedState(
         onAlternateMapPreviewChanged,
     )
@@ -1605,6 +1612,8 @@ private fun MapSurface(
 
     DisposableEffect(mapView) {
         var map: MapLibreMap? = null
+        var isMapTouchActive = false
+        var isCameraMoving = false
 
         fun publishManualLocationPosition() {
             val readyMap = map ?: return
@@ -1621,7 +1630,9 @@ private fun MapSurface(
         var cameraMoveReason =
             MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
         val moveStartedListener = MapLibreMap.OnCameraMoveStartedListener { reason ->
+            isCameraMoving = true
             cameraMoveReason = reason
+            if (shouldStopFollowing(reason)) currentOnMapGestureActiveChanged(true)
             if (shouldShowMapPreviewLoading(currentIsFollowingLocation, reason)) {
                 currentOnAlternateMapPreviewLoadingChanged(true)
             }
@@ -1631,6 +1642,8 @@ private fun MapSurface(
             }
         }
         val idleListener = MapLibreMap.OnCameraIdleListener {
+            isCameraMoving = false
+            if (!isMapTouchActive) currentOnMapGestureActiveChanged(false)
             publishManualLocationPosition()
             previewCameraPosition = map?.cameraPosition
             if (shouldStopFollowing(cameraMoveReason)) {
@@ -1660,6 +1673,21 @@ private fun MapSurface(
             currentOnMomentClick(moment)
             true
         }
+        mapView.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    isMapTouchActive = true
+                    currentOnMapGestureActiveChanged(true)
+                }
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                -> {
+                    isMapTouchActive = false
+                    if (!isCameraMoving) currentOnMapGestureActiveChanged(false)
+                }
+            }
+            false
+        }
         mapView.getMapAsync { readyMap ->
             map = readyMap
             readyMap.addOnCameraMoveStartedListener(moveStartedListener)
@@ -1670,6 +1698,8 @@ private fun MapSurface(
             publishManualLocationPosition()
         }
         onDispose {
+            currentOnMapGestureActiveChanged(false)
+            mapView.setOnTouchListener(null)
             map?.removeOnCameraMoveStartedListener(moveStartedListener)
             map?.removeOnCameraMoveListener(moveListener)
             map?.removeOnCameraIdleListener(idleListener)
@@ -1768,7 +1798,7 @@ private fun MapSurface(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
         AndroidView(
             factory = { mapView },
             modifier = Modifier
