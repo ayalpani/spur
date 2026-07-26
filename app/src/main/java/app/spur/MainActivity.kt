@@ -111,6 +111,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
@@ -3369,140 +3370,135 @@ private fun ActiveTourStopControl(
             shape = CircleShape,
         ) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val handleSize = 52.dp
-            val edgePadding = 4.dp
-            val maximum = with(density) {
-                (maxWidth - handleSize - edgePadding * 2).toPx().coerceAtLeast(0f)
-            }
-            val edgePaddingPixels = with(density) { edgePadding.toPx() }
-            val readyToStop = shouldCompleteStopSwipe(dragOffset, maximum)
+                val handleSize = 52.dp
+                val edgePadding = 4.dp
+                val maximum = with(density) {
+                    (maxWidth - handleSize - edgePadding * 2).toPx().coerceAtLeast(0f)
+                }
+                val edgePaddingPixels = with(density) { edgePadding.toPx() }
+                val handleSizePixels = with(density) { handleSize.toPx() }
+                val gradientFeatherPixels = with(density) { 12.dp.toPx() }
+                val readyToStop = shouldCompleteStopSwipe(dragOffset, maximum)
 
-            AnimatedContent(
-                targetState = armed,
-                transitionSpec = {
-                    fadeIn(tween(160)) togetherWith fadeOut(tween(100))
-                },
-                label = "Stop confirmation",
-                modifier = Modifier.fillMaxSize(),
-            ) { confirmationVisible ->
-                if (confirmationVisible) {
-                    SwipeStopPrompt(controlColors)
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(start = 68.dp, end = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = formatMeters(tour.distanceMeters),
-                            color = controlColors.foreground,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.SemiBold,
+                if (armed) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val gradientCenter =
+                            edgePaddingPixels + dragOffset + handleSizePixels / 2f
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(StopRed, controlColors.background),
+                                startX = gradientCenter - gradientFeatherPixels,
+                                endX = gradientCenter + gradientFeatherPixels,
+                            ),
                         )
                     }
                 }
-            }
 
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .offset {
-                        IntOffset(
-                            x = (edgePaddingPixels + dragOffset).roundToInt(),
-                            y = 0,
-                        )
-                    }
-                    .size(handleSize)
-                    .background(
-                        if (readyToStop) {
-                            StopRed
-                        } else {
-                            controlColors.foreground.copy(alpha = 0.14f)
-                        },
-                        CircleShape,
-                    )
-                    .semantics {
-                        contentDescription = if (armed) {
-                            "Nach rechts wischen, um die Tour zu beenden"
-                        } else {
-                            "Tour beenden vorbereiten"
+                AnimatedContent(
+                    targetState = armed,
+                    transitionSpec = {
+                        fadeIn(tween(160)) togetherWith fadeOut(tween(100))
+                    },
+                    label = "Stop confirmation",
+                    modifier = Modifier.fillMaxSize(),
+                ) { confirmationVisible ->
+                    if (confirmationVisible) {
+                        SwipeStopPrompt(controlColors)
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(start = 68.dp, end = 12.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = formatMeters(tour.distanceMeters),
+                                color = controlColors.foreground,
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                         }
                     }
-                    .pointerInteropFilter { event ->
-                        when (event.actionMasked) {
-                            MotionEvent.ACTION_DOWN -> {
-                                armed = true
-                                dragOffset = 0f
-                                dragStartX = event.rawX
+                }
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset {
+                            IntOffset(
+                                x = (edgePaddingPixels + dragOffset).roundToInt(),
+                                y = 0,
+                            )
+                        }
+                        .size(handleSize)
+                        .background(
+                            if (readyToStop) {
+                                StopRed
+                            } else {
+                                controlColors.foreground.copy(alpha = 0.14f)
+                            },
+                            CircleShape,
+                        )
+                        .semantics {
+                            contentDescription = if (armed) {
+                                "Nach rechts wischen, um die Tour zu beenden"
+                            } else {
+                                "Tour beenden vorbereiten"
                             }
-                            MotionEvent.ACTION_MOVE -> {
-                                dragOffset = (event.rawX - dragStartX)
-                                    .coerceIn(0f, maximum)
-                            }
-                            MotionEvent.ACTION_UP -> {
-                                if (shouldCompleteStopSwipe(dragOffset, maximum)) {
-                                    dragOffset = maximum
-                                    onStop()
-                                } else {
+                        }
+                        .pointerInteropFilter { event ->
+                            when (event.actionMasked) {
+                                MotionEvent.ACTION_DOWN -> {
+                                    armed = true
+                                    dragOffset = 0f
+                                    dragStartX = event.rawX
+                                }
+                                MotionEvent.ACTION_MOVE -> {
+                                    dragOffset = (event.rawX - dragStartX)
+                                        .coerceIn(0f, maximum)
+                                }
+                                MotionEvent.ACTION_UP -> {
+                                    if (shouldCompleteStopSwipe(dragOffset, maximum)) {
+                                        dragOffset = maximum
+                                        onStop()
+                                    } else {
+                                        armed = false
+                                        dragOffset = 0f
+                                    }
+                                }
+                                MotionEvent.ACTION_CANCEL -> {
                                     armed = false
                                     dragOffset = 0f
                                 }
                             }
-                            MotionEvent.ACTION_CANCEL -> {
-                                armed = false
-                                dragOffset = 0f
-                            }
-                        }
-                        true
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                LucideStopIcon(
-                    color = if (readyToStop) Color.White else controlColors.foreground,
-                )
+                            true
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LucideStopIcon(
+                        color = if (readyToStop) Color.White else controlColors.foreground,
+                    )
+                }
             }
-        }
         }
     }
 }
 
 @Composable
 private fun SwipeStopPrompt(controlColors: MapControlColors) {
-    val transition = rememberInfiniteTransition(label = "Stop arrows")
-    val arrowAlpha by transition.animateFloat(
-        initialValue = 0.28f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(760),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "Stop arrows alpha",
-    )
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(start = 66.dp, end = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "Zum Stoppen wischen",
-            modifier = Modifier.weight(1f),
+            text = "Swipe right",
             color = controlColors.foreground.copy(alpha = 0.72f),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
+            maxLines = 1,
         )
-        Row {
-            repeat(3) {
-                LucideIcon(
-                    paths = listOf("m9 18 6-6-6-6"),
-                    color = controlColors.foreground,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .graphicsLayer { alpha = arrowAlpha },
-                )
-            }
-        }
     }
 }
 
