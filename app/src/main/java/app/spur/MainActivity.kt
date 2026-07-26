@@ -34,6 +34,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -120,6 +121,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -262,6 +264,7 @@ private val FilterChipVisualInset = 8.dp
 private const val MotionDurationDefaultMillis = 200
 private const val PendingPhotoRevealDelayMillis = 1_000L
 private const val MinimumMapLoadingDurationMillis = 3_000L
+private const val LoaderContentFadeInDurationMillis = 400
 private const val DrawerMotionDurationMillis = 256
 private const val MapRotationAnimationMillis = 350L
 private val PhotoMapPreviewSize = 96.dp
@@ -843,6 +846,16 @@ private fun MapScreen(
     }
     var isMapRendered by remember { mutableStateOf(false) }
     var minimumMapLoadingTimeElapsed by remember { mutableStateOf(false) }
+    var loaderContentVisible by remember { mutableStateOf(false) }
+    var mapInitializationStarted by remember { mutableStateOf(false) }
+    val loaderContentAlpha by animateFloatAsState(
+        targetValue = if (loaderContentVisible) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = LoaderContentFadeInDurationMillis,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "Loader content alpha",
+    )
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
     var isMapGestureActive by remember { mutableStateOf(false) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -854,6 +867,12 @@ private fun MapScreen(
     LaunchedEffect(Unit) {
         delay(MinimumMapLoadingDurationMillis)
         minimumMapLoadingTimeElapsed = true
+    }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        loaderContentVisible = true
+        delay(LoaderContentFadeInDurationMillis.toLong())
+        mapInitializationStarted = true
     }
     BackHandler(
         enabled = isTourOverview &&
@@ -925,6 +944,7 @@ private fun MapScreen(
             },
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
+            if (mapInitializationStarted) {
             MapSurface(
                 modifier = Modifier.zIndex(if (isMapGestureActive) 1f else 0f),
                 tourId = tour?.id,
@@ -985,6 +1005,7 @@ private fun MapScreen(
                 onMapReadyChanged = { isMapRendered = it },
                 onMapGestureActiveChanged = { isMapGestureActive = it },
             )
+            }
 
             AnimatedVisibility(
                 visible = isMapReady,
@@ -1168,7 +1189,7 @@ private fun MapScreen(
                 enter = fadeIn(tween(MotionDurationDefaultMillis / 2)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
-                Column(
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Sand)
@@ -1179,22 +1200,26 @@ private fun MapScreen(
                                 }
                             }
                         },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
+                    contentAlignment = Alignment.Center,
                 ) {
-                    RotatingAsterisk(
-                        modifier = Modifier
-                            .size(128.dp),
-                        color = Ink,
-                        contentDescription = "Karte wird geladen",
-                    )
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Text(
-                        text = "Spur",
-                        color = Ink,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Medium,
-                    )
+                    Column(
+                        modifier = Modifier.graphicsLayer { alpha = loaderContentAlpha },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        RotatingAsterisk(
+                            modifier = Modifier
+                                .size(128.dp),
+                            color = Ink,
+                            contentDescription = "Karte wird geladen",
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            text = "Spur",
+                            color = Ink,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
                 }
             }
             }
