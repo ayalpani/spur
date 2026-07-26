@@ -65,6 +65,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -102,6 +104,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -875,6 +878,7 @@ private fun MapScreen(
                 mapMoments = mapMoments,
                 routePoints = routePoints,
                 photoToPlace = pendingPhoto,
+                focusedMoment = photoDetail,
                 onAlternateMapPreviewChanged = { alternateMapPreview = it },
                 onAlternateMapPreviewLoadingChanged = {
                     isAlternateMapPreviewLoading = it
@@ -897,7 +901,11 @@ private fun MapScreen(
                     ).show()
                 },
                 onMomentClick = { moment ->
-                    if (moment.type == MomentType.PHOTO) photoDetail = moment
+                    if (moment.type == MomentType.PHOTO) {
+                        isFollowingLocation = false
+                        isTourOverview = false
+                        photoDetail = moment
+                    }
                 },
                 onManualLocationChanged = { location ->
                     context.saveManualLocation(location)
@@ -1275,8 +1283,11 @@ private fun MapScreen(
     }
 
     photoDetail?.let { moment ->
+        val photos = remember(mapMoments) { orderedPhotoMoments(mapMoments) }
         PhotoDetailDialog(
-            photoPath = moment.payload,
+            photos = photos,
+            initialPhotoId = moment.id,
+            onPhotoChanged = { photoDetail = it },
             onDismiss = { photoDetail = null },
         )
     }
@@ -1626,6 +1637,7 @@ private fun MapSurface(
     mapMoments: List<MapMoment>,
     routePoints: List<TrackPoint>,
     photoToPlace: File?,
+    focusedMoment: MapMoment?,
     onAlternateMapPreviewChanged: (ImageBitmap) -> Unit,
     onAlternateMapPreviewLoadingChanged: (Boolean) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
@@ -1992,6 +2004,18 @@ private fun MapSurface(
         }
     }
 
+    LaunchedEffect(focusedMoment?.id) {
+        val moment = focusedMoment ?: return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.locationComponent.cameraMode = CameraMode.NONE
+            map.moveCamera(
+                CameraUpdateFactory.newLatLng(
+                    LatLng(moment.latitude, moment.longitude),
+                ),
+            )
+        }
+    }
+
     LaunchedEffect(manualLocation) {
         mapView.getMapAsync { map ->
             map.showGpsLocationPuck(
@@ -2081,19 +2105,26 @@ private fun SimulatedLocationPuck(modifier: Modifier = Modifier) {
 
 @Composable
 private fun PhotoDetailDialog(
-    photoPath: String,
+    photos: List<MapMoment>,
+    initialPhotoId: String,
+    onPhotoChanged: (MapMoment) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
+    if (photos.isEmpty()) return
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val imageRequest = remember(photoPath) {
-        ImageRequest.Builder(context)
-            .data(File(photoPath))
-            .crossfade(PhotoDetailEnterMillis)
-            .build()
+    val initialPage = remember(photos, initialPhotoId) {
+        photos.indexOfFirst { it.id == initialPhotoId }.coerceAtLeast(0)
     }
-    var isVisible by remember(photoPath) { mutableStateOf(false) }
-    var isClosing by remember(photoPath) { mutableStateOf(false) }
+    val pagerState = rememberPagerState(
+        initialPage = initialPage,
+        pageCount = { photos.size },
+    )
+    val selectedPhoto = photos[pagerState.currentPage.coerceIn(photos.indices)]
+    val currentPhoto by rememberUpdatedState(selectedPhoto)
+    val currentOnPhotoChanged by rememberUpdatedState(onPhotoChanged)
+    var isVisible by remember { mutableStateOf(false) }
+    var isClosing by remember { mutableStateOf(false) }
 
     fun dismissAnimated() {
         if (isClosing) return
@@ -2108,7 +2139,7 @@ private fun PhotoDetailDialog(
     fun savePhoto() {
         scope.launch {
             val saved = withContext(Dispatchers.IO) {
-                context.savePhotoToGallery(File(photoPath))
+                context.savePhotoToGallery(File(currentPhoto.payload))
             }
             Toast.makeText(
                 context,
@@ -2127,8 +2158,14 @@ private fun PhotoDetailDialog(
         ).show()
     }
 
-    LaunchedEffect(photoPath) {
+    LaunchedEffect(Unit) {
         isVisible = true
+    }
+
+    LaunchedEffect(pagerState, photos) {
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            photos.getOrNull(page)?.let(currentOnPhotoChanged)
+        }
     }
 
     Dialog(
@@ -2169,12 +2206,25 @@ private fun PhotoDetailDialog(
                     .fillMaxSize()
                     .background(Color.Black),
             ) {
-                ZoomableAsyncImage(
-                    model = imageRequest,
-                    contentDescription = "Zoombares Foto in Vollbildansicht",
-                    contentScale = ContentScale.Fit,
+                HorizontalPager(
+                    state = pagerState,
                     modifier = Modifier.fillMaxSize(),
-                )
+                    key = { photos[it].id },
+                ) { page ->
+                    val photo = photos[page]
+                    val imageRequest = remember(photo.payload) {
+                        ImageRequest.Builder(context)
+                            .data(File(photo.payload))
+                            .crossfade(PhotoDetailEnterMillis)
+                            .build()
+                    }
+                    ZoomableAsyncImage(
+                        model = imageRequest,
+                        contentDescription = "Foto ${page + 1} von ${photos.size}",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
                 IconButton(
                     onClick = ::dismissAnimated,
                     modifier = Modifier
@@ -3168,7 +3218,8 @@ private fun HistoryScreen(
 
     selectedPhoto?.let { photo ->
         PhotoDetailDialog(
-            photoPath = photo.payload,
+            photos = listOf(photo),
+            initialPhotoId = photo.id,
             onDismiss = { selectedPhoto = null },
         )
     }

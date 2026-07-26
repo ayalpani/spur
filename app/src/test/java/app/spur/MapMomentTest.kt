@@ -92,4 +92,23 @@ class MapMomentTest {
             assertTrue(offset.getDistance() > MomentMarkerWidth / 2f)
         }
     }
+
+    @Test
+    fun photoViewerUsesChronologicalOrder() {
+        val newest = MapMoment(
+            id = "photo-3000",
+            type = MomentType.PHOTO,
+            latitude = 0.0,
+            longitude = 0.0,
+            payload = "/newest.jpg",
+        )
+        val oldest = newest.copy(id = "photo-1000", payload = "/oldest.jpg")
+        val middle = newest.copy(id = "photo-2000", payload = "/middle.jpg")
+        val voice = newest.copy(id = "voice-1500", type = MomentType.VOICE)
+
+        assertEquals(
+            listOf(oldest, middle, newest),
+            orderedPhotoMoments(listOf(newest, voice, oldest, middle)),
+        )
+    }
 }

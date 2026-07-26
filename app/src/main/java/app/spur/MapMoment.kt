@@ -51,5 +51,13 @@ internal fun photoMomentsForTour(
     .sortedByDescending(MapMoment::captureTimeMillis)
     .toList()
 
+internal fun orderedPhotoMoments(moments: List<MapMoment>): List<MapMoment> =
+    moments
+        .filter { it.type == MomentType.PHOTO }
+        .sortedWith(
+            compareBy<MapMoment> { it.captureTimeMillis() ?: Long.MAX_VALUE }
+                .thenBy(MapMoment::id),
+        )
+
 private fun MapMoment.captureTimeMillis(): Long? =
     id.removePrefix("photo-").toLongOrNull()
