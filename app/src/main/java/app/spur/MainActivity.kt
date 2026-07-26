@@ -277,7 +277,7 @@ private const val MotionDurationDefaultMillis = 200
 private const val PendingPhotoRevealDelayMillis = 1_000L
 private const val MinimumMapLoadingDurationMillis = 3_000L
 private const val LoaderContentFadeInDurationMillis = 400
-private const val HistoryPageMotionDurationMillis = 5_000
+private const val PanelMotionDurationMillis = 300
 private const val MapRotationAnimationMillis = 350L
 private val PhotoMapPreviewSize = 96.dp
 private const val PhotoMapPreviewZoom = 17.5
@@ -742,14 +742,14 @@ private fun SpurApp() {
                         enter = slideInHorizontally(
                             initialOffsetX = { fullWidth -> fullWidth },
                             animationSpec = tween(
-                                durationMillis = HistoryPageMotionDurationMillis,
+                                durationMillis = PanelMotionDurationMillis,
                                 easing = FastOutSlowInEasing,
                             ),
                         ),
                         exit = slideOutHorizontally(
                             targetOffsetX = { fullWidth -> fullWidth },
                             animationSpec = tween(
-                                durationMillis = HistoryPageMotionDurationMillis,
+                                durationMillis = PanelMotionDurationMillis,
                                 easing = FastOutSlowInEasing,
                             ),
                         ),
