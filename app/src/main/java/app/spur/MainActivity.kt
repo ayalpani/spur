@@ -6052,20 +6052,22 @@ private fun FollowLocationIcon(selected: Boolean) {
     ) {
         Box(
             modifier = Modifier
-                .size(42.dp)
+                .size(width = 72.dp, height = 54.dp)
                 .graphicsLayer {
                     translationX = cos(phase) * wobbleDistance
                     translationY = sin(phase) * wobbleDistance
+                    rotationZ = 24f
                     alpha = if (selected) SignalButtonPulseAlpha else 0f
                 }
                 .background(pulseColor, CircleShape),
         )
         Box(
             modifier = Modifier
-                .size(34.dp)
+                .size(width = 66.dp, height = 48.dp)
                 .graphicsLayer {
                     translationX = -sin(phase) * wobbleDistance
                     translationY = cos(phase) * wobbleDistance
+                    rotationZ = -28f
                     alpha = if (selected) SignalButtonSecondaryPulseAlpha else 0f
                 }
                 .background(pulseColor, CircleShape),
