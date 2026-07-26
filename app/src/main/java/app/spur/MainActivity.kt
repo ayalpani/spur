@@ -276,6 +276,8 @@ private val MapControlGap = MapControlGapDp.dp
 private val MapControlSize = MapControlSizeDp.dp
 private val MapControlHorizontalPadding = MapControlHorizontalPaddingDp.dp
 private val MapControlVerticalPadding = MapControlVerticalPaddingDp.dp
+private val MomentSheetHeaderGap = 24.dp
+private val MomentSheetGridGap = 10.dp
 private val SheetMenuTextSize = 18.sp
 private val StopSwipeHandleSize = 52.dp
 private val MapRotationOptionGap = 16.dp
@@ -1435,7 +1437,6 @@ private fun MapPage(
                     .navigationBarsPadding()
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Column(
                     modifier = Modifier
@@ -1454,9 +1455,10 @@ private fun MapPage(
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
+                Spacer(modifier = Modifier.height(MomentSheetHeaderGap))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
                 ) {
                     MomentOption(
                         label = "Sprache",
@@ -1477,9 +1479,10 @@ private fun MapPage(
                         ).show()
                     }
                 }
+                Spacer(modifier = Modifier.height(MomentSheetGridGap))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
                 ) {
                     MomentOption(
                         label = "Video",
