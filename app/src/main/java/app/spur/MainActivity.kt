@@ -1224,7 +1224,7 @@ private fun MapScreen(
                         )
                         Spacer(modifier = Modifier.height(20.dp))
                         Text(
-                            text = "Spur",
+                            text = "Spur startet...",
                             color = Ink,
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Medium,
