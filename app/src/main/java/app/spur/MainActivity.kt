@@ -49,6 +49,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -72,6 +73,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -3769,12 +3771,32 @@ private fun HistoryScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val tourListState = rememberLazyListState()
     var tours by remember { mutableStateOf(emptyList<Tour>()) }
     var mapMoments by remember { mutableStateOf(emptyList<MapMoment>()) }
     var selectedTour by remember { mutableStateOf<Tour?>(null) }
     var tourToDelete by remember { mutableStateOf<Tour?>(null) }
     var deletingTourId by remember { mutableStateOf<Long?>(null) }
     var selectedPhoto by remember { mutableStateOf<MapMoment?>(null) }
+    var isPhotoDetailVisible by remember { mutableStateOf(false) }
+    val photosByTour = remember(tours, mapMoments) {
+        tours.associate { tour ->
+            tour.id to photoMomentsForTour(mapMoments, tour)
+        }
+    }
+    val historyPhotos = remember(photosByTour) {
+        orderedPhotoMoments(
+            photosByTour.values
+                .flatten()
+                .distinctBy(MapMoment::id),
+        )
+    }
+    val selectedTourIndex = remember(selectedPhoto?.id, tours, photosByTour) {
+        val selectedId = selectedPhoto?.id
+        tours.indexOfFirst { tour ->
+            photosByTour[tour.id].orEmpty().any { it.id == selectedId }
+        }
+    }
     BackHandler(enabled = isVisible) {
         if (deletingTourId == null) onBack()
     }
@@ -3785,6 +3807,31 @@ private fun HistoryScreen(
         tours = loadedTours
         mapMoments = loadedMoments
         if (loadedTours.none { it.id == deletingTourId }) deletingTourId = null
+    }
+    LaunchedEffect(historyPhotos, selectedPhoto?.id) {
+        val selectedId = selectedPhoto?.id ?: return@LaunchedEffect
+        if (historyPhotos.none { it.id == selectedId }) {
+            isPhotoDetailVisible = false
+            selectedPhoto = null
+        }
+    }
+    LaunchedEffect(selectedPhoto?.id, selectedTourIndex) {
+        if (selectedTourIndex < 0) return@LaunchedEffect
+        val margin = with(context.resources.displayMetrics) { (24 * density).roundToInt() }
+        val item = tourListState.layoutInfo.visibleItemsInfo
+            .firstOrNull { it.index == selectedTourIndex }
+        val viewportStart = tourListState.layoutInfo.viewportStartOffset + margin
+        val viewportEnd = tourListState.layoutInfo.viewportEndOffset - margin
+        if (
+            item == null ||
+            item.offset < viewportStart ||
+            item.offset + item.size > viewportEnd
+        ) {
+            tourListState.animateScrollToItem(
+                index = selectedTourIndex,
+                scrollOffset = -margin,
+            )
+        }
     }
 
     Column(
@@ -3832,13 +3879,14 @@ private fun HistoryScreen(
             }
         } else {
             LazyColumn(
+                state = tourListState,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(top = 20.dp),
             ) {
                 items(tours, key = { it.id }) { tour ->
-                    val photos = photoMomentsForTour(mapMoments, tour)
+                    val photos = photosByTour[tour.id].orEmpty()
                     AnimatedVisibility(
                         visible = deletingTourId != tour.id,
                         exit = shrinkVertically(
@@ -3895,7 +3943,11 @@ private fun HistoryScreen(
                                         TourPhotoStrip(
                                             photos = photos,
                                             photoRevision = photoRevision,
-                                            onOpen = { selectedPhoto = it },
+                                            selectedPhotoId = selectedPhoto?.id,
+                                            onOpen = {
+                                                selectedPhoto = it
+                                                isPhotoDetailVisible = true
+                                            },
                                         )
                                     }
                                 }
@@ -3980,13 +4032,14 @@ private fun HistoryScreen(
         )
     }
 
-    selectedPhoto?.let { photo ->
+    if (isPhotoDetailVisible) selectedPhoto?.let { photo ->
         PhotoDetailDialog(
-            photos = listOf(photo),
+            photos = historyPhotos,
             initialPhotoId = photo.id,
             photoRevision = photoRevision,
+            onPhotoChanged = { selectedPhoto = it },
             onPhotoRotated = onPhotoRotated,
-            onDismiss = { selectedPhoto = null },
+            onDismiss = { isPhotoDetailVisible = false },
         )
     }
 }
@@ -3995,10 +4048,34 @@ private fun HistoryScreen(
 private fun TourPhotoStrip(
     photos: List<MapMoment>,
     photoRevision: Long,
+    selectedPhotoId: String?,
     onOpen: (MapMoment) -> Unit,
 ) {
     val context = LocalContext.current
+    val listState = rememberLazyListState()
+    val selectedIndex = remember(photos, selectedPhotoId) {
+        photos.indexOfFirst { it.id == selectedPhotoId }
+    }
+    LaunchedEffect(selectedIndex) {
+        if (selectedIndex < 0) return@LaunchedEffect
+        val margin = with(context.resources.displayMetrics) { (18 * density).roundToInt() }
+        val item = listState.layoutInfo.visibleItemsInfo
+            .firstOrNull { it.index == selectedIndex }
+        val viewportStart = listState.layoutInfo.viewportStartOffset + margin
+        val viewportEnd = listState.layoutInfo.viewportEndOffset - margin
+        if (
+            item == null ||
+            item.offset < viewportStart ||
+            item.offset + item.size > viewportEnd
+        ) {
+            listState.animateScrollToItem(
+                index = selectedIndex,
+                scrollOffset = -margin,
+            )
+        }
+    }
     LazyRow(
+        state = listState,
         contentPadding = PaddingValues(
             start = 18.dp,
             end = 18.dp,
@@ -4007,6 +4084,7 @@ private fun TourPhotoStrip(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(photos, key = { it.id }) { photo ->
+            val isSelected = photo.id == selectedPhotoId
             val imageRequest = remember(photo.payload, photoRevision) {
                 ImageRequest.Builder(context)
                     .data(File(photo.payload))
@@ -4020,9 +4098,15 @@ private fun TourPhotoStrip(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(64.dp)
+                    .border(
+                        width = 3.dp,
+                        color = if (isSelected) Moss else Color.Transparent,
+                        shape = RoundedCornerShape(12.dp),
+                    )
                     .clip(RoundedCornerShape(12.dp))
                     .background(Mist)
-                    .clickable { onOpen(photo) },
+                    .clickable { onOpen(photo) }
+                    .semantics { selected = isSelected },
             )
         }
     }
