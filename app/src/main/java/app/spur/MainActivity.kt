@@ -884,7 +884,7 @@ private fun MapScreen(
                     .fillMaxWidth()
                     .widthIn(max = 560.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Bottom,
             ) {
                 MapIconButton(
                     contentDescription = "Moment hinzufügen",
@@ -2947,15 +2947,46 @@ private fun ActiveTourStopControl(
     var dragOffset by remember(tour.id) { mutableFloatStateOf(0f) }
     var dragStartX by remember(tour.id) { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
+    val mainControlHeight = 60.dp
+    val timeCapHeight = 32.dp
+    val capOverlap = 8.dp
 
-    Surface(
-        modifier = modifier
-            .height(60.dp)
-            .mapControlShadow(CircleShape),
-        color = controlColors.background,
-        shape = CircleShape,
+    Box(
+        modifier = modifier.height(mainControlHeight + timeCapHeight - capOverlap),
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .height(timeCapHeight)
+                .mapControlShadow(CircleShape),
+            color = controlColors.background,
+            contentColor = controlColors.foreground,
+            shape = CircleShape,
+        ) {
+            Box(
+                modifier = Modifier.padding(horizontal = 18.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Seit ${formatClock(tour.startedAt)} · ${
+                        formatDuration(now - tour.startedAt)
+                    }",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(mainControlHeight)
+                .mapControlShadow(CircleShape),
+            color = controlColors.background,
+            shape = CircleShape,
+        ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val handleSize = 52.dp
             val edgePadding = 4.dp
             val maximum = with(density) {
@@ -2981,21 +3012,12 @@ private fun ActiveTourStopControl(
                             .padding(start = 68.dp, end = 12.dp),
                         contentAlignment = Alignment.CenterStart,
                     ) {
-                        Column {
-                            Text(
-                                text = formatKilometers(tour.distanceMeters),
-                                color = controlColors.foreground,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = "Seit ${formatClock(tour.startedAt)} · ${
-                                    formatDuration(now - tour.startedAt)
-                                }",
-                                color = controlColors.foreground.copy(alpha = 0.68f),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
+                        Text(
+                            text = formatMeters(tour.distanceMeters),
+                            color = controlColors.foreground,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                     }
                 }
             }
@@ -3059,6 +3081,7 @@ private fun ActiveTourStopControl(
                 )
             }
         }
+        }
     }
 }
 
@@ -3116,6 +3139,9 @@ private fun StopIcon(color: Color) {
 
 internal fun formatKilometers(distanceMeters: Double): String =
     String.format(Locale.getDefault(), "%.2f km", distanceMeters / 1_000.0)
+
+internal fun formatMeters(distanceMeters: Double): String =
+    String.format(Locale.getDefault(), "%.0f m", distanceMeters.coerceAtLeast(0.0))
 
 private fun formatClock(timestamp: Long): String =
     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(timestamp))
