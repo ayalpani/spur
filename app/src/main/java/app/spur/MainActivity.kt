@@ -85,7 +85,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButton
@@ -93,9 +92,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Slider
@@ -590,7 +586,7 @@ private fun SpurApp() {
                         },
                     ) {
                         composable(SpurRoute.MAP) {
-                            MapScreen(
+                            MapPage(
                                 tour = displayedTour,
                                 isTourActive = activeTour != null,
                                 routePoints = routePoints,
@@ -623,7 +619,7 @@ private fun SpurApp() {
                                     }
                                 },
                                 onSimulatedLocation = { coordinate ->
-                                    val id = activeTour?.id ?: return@MapScreen
+                                    val id = activeTour?.id ?: return@MapPage
                                     scope.launch {
                                         withContext(Dispatchers.IO) {
                                             store.appendSimulatedLocation(id, coordinate)
@@ -632,7 +628,7 @@ private fun SpurApp() {
                                     }
                                 },
                                 onEndTour = {
-                                    val id = activeTour?.id ?: return@MapScreen
+                                    val id = activeTour?.id ?: return@MapPage
                                     scope.launch {
                                         withContext(Dispatchers.IO) { store.finishTour(id) }
                                         context.startService(
@@ -697,7 +693,7 @@ private fun SpurApp() {
                             ),
                         ),
                     ) {
-                        HistoryScreen(
+                        HistoryPage(
                             store = store,
                             revision = historyRevision,
                             isVisible = isHistoryVisible,
@@ -800,7 +796,7 @@ private fun LocationOnboarding(
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-private fun MapScreen(
+private fun MapPage(
     tour: Tour?,
     isTourActive: Boolean,
     routePoints: List<TrackPoint>,
@@ -813,11 +809,7 @@ private fun MapScreen(
     onPhotoRotated: () -> Unit = {},
 ) {
     val context = LocalContext.current
-    val drawerState = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    BackHandler(enabled = drawerState.isOpen) {
-        scope.launch { drawerState.close() }
-    }
     var followRequest by rememberSaveable { mutableStateOf(0) }
     var tourOverviewRequest by rememberSaveable { mutableStateOf(0) }
     var isFollowingLocation by rememberSaveable { mutableStateOf(false) }
@@ -826,10 +818,10 @@ private fun MapScreen(
     var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
     var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
-    var showSettingsSheet by rememberSaveable { mutableStateOf(false) }
-    var showAppearanceSettingsSheet by rememberSaveable { mutableStateOf(false) }
-    var showDirectionSettingsSheet by rememberSaveable { mutableStateOf(false) }
-    var showAboutSheet by rememberSaveable { mutableStateOf(false) }
+    var showMainMenu by rememberSaveable { mutableStateOf(false) }
+    var showAppearanceBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
     var pendingPhoto by remember { mutableStateOf<File?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
@@ -862,10 +854,10 @@ private fun MapScreen(
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
     var isMapGestureActive by remember { mutableStateOf(false) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val settingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val appearanceSettingsSheetState =
+    val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val appearanceBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val directionSettingsSheetState =
+    val directionBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val followOwnLocation: () -> Unit = {
         isTourOverview = false
@@ -884,12 +876,11 @@ private fun MapScreen(
     }
     BackHandler(
         enabled = isTourOverview &&
-            drawerState.isClosed &&
             !showMomentSheet &&
-            !showSettingsSheet &&
-            !showAppearanceSettingsSheet &&
-            !showDirectionSettingsSheet &&
-            !showAboutSheet &&
+            !showMainMenu &&
+            !showAppearanceBottomSheet &&
+            !showDirectionBottomSheet &&
+            !showAboutBottomSheet &&
             !showCamera &&
             photoDetail == null,
         onBack = followOwnLocation,
@@ -913,47 +904,7 @@ private fun MapScreen(
         foreground = mapControlForeground.color,
     )
     CompositionLocalProvider(LocalMapControlColors provides mapControlColors) {
-        ModalNavigationDrawer(
-            drawerState = drawerState,
-            gesturesEnabled = false,
-            drawerContent = {
-            ModalDrawerSheet {
-                Column(
-                    modifier = Modifier
-                        .statusBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text(
-                        text = "Spur",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    NavigationDrawerItem(
-                        label = { Text("Einstellungen") },
-                        selected = false,
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                showSettingsSheet = true
-                            }
-                        },
-                    )
-                    NavigationDrawerItem(
-                        label = { Text("Über Spur") },
-                        selected = false,
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                showAboutSheet = true
-                            }
-                        },
-                    )
-                }
-            }
-            },
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize()) {
             if (mapInitializationStarted) {
             MapSurface(
                 modifier = Modifier.zIndex(if (isMapGestureActive) 1f else 0f),
@@ -965,7 +916,7 @@ private fun MapScreen(
                 manualLocation = manualLocation,
                 initialMapZoom = initialMapZoom,
                 defaultMapBearing = defaultMapRotation.bearing,
-                mapSettingsVisible = showDirectionSettingsSheet,
+                mapSettingsVisible = showDirectionBottomSheet,
                 mapMoments = mapMoments,
                 momentImageRevision = photoRevision,
                 routePoints = routePoints,
@@ -1033,7 +984,7 @@ private fun MapScreen(
                 ) {
                     MapIconButton(
                         contentDescription = "Hauptmenü öffnen",
-                        onClick = { scope.launch { drawerState.open() } },
+                        onClick = { showMainMenu = true },
                     ) {
                         MenuIcon()
                     }
@@ -1232,7 +1183,6 @@ private fun MapScreen(
                     }
                 }
             }
-            }
         }
     }
 
@@ -1320,44 +1270,38 @@ private fun MapScreen(
         }
     }
 
-    if (showSettingsSheet) {
+    if (showMainMenu) {
         ModalBottomSheet(
-            onDismissRequest = { showSettingsSheet = false },
-            sheetState = settingsSheetState,
+            onDismissRequest = { showMainMenu = false },
+            sheetState = mainMenuState,
         ) {
-            Column(
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                BottomSheetHeader(title = "Einstellungen")
-                SheetMenuItem(
-                    label = "Darstellung",
-                    onClick = {
-                        scope.launch {
-                            settingsSheetState.hide()
-                            showSettingsSheet = false
-                            showAppearanceSettingsSheet = true
-                        }
-                    },
-                )
-                SheetMenuItem(
-                    label = "Himmelsrichtung",
-                    onClick = {
-                        scope.launch {
-                            settingsSheetState.hide()
-                            showSettingsSheet = false
-                            showDirectionSettingsSheet = true
-                        }
-                    },
-                )
-            }
+            MainMenu(
+                onOpenAppearance = {
+                    scope.launch {
+                        mainMenuState.hide()
+                        showMainMenu = false
+                        showAppearanceBottomSheet = true
+                    }
+                },
+                onOpenDirection = {
+                    scope.launch {
+                        mainMenuState.hide()
+                        showMainMenu = false
+                        showDirectionBottomSheet = true
+                    }
+                },
+                onOpenAbout = {
+                    scope.launch {
+                        mainMenuState.hide()
+                        showMainMenu = false
+                        showAboutBottomSheet = true
+                    }
+                },
+            )
         }
     }
 
-    if (showAppearanceSettingsSheet) {
+    if (showAppearanceBottomSheet) {
         val selectMapControlBackground: (MapControlColor) -> Unit = {
             mapControlBackground = it
             context.saveMapControlColor(it)
@@ -1368,10 +1312,10 @@ private fun MapScreen(
         }
         ModalBottomSheet(
             onDismissRequest = {
-                showAppearanceSettingsSheet = false
-                showSettingsSheet = true
+                showAppearanceBottomSheet = false
+                showMainMenu = true
             },
-            sheetState = appearanceSettingsSheetState,
+            sheetState = appearanceBottomSheetState,
         ) {
             Column(
                 modifier = Modifier
@@ -1383,9 +1327,9 @@ private fun MapScreen(
                     title = "Darstellung wählen",
                     onBack = {
                         scope.launch {
-                            appearanceSettingsSheetState.hide()
-                            showAppearanceSettingsSheet = false
-                            showSettingsSheet = true
+                            appearanceBottomSheetState.hide()
+                            showAppearanceBottomSheet = false
+                            showMainMenu = true
                         }
                     },
                 )
@@ -1423,7 +1367,7 @@ private fun MapScreen(
         }
     }
 
-    if (showDirectionSettingsSheet) {
+    if (showDirectionBottomSheet) {
         val compassRotation = remember {
             Animatable(-defaultMapRotation.bearing.toFloat())
         }
@@ -1442,10 +1386,10 @@ private fun MapScreen(
         }
         ModalBottomSheet(
             onDismissRequest = {
-                showDirectionSettingsSheet = false
-                showSettingsSheet = true
+                showDirectionBottomSheet = false
+                showMainMenu = true
             },
-            sheetState = directionSettingsSheetState,
+            sheetState = directionBottomSheetState,
         ) {
             Column(
                 modifier = Modifier
@@ -1457,9 +1401,9 @@ private fun MapScreen(
                     title = "Himmelsrichtung wählen",
                     onBack = {
                         scope.launch {
-                            directionSettingsSheetState.hide()
-                            showDirectionSettingsSheet = false
-                            showSettingsSheet = true
+                            directionBottomSheetState.hide()
+                            showDirectionBottomSheet = false
+                            showMainMenu = true
                         }
                     },
                 )
@@ -1473,9 +1417,12 @@ private fun MapScreen(
         }
     }
 
-    if (showAboutSheet) {
+    if (showAboutBottomSheet) {
         ModalBottomSheet(
-            onDismissRequest = { showAboutSheet = false },
+            onDismissRequest = {
+                showAboutBottomSheet = false
+                showMainMenu = true
+            },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {
             Column(
@@ -1485,10 +1432,12 @@ private fun MapScreen(
                     .padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    text = "Spur",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
+                BottomSheetHeader(
+                    title = "Über Spur",
+                    onBack = {
+                        showAboutBottomSheet = false
+                        showMainMenu = true
+                    },
                 )
                 Text(
                     text = "Spur hält deine Wege und Erinnerungen privat auf deinem Gerät fest.",
@@ -1515,7 +1464,7 @@ private fun MapScreen(
 
     photoDetail?.let { moment ->
         val photos = remember(mapMoments) { orderedPhotoMoments(mapMoments) }
-        PhotoDetailDialog(
+        PhotoDetailPage(
             photos = photos,
             initialPhotoId = moment.id,
             openOrigin = photoDetailOrigin,
@@ -1551,6 +1500,26 @@ private fun MapScreen(
                 focusedPhoto = null
             },
         )
+    }
+}
+
+@Composable
+private fun MainMenu(
+    onOpenAppearance: () -> Unit,
+    onOpenDirection: () -> Unit,
+    onOpenAbout: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        BottomSheetHeader(title = "Hauptmenü")
+        SheetMenuItem(label = "Darstellung", onClick = onOpenAppearance)
+        SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
+        SheetMenuItem(label = "Über Spur", onClick = onOpenAbout)
     }
 }
 
@@ -2580,7 +2549,7 @@ private fun SimulatedLocationPuck(modifier: Modifier = Modifier) {
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-private fun PhotoDetailDialog(
+private fun PhotoDetailPage(
     photos: List<MapMoment>,
     initialPhotoId: String,
     openOrigin: Offset? = null,
@@ -4181,7 +4150,7 @@ private fun drawMomentGlyph(
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
-private fun HistoryScreen(
+private fun HistoryPage(
     store: TourStore,
     revision: Long,
     isVisible: Boolean = true,
@@ -4456,7 +4425,7 @@ private fun HistoryScreen(
     }
 
     if (isPhotoDetailVisible) selectedPhoto?.let { photo ->
-        PhotoDetailDialog(
+        PhotoDetailPage(
             photos = historyPhotos,
             initialPhotoId = photo.id,
             photoRevision = photoRevision,
@@ -5313,8 +5282,8 @@ private fun BackIcon() = LucideIcon(
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
-private fun MapScreenPreview() {
-    MapScreen(
+private fun MapPagePreview() {
+    MapPage(
         tour = null,
         isTourActive = false,
         routePoints = emptyList(),
@@ -5328,8 +5297,8 @@ private fun MapScreenPreview() {
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
-private fun ActiveTourScreenPreview() {
-    MapScreen(
+private fun ActiveTourPagePreview() {
+    MapPage(
         tour = Tour(
             id = 1,
             startedAt = System.currentTimeMillis() - 754_000,
@@ -5349,8 +5318,8 @@ private fun ActiveTourScreenPreview() {
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
-private fun HistoryScreenPreview() {
-    HistoryScreen(
+private fun HistoryPagePreview() {
+    HistoryPage(
         store = TourStore(LocalContext.current),
         revision = 0,
         onBack = {},
