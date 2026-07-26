@@ -79,6 +79,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -136,6 +137,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
@@ -827,6 +829,7 @@ private fun MapScreen(
     var mapControlForeground by remember {
         mutableStateOf(context.loadMapControlForegroundColor(mapControlBackground))
     }
+    var isMapReady by remember { mutableStateOf(false) }
     var isMapGestureActive by remember { mutableStateOf(false) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val followOwnLocation: () -> Unit = {
@@ -963,161 +966,212 @@ private fun MapScreen(
                     isFollowingLocation = false
                     isTourOverview = false
                 },
+                onMapReadyChanged = { isMapReady = it },
                 onMapGestureActiveChanged = { isMapGestureActive = it },
             )
 
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(horizontal = 18.dp, vertical = 14.dp)
-                    .fillMaxWidth()
-                    .widthIn(max = 560.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            AnimatedVisibility(
+                visible = isMapReady,
+                modifier = Modifier.align(Alignment.TopCenter),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
             ) {
-                MapIconButton(
-                    contentDescription = "Hauptmenü öffnen",
-                    onClick = { scope.launch { drawerState.open() } },
+                Row(
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .padding(horizontal = 18.dp, vertical = 14.dp)
+                        .fillMaxWidth()
+                        .widthIn(max = 560.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    MenuIcon()
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                if (isTourActive) {
                     MapIconButton(
-                        contentDescription = "Tour teilen",
-                        onClick = { shareActiveTour(context) },
+                        contentDescription = "Hauptmenü öffnen",
+                        onClick = { scope.launch { drawerState.open() } },
                     ) {
-                        ShareIcon()
+                        MenuIcon()
                     }
-                    Spacer(modifier = Modifier.width(MapControlGap))
-                }
-                MapIconButton(
-                    contentDescription = "Tour-History öffnen",
-                    onClick = onOpenHistory,
-                ) {
-                    HistoryIcon()
+                    Spacer(modifier = Modifier.weight(1f))
+                    if (isTourActive) {
+                        MapIconButton(
+                            contentDescription = "Tour teilen",
+                            onClick = { shareActiveTour(context) },
+                        ) {
+                            ShareIcon()
+                        }
+                        Spacer(modifier = Modifier.width(MapControlGap))
+                    }
+                    MapIconButton(
+                        contentDescription = "Tour-History öffnen",
+                        onClick = onOpenHistory,
+                    ) {
+                        HistoryIcon()
+                    }
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .navigationBarsPadding()
-                    .padding(start = 18.dp, bottom = 86.dp),
-                verticalArrangement = Arrangement.spacedBy(MapControlGap),
+            AnimatedVisibility(
+                visible = isMapReady,
+                modifier = Modifier.align(Alignment.BottomStart),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
             ) {
-                MapStyleButton(
-                    contentDescription = if (isSatelliteView) {
-                        "Schematische Kartenansicht anzeigen"
-                    } else {
-                        "Satellitenansicht anzeigen"
-                    },
-                    onClick = {
-                        isAlternateMapPreviewLoading = true
-                        alternateMapPreview = null
-                        isSatelliteView = !isSatelliteView
-                    },
-                    preview = alternateMapPreview,
-                    isLoading = isAlternateMapPreviewLoading,
-                    fallbackPreview = if (isSatelliteView) {
-                        R.drawable.map_preview_street
-                    } else {
-                        R.drawable.map_preview_satellite
-                    },
-                )
-                if (manualLocation != null) {
-                    MapIconButton(
-                        contentDescription = "Simulierten Standort zurücksetzen",
+                Column(
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(start = 18.dp, bottom = 86.dp),
+                    verticalArrangement = Arrangement.spacedBy(MapControlGap),
+                ) {
+                    MapStyleButton(
+                        contentDescription = if (isSatelliteView) {
+                            "Schematische Kartenansicht anzeigen"
+                        } else {
+                            "Satellitenansicht anzeigen"
+                        },
                         onClick = {
-                            context.saveManualLocation(null)
-                            manualLocation = null
-                            Toast.makeText(
-                                context,
-                                "GPS-Standort wieder aktiv.",
-                                Toast.LENGTH_SHORT,
-                            ).show()
+                            isMapReady = false
+                            isAlternateMapPreviewLoading = true
+                            alternateMapPreview = null
+                            isSatelliteView = !isSatelliteView
+                        },
+                        preview = alternateMapPreview,
+                        isLoading = isAlternateMapPreviewLoading,
+                        fallbackPreview = if (isSatelliteView) {
+                            R.drawable.map_preview_street
+                        } else {
+                            R.drawable.map_preview_satellite
+                        },
+                    )
+                    if (manualLocation != null) {
+                        MapIconButton(
+                            contentDescription = "Simulierten Standort zurücksetzen",
+                            onClick = {
+                                context.saveManualLocation(null)
+                                manualLocation = null
+                                Toast.makeText(
+                                    context,
+                                    "GPS-Standort wieder aktiv.",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                        ) {
+                            LucideLocateOffIcon()
+                        }
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isMapReady,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(horizontal = 18.dp, vertical = 16.dp)
+                        .fillMaxWidth()
+                        .widthIn(max = 560.dp),
+                    horizontalArrangement = Arrangement.spacedBy(MapControlGap),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    MapIconButton(
+                        contentDescription = "Moment hinzufügen",
+                        onClick = { showMomentSheet = true },
+                    ) {
+                        PlusIcon()
+                    }
+                    if (isTourActive && tour != null) {
+                        ActiveTourStopControl(
+                            tour = tour,
+                            now = now,
+                            onStop = onEndTour,
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        val controlColors = LocalMapControlColors.current.inverted
+                        Button(
+                            onClick = onStartTour,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(60.dp)
+                                .mapControlShadow(CircleShape),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = controlColors.background,
+                                contentColor = controlColors.foreground,
+                            ),
+                            elevation = ButtonDefaults.buttonElevation(
+                                defaultElevation = 0.dp,
+                                pressedElevation = 0.dp,
+                                focusedElevation = 0.dp,
+                                hoveredElevation = 0.dp,
+                                disabledElevation = 0.dp,
+                            ),
+                        ) {
+                            Text(
+                                text = "Tour starten",
+                                color = controlColors.foreground,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                    MapIconButton(
+                        contentDescription = when {
+                            isTourOverview -> "Zur Standortverfolgung zurückkehren"
+                            isFollowingLocation -> "Gesamte Tour anzeigen"
+                            else -> "Eigenem Standort folgen"
+                        },
+                        onClick = {
+                            if (
+                                shouldShowTourOverview(
+                                    isFollowingLocation = isFollowingLocation,
+                                    isTourActive = isTourActive,
+                                    routePointCount = routePoints.size,
+                                )
+                            ) {
+                                isFollowingLocation = false
+                                isTourOverview = true
+                                tourOverviewRequest++
+                            } else {
+                                followOwnLocation()
+                            }
                         },
                     ) {
-                        LucideLocateOffIcon()
+                        FollowLocationIcon(selected = isFollowingLocation)
                     }
                 }
             }
 
-            Row(
+            AnimatedVisibility(
+                visible = !isMapReady,
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 18.dp, vertical = 16.dp)
-                    .fillMaxWidth()
-                    .widthIn(max = 560.dp),
-                horizontalArrangement = Arrangement.spacedBy(MapControlGap),
-                verticalAlignment = Alignment.Bottom,
+                    .fillMaxSize()
+                    .zIndex(2f),
+                enter = fadeIn(tween(MotionDurationDefaultMillis / 2)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
-                MapIconButton(
-                    contentDescription = "Moment hinzufügen",
-                    onClick = { showMomentSheet = true },
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Sand)
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    awaitPointerEvent().changes.forEach { it.consume() }
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
                 ) {
-                    PlusIcon()
-                }
-                if (isTourActive && tour != null) {
-                    ActiveTourStopControl(
-                        tour = tour,
-                        now = now,
-                        onStop = onEndTour,
-                        modifier = Modifier.weight(1f),
-                    )
-                } else {
-                    val controlColors = LocalMapControlColors.current.inverted
-                    Button(
-                        onClick = onStartTour,
+                    CircularProgressIndicator(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(60.dp)
-                            .mapControlShadow(CircleShape),
-                        shape = CircleShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = controlColors.background,
-                            contentColor = controlColors.foreground,
-                        ),
-                        elevation = ButtonDefaults.buttonElevation(
-                            defaultElevation = 0.dp,
-                            pressedElevation = 0.dp,
-                            focusedElevation = 0.dp,
-                            hoveredElevation = 0.dp,
-                            disabledElevation = 0.dp,
-                        ),
-                    ) {
-                        Text(
-                            text = "Tour starten",
-                            color = controlColors.foreground,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-                MapIconButton(
-                    contentDescription = when {
-                        isTourOverview -> "Zur Standortverfolgung zurückkehren"
-                        isFollowingLocation -> "Gesamte Tour anzeigen"
-                        else -> "Eigenem Standort folgen"
-                    },
-                    onClick = {
-                        if (
-                            shouldShowTourOverview(
-                                isFollowingLocation = isFollowingLocation,
-                                isTourActive = isTourActive,
-                                routePointCount = routePoints.size,
-                            )
-                        ) {
-                            isFollowingLocation = false
-                            isTourOverview = true
-                            tourOverviewRequest++
-                        } else {
-                            followOwnLocation()
-                        }
-                    },
-                ) {
-                    FollowLocationIcon(selected = isFollowingLocation)
+                            .size(48.dp)
+                            .semantics { contentDescription = "Karte wird geladen" },
+                        color = Ink,
+                        strokeWidth = 4.dp,
+                    )
                 }
             }
             }
@@ -1698,6 +1752,7 @@ private fun MapSurface(
     onMomentClick: (MapMoment, Offset) -> Unit,
     onManualLocationChanged: (SpurCoordinate) -> Unit,
     onFollowingInterrupted: () -> Unit,
+    onMapReadyChanged: (Boolean) -> Unit,
     onMapGestureActiveChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
@@ -1707,6 +1762,7 @@ private fun MapSurface(
     val currentOnMomentClick by rememberUpdatedState(onMomentClick)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentOnFollowingInterrupted by rememberUpdatedState(onFollowingInterrupted)
+    val currentOnMapReadyChanged by rememberUpdatedState(onMapReadyChanged)
     val currentOnMapGestureActiveChanged by rememberUpdatedState(onMapGestureActiveChanged)
     val currentOnAlternateMapPreviewChanged by rememberUpdatedState(
         onAlternateMapPreviewChanged,
@@ -1725,6 +1781,7 @@ private fun MapSurface(
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
     }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
+    var awaitingMapRender by remember { mutableStateOf(false) }
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
     var lastMapSettingsBearing by remember { mutableStateOf(defaultMapBearing) }
     val mapView = remember {
@@ -1773,6 +1830,8 @@ private fun MapSurface(
     }
 
     LaunchedEffect(isSatelliteView) {
+        awaitingMapRender = false
+        currentOnMapReadyChanged(false)
         currentOnAlternateMapPreviewLoadingChanged(true)
         mapView.getMapAsync { map ->
             map.uiSettings.isCompassEnabled = false
@@ -1797,6 +1856,7 @@ private fun MapSurface(
                             defaultMapBearing = defaultMapBearing,
                         )
                     }
+                    awaitingMapRender = true
                 },
             )
         }
@@ -1887,6 +1947,13 @@ private fun MapSurface(
         var map: MapLibreMap? = null
         var isMapTouchActive = false
         var isCameraMoving = false
+        val renderedMapListener = MapView.OnDidFinishRenderingMapListener { fullyRendered ->
+            if (fullyRendered && awaitingMapRender) {
+                awaitingMapRender = false
+                currentOnMapReadyChanged(true)
+            }
+        }
+        mapView.addOnDidFinishRenderingMapListener(renderedMapListener)
 
         fun publishManualLocationPosition() {
             val readyMap = map ?: return
@@ -1989,6 +2056,7 @@ private fun MapSurface(
         }
         onDispose {
             currentOnMapGestureActiveChanged(false)
+            mapView.removeOnDidFinishRenderingMapListener(renderedMapListener)
             mapView.setOnTouchListener(null)
             map?.removeOnCameraMoveStartedListener(moveStartedListener)
             map?.removeOnCameraMoveListener(moveListener)
