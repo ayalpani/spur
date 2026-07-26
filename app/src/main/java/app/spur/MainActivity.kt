@@ -34,9 +34,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
@@ -230,7 +228,6 @@ private const val DefaultMapZoom = 17.5
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MapRotationAnimationMillis = 350L
-private const val PanelAnimationMillis = 256
 private const val PhotoDetailEnterMillis = 320
 private const val PhotoDetailExitMillis = 240
 private const val TourRouteWidthPixels = 6f
@@ -415,13 +412,13 @@ private fun SpurApp() {
     var displayedTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
     var historyRevision by remember { mutableLongStateOf(0L) }
-    var showHistory by rememberSaveable { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var hasLocationPermission by rememberSaveable {
         mutableStateOf(context.hasLocationPermission())
     }
     val navController = rememberNavController()
+    val historyDrawerState = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
@@ -491,37 +488,75 @@ private fun SpurApp() {
                     },
                 )
             } else {
-                NavHost(
-                    navController = navController,
-                    startDestination = SpurRoute.MAP,
-                    enterTransition = {
-                        slideIntoContainer(
-                            AnimatedContentTransitionScope.SlideDirection.Left,
-                            tween(340),
-                        ) +
-                            fadeIn(tween(220))
-                    },
-                    exitTransition = {
-                        slideOutOfContainer(
-                            AnimatedContentTransitionScope.SlideDirection.Left,
-                            tween(340),
-                        ) + fadeOut(tween(180))
-                    },
-                    popEnterTransition = {
-                        slideIntoContainer(
-                            AnimatedContentTransitionScope.SlideDirection.Right,
-                            tween(340),
-                        ) + fadeIn(tween(220))
-                    },
-                    popExitTransition = {
-                        slideOutOfContainer(
-                            AnimatedContentTransitionScope.SlideDirection.Right,
-                            tween(340),
-                        ) + fadeOut(tween(180))
+                ModalNavigationDrawer(
+                    drawerState = historyDrawerState,
+                    gesturesEnabled = false,
+                    drawerContent = {
+                        ModalDrawerSheet {
+                            HistoryScreen(
+                                store = store,
+                                revision = historyRevision,
+                                isVisible = historyDrawerState.isOpen,
+                                onBack = {
+                                    scope.launch { historyDrawerState.close() }
+                                },
+                                onOpenTour = { id ->
+                                    displayedTourId = id
+                                    scope.launch { historyDrawerState.close() }
+                                },
+                                onEditTour = { id ->
+                                    scope.launch {
+                                        historyDrawerState.close()
+                                        navController.navigate(SpurRoute.editor(id))
+                                    }
+                                },
+                                onDeleteTour = { id ->
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            store.deleteTour(id)
+                                        }
+                                        if (displayedTourId == id) {
+                                            displayedTour = null
+                                            displayedTourId = null
+                                            routePoints = emptyList()
+                                        }
+                                        historyRevision++
+                                    }
+                                },
+                            )
+                        }
                     },
                 ) {
-                    composable(SpurRoute.MAP) {
-                        Box(modifier = Modifier.fillMaxSize()) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = SpurRoute.MAP,
+                        enterTransition = {
+                            slideIntoContainer(
+                                AnimatedContentTransitionScope.SlideDirection.Left,
+                                tween(340),
+                            ) +
+                                fadeIn(tween(220))
+                        },
+                        exitTransition = {
+                            slideOutOfContainer(
+                                AnimatedContentTransitionScope.SlideDirection.Left,
+                                tween(340),
+                            ) + fadeOut(tween(180))
+                        },
+                        popEnterTransition = {
+                            slideIntoContainer(
+                                AnimatedContentTransitionScope.SlideDirection.Right,
+                                tween(340),
+                            ) + fadeIn(tween(220))
+                        },
+                        popExitTransition = {
+                            slideOutOfContainer(
+                                AnimatedContentTransitionScope.SlideDirection.Right,
+                                tween(340),
+                            ) + fadeOut(tween(180))
+                        },
+                    ) {
+                        composable(SpurRoute.MAP) {
                             MapScreen(
                                 tour = displayedTour,
                                 isTourActive = activeTour != null,
@@ -582,63 +617,29 @@ private fun SpurApp() {
                                         historyRevision++
                                     }
                                 },
-                                onOpenHistory = { showHistory = true },
+                                onOpenHistory = {
+                                    scope.launch { historyDrawerState.open() }
+                                },
                             )
-                            AnimatedVisibility(
-                                visible = showHistory,
-                                enter = slideInHorizontally(
-                                    animationSpec = tween(PanelAnimationMillis),
-                                ) { it },
-                                exit = slideOutHorizontally(
-                                    animationSpec = tween(PanelAnimationMillis),
-                                ) { it },
-                            ) {
-                                HistoryScreen(
-                                    store = store,
-                                    revision = historyRevision,
-                                    onBack = { showHistory = false },
-                                    onOpenTour = { id ->
-                                        displayedTourId = id
-                                        showHistory = false
-                                    },
-                                    onEditTour = { id ->
-                                        showHistory = false
-                                        navController.navigate(SpurRoute.editor(id))
-                                    },
-                                    onDeleteTour = { id ->
-                                        scope.launch {
-                                            withContext(Dispatchers.IO) {
-                                                store.deleteTour(id)
-                                            }
-                                            if (displayedTourId == id) {
-                                                displayedTour = null
-                                                displayedTourId = null
-                                                routePoints = emptyList()
-                                            }
-                                            historyRevision++
-                                        }
-                                    },
-                                )
-                            }
                         }
-                    }
-                    composable(
-                        route = SpurRoute.EDITOR,
-                        arguments = listOf(
-                            navArgument(SpurRoute.TOUR_ID) { type = NavType.LongType },
-                        ),
-                    ) { entry ->
-                        val tourId = entry.arguments?.getLong(SpurRoute.TOUR_ID)
-                            ?: return@composable
-                        TourEditorScreen(
-                            store = store,
-                            tourId = tourId,
-                            onBack = { navController.popBackStack() },
-                            onSaved = {
-                                historyRevision++
-                                navController.popBackStack()
-                            },
-                        )
+                        composable(
+                            route = SpurRoute.EDITOR,
+                            arguments = listOf(
+                                navArgument(SpurRoute.TOUR_ID) { type = NavType.LongType },
+                            ),
+                        ) { entry ->
+                            val tourId = entry.arguments?.getLong(SpurRoute.TOUR_ID)
+                                ?: return@composable
+                            TourEditorScreen(
+                                store = store,
+                                tourId = tourId,
+                                onBack = { navController.popBackStack() },
+                                onSaved = {
+                                    historyRevision++
+                                    navController.popBackStack()
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -2919,6 +2920,7 @@ private fun drawMomentGlyph(
 private fun HistoryScreen(
     store: TourStore,
     revision: Long,
+    isVisible: Boolean = true,
     onBack: () -> Unit,
     onOpenTour: (Long) -> Unit,
     onEditTour: (Long) -> Unit,
@@ -2930,7 +2932,7 @@ private fun HistoryScreen(
     var selectedTour by remember { mutableStateOf<Tour?>(null) }
     var tourToDelete by remember { mutableStateOf<Tour?>(null) }
     var selectedPhoto by remember { mutableStateOf<MapMoment?>(null) }
-    BackHandler(onBack = onBack)
+    BackHandler(enabled = isVisible, onBack = onBack)
     LaunchedEffect(revision) {
         val (loadedTours, loadedMoments) = withContext(Dispatchers.IO) {
             store.tours() to context.loadMapMoments()
