@@ -2342,6 +2342,7 @@ private fun PhotoDetailDialog(
                         .fillMaxSize()
                         .graphicsLayer { alpha = detailAlpha },
                     key = { photos[it].id },
+                    beyondViewportPageCount = 1,
                 ) { page ->
                     val photo = photos[page]
                     val imageRequest = remember(photo.payload, imageRevision, openOrigin) {
@@ -2360,7 +2361,11 @@ private fun PhotoDetailDialog(
                     }
                     ZoomableAsyncImage(
                         model = imageRequest,
-                        contentDescription = "Foto ${page + 1} von ${photos.size}",
+                        contentDescription = if (page == pagerState.currentPage) {
+                            "Foto ${page + 1} von ${photos.size}"
+                        } else {
+                            null
+                        },
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize(),
                     )
