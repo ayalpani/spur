@@ -282,6 +282,7 @@ private val FollowGreen = Color(0xFF43A873)
 private val StopRed = Color(0xFFE53935)
 private val MapPinRed = Color(0xFFEA4335)
 private val MomentMarkerGreen = Color(0xFF43A047)
+private val TourMomentSelectionYellow = Color(0xFFCCCC00)
 private val Mist = Color(0xFFE8EEE9)
 private const val DefaultMapZoom = 17.5
 private const val MapControlGapDp = 10
@@ -6676,7 +6677,11 @@ private fun TourMomentStrip(
                     .size(64.dp)
                     .border(
                         width = 3.dp,
-                        color = if (isSelected) Moss else Color.Transparent,
+                        color = if (isSelected) {
+                            TourMomentSelectionYellow
+                        } else {
+                            Color.Transparent
+                        },
                         shape = RoundedCornerShape(12.dp),
                     )
                     .clip(RoundedCornerShape(12.dp))
