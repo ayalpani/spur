@@ -68,6 +68,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
@@ -7431,15 +7433,48 @@ private fun EditorWaypointRail(
         .coerceAtLeast(0)
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val scope = rememberCoroutineScope()
+    var isCentering by remember { mutableStateOf(false) }
     val fling = rememberSnapFlingBehavior(
         lazyListState = state,
         snapPosition = SnapPosition.Center,
     )
 
+    suspend fun centerVisibleItem(index: Int, animated: Boolean) {
+        isCentering = true
+        var item = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+        if (item == null) {
+            state.scrollToItem(index)
+            withFrameNanos { }
+            item = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+        }
+        item?.let {
+            val layout = state.layoutInfo
+            val viewportCenter =
+                (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+            val itemCenter = it.offset + it.size / 2
+            val distance = (itemCenter - viewportCenter).toFloat()
+            if (abs(distance) > 0.5f) {
+                if (animated) {
+                    state.animateScrollBy(
+                        value = distance,
+                        animationSpec = tween(MotionDurationDefaultMillis),
+                    )
+                } else {
+                    state.scrollBy(distance)
+                }
+            }
+        }
+        isCentering = false
+    }
+
+    LaunchedEffect(state, selectedPointId, waypoints.size) {
+        centerVisibleItem(initialIndex, animated = false)
+    }
+
     LaunchedEffect(state, waypoints) {
-        snapshotFlow { state.isScrollInProgress }
+        snapshotFlow { state.isScrollInProgress to isCentering }
             .distinctUntilChanged()
-            .filter { !it }
+            .filter { (isScrolling, centering) -> !isScrolling && !centering }
             .collect {
                 val layout = state.layoutInfo
                 val center = (layout.viewportStartOffset + layout.viewportEndOffset) / 2
@@ -7477,7 +7512,7 @@ private fun EditorWaypointRail(
                         .fillMaxHeight()
                         .border(0.5.dp, Ink.copy(alpha = 0.16f))
                         .clickable {
-                            scope.launch { state.animateScrollToItem(index) }
+                            scope.launch { centerVisibleItem(index, animated = true) }
                         }
                         .semantics {
                             contentDescription = "Wegmarke ${index + 1} von ${waypoints.size}"
