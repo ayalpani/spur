@@ -299,7 +299,7 @@ private val MapControlHorizontalPadding = MapControlHorizontalPaddingDp.dp
 private val MapControlVerticalPadding = MapControlVerticalPaddingDp.dp
 private val MomentSheetHeaderGap = 24.dp
 private val MomentSheetGridGap = 10.dp
-private val SheetMenuTextSize = 18.sp
+private val SheetMenuTextSize = 24.sp
 private val StopSwipeHandleSize = 52.dp
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
@@ -3173,10 +3173,6 @@ private fun MainMenu(
             .navigationBarsPadding()
             .padding(bottom = 24.dp),
     ) {
-        BottomSheetHeader(
-            title = "Hauptmenü",
-            modifier = Modifier.padding(horizontal = 24.dp),
-        )
         SheetMenuItem(label = "Tour", onClick = onOpenTour)
         SheetMenuItem(label = "Buttonfarben", onClick = onOpenButtonColors)
         SheetMenuItem(label = "Trail", onClick = onOpenTrailColors)
