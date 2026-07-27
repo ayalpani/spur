@@ -282,6 +282,8 @@ private val MapPinRed = Color(0xFFEA4335)
 private val MomentMarkerGreen = Color(0xFF43A047)
 private val TourMomentSelectionYellow = Color(0xFFCCCC00)
 private val Mist = Color(0xFFE8EEE9)
+private val ImageDetailControlBackground = Color.White.copy(alpha = 0.1f)
+private val ImageDetailControlForeground = Color.White
 private const val DefaultMapZoom = 17.5
 private const val MapControlGapDp = 10
 private const val MapControlSizeDp = 60
@@ -1831,6 +1833,14 @@ private fun MapPage(
                     contentAlignment = Alignment.Center,
                 ) {
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val textAlpha by animateFloatAsState(
+                            targetValue = if (systemSplashTimeElapsed) 1f else 0f,
+                            animationSpec = tween(
+                                durationMillis = LoaderAsteriskAccelerationDurationMillis,
+                                easing = LinearEasing,
+                            ),
+                            label = "Loading text alpha",
+                        )
                         AcceleratingAsterisk(
                             isRunning = systemSplashTimeElapsed,
                             modifier = Modifier
@@ -1844,6 +1854,7 @@ private fun MapPage(
                             color = Ink,
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
+                                .graphicsLayer { alpha = textAlpha }
                                 .offset(
                                     y = maxHeight / 2 +
                                         LoaderAsteriskSize / 2 +
@@ -5056,8 +5067,8 @@ private fun PhotoActionButton(
             .size(56.dp)
             .semantics { this.contentDescription = contentDescription },
         colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = Color.White,
-            contentColor = Ink,
+            containerColor = ImageDetailControlBackground,
+            contentColor = ImageDetailControlForeground,
         ),
         content = {
             CompositionLocalProvider(
