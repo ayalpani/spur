@@ -6247,20 +6247,19 @@ private fun createMomentMarkerEdgeBitmap(
         val erasePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_OUT)
         }
-        fun drawInsetEdge(horizontalOffset: Float) {
-            val layer = canvas.saveLayer(
-                0f,
-                0f,
-                edge.width.toFloat(),
-                edge.height.toFloat(),
-                null,
-            )
-            canvas.drawBitmap(marker, 0f, 0f, whitePaint)
-            canvas.drawBitmap(marker, horizontalOffset, edgeWidth, erasePaint)
-            canvas.restoreToCount(layer)
+        for (horizontalDirection in -1..1) {
+            for (verticalDirection in -1..1) {
+                if (horizontalDirection != 0 || verticalDirection != 0) {
+                    canvas.drawBitmap(
+                        marker,
+                        horizontalDirection * edgeWidth,
+                        verticalDirection * edgeWidth,
+                        whitePaint,
+                    )
+                }
+            }
         }
-        drawInsetEdge(edgeWidth)
-        drawInsetEdge(-edgeWidth)
+        canvas.drawBitmap(marker, 0f, 0f, erasePaint)
     }
 
 private fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
