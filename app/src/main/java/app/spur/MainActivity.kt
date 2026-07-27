@@ -68,6 +68,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -260,6 +262,8 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -487,6 +491,284 @@ private data class PendingMapMoment(
             id = "emoji-${System.currentTimeMillis()}",
             payload = emoji,
         )
+    }
+}
+
+private sealed interface MomentPlacementTarget {
+    data object CurrentLocation : MomentPlacementTarget
+
+    data class Waypoint(
+        val tourId: Long,
+        val trackPointId: Long,
+        val coordinate: SpurCoordinate,
+    ) : MomentPlacementTarget
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun MomentComposer(
+    target: MomentPlacementTarget?,
+    showFeedbackNotice: ShowFeedbackNotice,
+    onDismiss: () -> Unit,
+    onMomentAccepted: (MomentPlacementTarget, PendingMapMoment) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var showPicker by remember(target) { mutableStateOf(target != null) }
+    var showEmojiPicker by remember(target) { mutableStateOf(false) }
+    var showCamera by remember(target) { mutableStateOf(false) }
+    var showVoiceRecorder by remember(target) { mutableStateOf(false) }
+    var pendingVideoCapturePath by rememberSaveable(target) { mutableStateOf<String?>(null) }
+    var audioPermissionGranted by remember(target) {
+        mutableStateOf(context.hasAudioRecordingPermission())
+    }
+    var voiceRecordingStartRequest by remember(target) { mutableLongStateOf(0L) }
+    val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val emojiPickerSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val placementTarget = target
+
+    val accept: (PendingMapMoment) -> Unit = { pending ->
+        placementTarget?.let { onMomentAccepted(it, pending) } ?: pending.deletePayload()
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            showCamera = true
+        } else {
+            showFeedbackNotice(
+                FeedbackNoticeKind.PERMISSION,
+                "Für Fotos braucht Spur Zugriff auf die Kamera.",
+            )
+            onDismiss()
+        }
+    }
+    val videoCaptureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CaptureVideo(),
+    ) { saved ->
+        val video = pendingVideoCapturePath?.let(::File)
+        pendingVideoCapturePath = null
+        if (saved && video?.isFile == true && video.length() > 0L) {
+            scope.launch {
+                withContext(Dispatchers.IO) { ensureVideoThumbnail(video) }
+                accept(PendingMapMoment(MomentType.VIDEO, video))
+            }
+        } else {
+            video?.delete()
+            onDismiss()
+        }
+    }
+    val startVideoCapture: () -> Unit = {
+        val video = context.createMomentFile(MomentType.VIDEO)
+        pendingVideoCapturePath = video.absolutePath
+        runCatching {
+            videoCaptureLauncher.launch(context.momentContentUri(video))
+        }.onFailure {
+            pendingVideoCapturePath = null
+            video.delete()
+            showFeedbackNotice(
+                FeedbackNoticeKind.ERROR,
+                "Auf diesem Gerät ist keine Videoaufnahme verfügbar.",
+            )
+            onDismiss()
+        }
+    }
+    val videoPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            startVideoCapture()
+        } else {
+            showFeedbackNotice(
+                FeedbackNoticeKind.PERMISSION,
+                "Für Videos braucht Spur Zugriff auf die Kamera.",
+            )
+            onDismiss()
+        }
+    }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        audioPermissionGranted = granted
+        if (granted) {
+            voiceRecordingStartRequest++
+        } else {
+            showVoiceRecorder = false
+            showFeedbackNotice(
+                FeedbackNoticeKind.PERMISSION,
+                "Für Sprache braucht Spur Zugriff auf das Mikrofon.",
+            )
+            onDismiss()
+        }
+    }
+
+    if (placementTarget != null && showPicker) {
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = momentSheetState,
+        ) {
+            MomentPickerSheetContent(
+                onSelect = { type ->
+                    when (type) {
+                        MomentType.PHOTO -> {
+                            showPicker = false
+                            if (context.hasCameraPermission()) {
+                                showCamera = true
+                            } else {
+                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        }
+                        MomentType.VIDEO -> {
+                            showPicker = false
+                            if (context.hasCameraPermission()) {
+                                startVideoCapture()
+                            } else {
+                                videoPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        }
+                        MomentType.VOICE -> {
+                            showPicker = false
+                            voiceRecordingStartRequest = 0L
+                            showVoiceRecorder = true
+                        }
+                        MomentType.EMOJI -> {
+                            scope.launch {
+                                momentSheetState.hide()
+                                showPicker = false
+                                showEmojiPicker = true
+                            }
+                        }
+                    }
+                },
+            )
+        }
+    }
+
+    if (showEmojiPicker) {
+        val closeEmojiPicker: () -> Unit = {
+            scope.launch {
+                emojiPickerSheetState.hide()
+                showEmojiPicker = false
+                showPicker = true
+            }
+        }
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = emojiPickerSheetState,
+        ) {
+            BackHandler(onBack = closeEmojiPicker)
+            EmojiPickerSheet(
+                onBack = closeEmojiPicker,
+                onEmojiPicked = { emoji ->
+                    scope.launch {
+                        emojiPickerSheetState.hide()
+                        showEmojiPicker = false
+                        accept(PendingMapMoment.emoji(emoji))
+                    }
+                },
+            )
+        }
+    }
+
+    if (showCamera) {
+        CameraScreen(
+            showFeedbackNotice = showFeedbackNotice,
+            onClose = onDismiss,
+            onPhotoAccepted = { photo ->
+                showCamera = false
+                accept(PendingMapMoment(MomentType.PHOTO, photo))
+            },
+        )
+    }
+
+    if (showVoiceRecorder) {
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            VoiceRecorderBottomSheet(
+                startRecordingRequest = voiceRecordingStartRequest,
+                hasRecordPermission = audioPermissionGranted,
+                showFeedbackNotice = showFeedbackNotice,
+                onRequestPermission = {
+                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                },
+                onRecordingAccepted = { recording ->
+                    showVoiceRecorder = false
+                    accept(PendingMapMoment(MomentType.VOICE, recording))
+                },
+                onDismiss = onDismiss,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MomentPickerSheetContent(
+    onSelect: (MomentType) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 20.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            MapPinIcon(
+                color = MapPinRed,
+                modifier = Modifier.size(64.dp),
+            )
+            Text(
+                text = "Auf der Karte ablegen",
+                color = Ink,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Spacer(modifier = Modifier.height(MomentSheetHeaderGap))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
+        ) {
+            MomentOption(
+                label = "Foto",
+                accentColor = momentMarkerColor(MomentType.PHOTO),
+                icon = { MomentPhotoIcon() },
+                modifier = Modifier.weight(1f),
+                onClick = { onSelect(MomentType.PHOTO) },
+            )
+            MomentOption(
+                label = "Video",
+                accentColor = momentMarkerColor(MomentType.VIDEO),
+                icon = { MomentVideoIcon() },
+                modifier = Modifier.weight(1f),
+                onClick = { onSelect(MomentType.VIDEO) },
+            )
+        }
+        Spacer(modifier = Modifier.height(MomentSheetGridGap))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
+        ) {
+            MomentOption(
+                label = "Sprache",
+                accentColor = momentMarkerColor(MomentType.VOICE),
+                icon = { MomentSpeechIcon() },
+                modifier = Modifier.weight(1f),
+                onClick = { onSelect(MomentType.VOICE) },
+            )
+            MomentOption(
+                label = "Emoji",
+                accentColor = momentMarkerColor(MomentType.EMOJI),
+                icon = { Text(text = "🙂", fontSize = 30.sp) },
+                modifier = Modifier.weight(1f),
+                onClick = { onSelect(MomentType.EMOJI) },
+            )
+        }
     }
 }
 
@@ -1036,6 +1318,9 @@ private fun SpurApp() {
                                 onOpenHistory = {
                                     isHistoryVisible = true
                                 },
+                                onEditTour = { id ->
+                                    navController.navigate(SpurRoute.editor(id))
+                                },
                                 showFeedbackNotice = showFeedbackNotice,
                                 photoRevision = photoRevision,
                                 onPhotoRotated = { photoRevision++ },
@@ -1057,10 +1342,20 @@ private fun SpurApp() {
                                 store = store,
                                 tourId = tourId,
                                 onBack = { navController.popBackStack() },
-                                onSaved = {
+                                onChanged = {
                                     historyRevision++
+                                },
+                                onDeleted = {
+                                    historyRevision++
+                                    if (activeTour?.id == tourId) activeTour = null
+                                    if (displayedTourId == tourId) {
+                                        displayedTour = null
+                                        displayedTourId = null
+                                        routePoints = emptyList()
+                                    }
                                     navController.popBackStack()
                                 },
+                                showFeedbackNotice = showFeedbackNotice,
                             )
                         }
                     }
@@ -1220,6 +1515,7 @@ private fun MapPage(
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
+    onEditTour: (Long) -> Unit,
     showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
     photoRevision: Long = 0L,
     onPhotoRotated: () -> Unit = {},
@@ -1245,8 +1541,7 @@ private fun MapPage(
     var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
     var showStartTourBottomSheet by rememberSaveable { mutableStateOf(false) }
     var isStartingTour by rememberSaveable { mutableStateOf(false) }
-    var showMomentSheet by rememberSaveable { mutableStateOf(false) }
-    var showEmojiPicker by rememberSaveable { mutableStateOf(false) }
+    var momentTarget by remember { mutableStateOf<MomentPlacementTarget?>(null) }
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
     var showTourMenu by rememberSaveable { mutableStateOf(false) }
     var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
@@ -1255,14 +1550,7 @@ private fun MapPage(
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
     var selectedBuilding by remember { mutableStateOf<SpurCoordinate?>(null) }
-    var showCamera by rememberSaveable { mutableStateOf(false) }
-    var showVoiceRecorder by rememberSaveable { mutableStateOf(false) }
     var pendingMoment by remember { mutableStateOf<PendingMapMoment?>(null) }
-    var pendingVideoCapturePath by rememberSaveable { mutableStateOf<String?>(null) }
-    var audioPermissionGranted by remember {
-        mutableStateOf(context.hasAudioRecordingPermission())
-    }
-    var voiceRecordingStartRequest by remember { mutableLongStateOf(0L) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var mediaDetail by remember { mutableStateOf<MapMoment?>(null) }
     var photoDetailOrigin by remember { mutableStateOf<Offset?>(null) }
@@ -1304,9 +1592,6 @@ private fun MapPage(
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
     var isMapGestureActive by remember { mutableStateOf(false) }
     val startTourBottomSheetState =
-        rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val emojiPickerSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val tourMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -1462,7 +1747,6 @@ private fun MapPage(
     BackHandler(
         enabled = isTourOverview &&
             !showStartTourBottomSheet &&
-            !showMomentSheet &&
             !showMainMenu &&
             !showTourMenu &&
             !showHomeAutoStartBottomSheet &&
@@ -1470,81 +1754,10 @@ private fun MapPage(
             !showTrailColorsBottomSheet &&
             !showDirectionBottomSheet &&
             !showAboutBottomSheet &&
-            !showCamera &&
-            !showVoiceRecorder &&
             photoDetail == null &&
             mediaDetail == null,
         onBack = followOwnLocation,
     )
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
-            showCamera = true
-        } else {
-            showFeedbackNotice(
-                FeedbackNoticeKind.PERMISSION,
-                "Für Fotos braucht Spur Zugriff auf die Kamera.",
-            )
-        }
-    }
-    val videoCaptureLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CaptureVideo(),
-    ) { saved ->
-        val video = pendingVideoCapturePath?.let(::File)
-        pendingVideoCapturePath = null
-        if (saved && video?.isFile == true && video.length() > 0L) {
-            scope.launch {
-                withContext(Dispatchers.IO) {
-                    ensureVideoThumbnail(video)
-                }
-                pendingMoment = PendingMapMoment(MomentType.VIDEO, video)
-            }
-        } else {
-            video?.delete()
-        }
-    }
-    val startVideoCapture: () -> Unit = {
-        val video = context.createMomentFile(MomentType.VIDEO)
-        pendingVideoCapturePath = video.absolutePath
-        runCatching {
-            videoCaptureLauncher.launch(context.momentContentUri(video))
-        }.onFailure {
-            pendingVideoCapturePath = null
-            video.delete()
-            showFeedbackNotice(
-                FeedbackNoticeKind.ERROR,
-                "Auf diesem Gerät ist keine Videoaufnahme verfügbar.",
-            )
-        }
-    }
-    val videoPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
-            startVideoCapture()
-        } else {
-            showFeedbackNotice(
-                FeedbackNoticeKind.PERMISSION,
-                "Für Videos braucht Spur Zugriff auf die Kamera.",
-            )
-        }
-    }
-    val audioPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        audioPermissionGranted = granted
-        if (granted) {
-            voiceRecordingStartRequest++
-        } else {
-            showVoiceRecorder = false
-            showFeedbackNotice(
-                FeedbackNoticeKind.PERMISSION,
-                "Für Sprache braucht Spur Zugriff auf das Mikrofon.",
-            )
-        }
-    }
-
     val mapControlColors = MapControlColors(
         background = mapControlBackground.color,
         foreground = mapControlForeground.color,
@@ -1697,6 +1910,20 @@ private fun MapPage(
                             ShareIcon()
                         }
                     }
+                    tour?.let { visibleTour ->
+                        MapIconButton(
+                            contentDescription = "Tour bearbeiten",
+                            onClick = { onEditTour(visibleTour.id) },
+                        ) {
+                            LucideIcon(
+                                paths = listOf(
+                                    "M12 20h9",
+                                    "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z",
+                                ),
+                                strokeWidth = LucideBoldStrokeWidth,
+                            )
+                        }
+                    }
                     MapIconButton(
                         contentDescription = "Hauptmenü öffnen",
                         onClick = { showMainMenu = true },
@@ -1714,7 +1941,9 @@ private fun MapPage(
                     }
                     MapIconButton(
                         contentDescription = "Moment hinzufügen",
-                        onClick = { showMomentSheet = true },
+                        onClick = {
+                            momentTarget = MomentPlacementTarget.CurrentLocation
+                        },
                     ) {
                         PlusIcon()
                     }
@@ -1931,129 +2160,6 @@ private fun MapPage(
             BuildingDetailsBottomSheet(
                 coordinate = building,
                 onBack = closeBuildingDetails,
-            )
-        }
-    }
-
-    if (showMomentSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showMomentSheet = false },
-            sheetState = momentSheetState,
-        ) {
-            Column(
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 20.dp),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    MapPinIcon(
-                        color = MapPinRed,
-                        modifier = Modifier.size(64.dp),
-                    )
-                    Text(
-                        text = "Auf der Karte ablegen",
-                        color = Ink,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                Spacer(modifier = Modifier.height(MomentSheetHeaderGap))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
-                ) {
-                    MomentOption(
-                        label = "Foto",
-                        accentColor = momentMarkerColor(MomentType.PHOTO),
-                        icon = { MomentPhotoIcon() },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        showMomentSheet = false
-                        if (context.hasCameraPermission()) {
-                            showCamera = true
-                        } else {
-                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                        }
-                    }
-                    MomentOption(
-                        label = "Video",
-                        accentColor = momentMarkerColor(MomentType.VIDEO),
-                        icon = { MomentVideoIcon() },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        showMomentSheet = false
-                        if (context.hasCameraPermission()) {
-                            startVideoCapture()
-                        } else {
-                            videoPermissionLauncher.launch(Manifest.permission.CAMERA)
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(MomentSheetGridGap))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
-                ) {
-                    MomentOption(
-                        label = "Sprache",
-                        accentColor = momentMarkerColor(MomentType.VOICE),
-                        icon = { MomentSpeechIcon() },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        showMomentSheet = false
-                        voiceRecordingStartRequest = 0L
-                        showVoiceRecorder = true
-                    }
-                    MomentOption(
-                        label = "Emoji",
-                        accentColor = momentMarkerColor(MomentType.EMOJI),
-                        icon = {
-                            Text(
-                                text = "🙂",
-                                fontSize = 30.sp,
-                            )
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        scope.launch {
-                            momentSheetState.hide()
-                            showMomentSheet = false
-                            showEmojiPicker = true
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showEmojiPicker) {
-        val closeEmojiPicker: () -> Unit = {
-            scope.launch {
-                emojiPickerSheetState.hide()
-                showEmojiPicker = false
-                showMomentSheet = true
-            }
-        }
-        ModalBottomSheet(
-            onDismissRequest = { showEmojiPicker = false },
-            sheetState = emojiPickerSheetState,
-        ) {
-            BackHandler(onBack = closeEmojiPicker)
-            EmojiPickerSheet(
-                onBack = closeEmojiPicker,
-                onEmojiPicked = { emoji ->
-                    scope.launch {
-                        emojiPickerSheetState.hide()
-                        showEmojiPicker = false
-                        pendingMoment = PendingMapMoment.emoji(emoji)
-                    }
-                },
             )
         }
     }
@@ -2408,37 +2514,19 @@ private fun MapPage(
         }
     }
 
-    if (showCamera) {
-        CameraScreen(
-            showFeedbackNotice = showFeedbackNotice,
-            onClose = { showCamera = false },
-            onPhotoAccepted = { photo ->
-                showCamera = false
-                pendingMoment = PendingMapMoment(MomentType.PHOTO, photo)
-            },
-        )
-    }
-
-    if (showVoiceRecorder) {
-        ModalBottomSheet(
-            onDismissRequest = { showVoiceRecorder = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        ) {
-            VoiceRecorderBottomSheet(
-                startRecordingRequest = voiceRecordingStartRequest,
-                hasRecordPermission = audioPermissionGranted,
-                showFeedbackNotice = showFeedbackNotice,
-                onRequestPermission = {
-                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                },
-                onRecordingAccepted = { recording ->
-                    showVoiceRecorder = false
-                    pendingMoment = PendingMapMoment(MomentType.VOICE, recording)
-                },
-                onDismiss = { showVoiceRecorder = false },
-            )
-        }
-    }
+    MomentComposer(
+        target = momentTarget,
+        showFeedbackNotice = showFeedbackNotice,
+        onDismiss = { momentTarget = null },
+        onMomentAccepted = { target, moment ->
+            if (target == MomentPlacementTarget.CurrentLocation) {
+                pendingMoment = moment
+            } else {
+                moment.deletePayload()
+            }
+            momentTarget = null
+        },
+    )
 
     photoDetail?.let { moment ->
         val photos = remember(visibleMapMoments) {
@@ -6178,13 +6266,13 @@ private suspend fun Context.deleteMapMoment(
         MomentType.VOICE -> "voice"
         MomentType.EMOJI -> null
     }?.let { File(filesDir, "moments/$it").canonicalFile }
-    val mediaFile = File(moment.payload).canonicalFile
-    if (allowedDirectory == null || mediaFile.parentFile != allowedDirectory) {
-        return@withContext null
-    }
-    if (mediaFile.exists() && !mediaFile.delete()) return@withContext null
-    if (moment.type == MomentType.VIDEO) {
-        videoThumbnailFile(mediaFile).takeIf(File::exists)?.delete()
+    if (allowedDirectory != null) {
+        val mediaFile = File(moment.payload).canonicalFile
+        if (mediaFile.parentFile != allowedDirectory) return@withContext null
+        if (mediaFile.exists() && !mediaFile.delete()) return@withContext null
+        if (moment.type == MomentType.VIDEO) {
+            videoThumbnailFile(mediaFile).takeIf(File::exists)?.delete()
+        }
     }
     val updatedMoments = moments.filterNot { it.id == moment.id }
     saveMapMoments(updatedMoments)
@@ -6732,17 +6820,11 @@ private fun HistoryPage(
                     selectedTour = null
                     onOpenTour(tour.id)
                 }
-                if (tour.endedAt == null) {
-                    Text(
-                        text = "Eine laufende Tour kannst du nach dem Stoppen bearbeiten.",
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        color = Ink.copy(alpha = 0.62f),
-                    )
-                } else {
-                    HistoryAction(label = "Bearbeiten") {
-                        selectedTour = null
-                        onEditTour(tour.id)
-                    }
+                HistoryAction(label = "Bearbeiten") {
+                    selectedTour = null
+                    onEditTour(tour.id)
+                }
+                if (tour.endedAt != null) {
                     HistoryAction(label = "Tour löschen", destructive = true) {
                         selectedTour = null
                         tourToDelete = tour
@@ -6951,35 +7033,62 @@ private fun TourEditorScreen(
     store: TourStore,
     tourId: Long,
     onBack: () -> Unit,
-    onSaved: () -> Unit,
+    onChanged: () -> Unit,
+    onDeleted: () -> Unit,
+    showFeedbackNotice: ShowFeedbackNotice,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var tour by remember(tourId) { mutableStateOf<Tour?>(null) }
     var points by remember(tourId) { mutableStateOf(emptyList<TrackPoint>()) }
-    var startIndex by remember(tourId) { mutableStateOf(0) }
-    var endIndex by remember(tourId) { mutableStateOf(0) }
-    var selectedIndex by remember(tourId) { mutableStateOf(0) }
-    var isSaving by remember(tourId) { mutableStateOf(false) }
+    var moments by remember(tourId) { mutableStateOf(emptyList<MapMoment>()) }
+    var selectedPointId by rememberSaveable(tourId) { mutableStateOf<Long?>(null) }
+    var placementTarget by remember { mutableStateOf<MomentPlacementTarget?>(null) }
+    var deleteTarget by remember { mutableStateOf<EditorDeleteTarget?>(null) }
 
     LaunchedEffect(tourId) {
-        val result = withContext(Dispatchers.IO) {
-            store.tour(tourId) to store.points(tourId)
+        while (true) {
+            val result = withContext(Dispatchers.IO) {
+                val loadedTour = store.tour(tourId) ?: return@withContext null
+                Triple(
+                    loadedTour,
+                    store.points(tourId),
+                    mapMomentsForTour(context.loadMapMoments(), loadedTour),
+                )
+            } ?: return@LaunchedEffect
+            val isInitialLoad = tour == null
+            tour = result.first
+            points = result.second
+            moments = result.third
+            if (isInitialLoad) selectedPointId = result.second.lastOrNull()?.id
+            if (result.first.endedAt != null) return@LaunchedEffect
+            delay(1_000)
         }
-        tour = result.first
-        points = result.second
-        startIndex = 0
-        endIndex = result.second.lastIndex.coerceAtLeast(0)
-        selectedIndex = 0
     }
 
-    val visiblePoints = if (
-        points.isNotEmpty() &&
-        startIndex in points.indices &&
-        endIndex in points.indices
-    ) {
-        points.subList(startIndex, endIndex + 1)
-    } else {
-        emptyList()
+    val currentTour = tour
+    val waypoints = remember(currentTour, points, moments, selectedPointId) {
+        currentTour?.let {
+            editorWaypoints(
+                tour = it,
+                points = points,
+                moments = moments,
+                selectedPointId = selectedPointId,
+            )
+        }.orEmpty()
+    }
+    val selectedWaypoint = waypoints.firstOrNull { it.point.id == selectedPointId }
+        ?: waypoints.lastOrNull()
+
+    suspend fun saveMoments(updated: List<MapMoment>) {
+        withContext(Dispatchers.IO) {
+            val editorMomentIds = (moments + updated).mapTo(mutableSetOf(), MapMoment::id)
+            context.saveMapMoments(
+                context.loadMapMoments().filterNot { it.id in editorMomentIds } + updated,
+            )
+        }
+        moments = updated
+        onChanged()
     }
 
     Column(
@@ -6989,15 +7098,31 @@ private fun TourEditorScreen(
     ) {
         Box(modifier = Modifier.weight(1f)) {
             TourEditorMap(
-                points = visiblePoints,
-                selectedPoint = points.getOrNull(selectedIndex),
+                points = points,
+                selectedPoint = selectedWaypoint?.point,
             )
-            Row(
+            Surface(
                 modifier = Modifier
+                    .align(Alignment.TopStart)
                     .statusBarsPadding()
-                    .padding(horizontal = 18.dp, vertical = 14.dp)
-                    .fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(start = 18.dp, top = 14.dp),
+                color = Color.White,
+                shape = CircleShape,
+                shadowElevation = 2.dp,
+            ) {
+                Text(
+                    text = "Tour bearbeiten",
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(end = MapControlHorizontalPadding, top = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(MapControlGap),
             ) {
                 MapIconButton(
                     contentDescription = "Editor schließen",
@@ -7005,151 +7130,399 @@ private fun TourEditorScreen(
                 ) {
                     BackIcon()
                 }
-                Surface(
-                    modifier = Modifier.padding(start = 10.dp),
-                    color = Color.White,
-                    shape = CircleShape,
-                    shadowElevation = 2.dp,
+                MapIconButton(
+                    contentDescription = "Tour löschen",
+                    onClick = { deleteTarget = EditorDeleteTarget.Tour },
                 ) {
-                    Text(
-                        text = "Tour bearbeiten",
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    PhotoDeleteIcon(color = Ink)
                 }
             }
         }
 
-        Surface(
-            color = Color.White,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            shadowElevation = 8.dp,
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .background(Sand),
         ) {
-            Column(
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .padding(horizontal = 22.dp, vertical = 20.dp),
-            ) {
-                Text(
-                    text = tour?.let { formatDate(it.startedAt) } ?: "Tour wird geladen …",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = "${visiblePoints.size} von ${points.size} Standortpunkten",
-                    modifier = Modifier.padding(top = 3.dp),
-                    color = Ink.copy(alpha = 0.58f),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-
-                if (points.isNotEmpty()) {
-                    PointScrubber(
-                        points = points,
-                        startIndex = startIndex,
-                        endIndex = endIndex,
-                        selectedIndex = selectedIndex,
-                        onSelect = { selectedIndex = it },
-                        modifier = Modifier.padding(top = 14.dp),
-                    )
-                }
-
-                if (points.size >= 2) {
-                    RangeSlider(
-                        value = startIndex.toFloat()..endIndex.toFloat(),
-                        onValueChange = { range ->
-                            val newStart = range.start.roundToInt()
-                                .coerceIn(0, points.lastIndex - 1)
-                            val newEnd = range.endInclusive.roundToInt()
-                                .coerceIn(newStart + 1, points.lastIndex)
-                            startIndex = newStart
-                            endIndex = newEnd
-                            selectedIndex = selectedIndex.coerceIn(newStart, newEnd)
-                        },
-                        valueRange = 0f..points.lastIndex.toFloat(),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                Row(
+            if (selectedWaypoint == null) {
+                Box(
                     modifier = Modifier
+                        .weight(1f)
                         .fillMaxWidth()
-                        .height(48.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = points.getOrNull(selectedIndex)?.let {
-                            "Punkt ${selectedIndex + 1} · ${formatClock(it.recordedAt)}"
-                        } ?: "Keine Standortpunkte",
-                        modifier = Modifier.weight(1f),
-                        color = Ink.copy(alpha = 0.68f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    TextButton(
-                        enabled = visiblePoints.size > 2,
-                        onClick = {
-                            val removeAt = selectedIndex
-                            points = points.toMutableList().apply { removeAt(removeAt) }
-                            endIndex--
-                            selectedIndex = removeAt.coerceAtMost(endIndex)
-                                .coerceAtLeast(startIndex)
-                        },
-                    ) {
-                        Text("Punkt löschen")
-                    }
-                }
-
-                Button(
-                    enabled = visiblePoints.size >= 2 && !isSaving,
-                    onClick = {
-                        isSaving = true
-                        val retainedIds = retainedPointIds(points, startIndex, endIndex)
-                        scope.launch {
-                            withContext(Dispatchers.IO) {
-                                store.updateTourPoints(tourId, retainedIds)
-                            }
-                            onSaved()
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = Ink),
-                ) {
-                    Text(
-                        text = if (isSaving) "Wird gespeichert …" else "Änderungen speichern",
+                        text = "Keine Wegmarken",
+                        color = Ink.copy(alpha = 0.58f),
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 22.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Wegmarke ${waypoints.indexOf(selectedWaypoint) + 1} " +
+                                    "von ${waypoints.size}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = "${formatKilometers(selectedWaypoint.distanceFromStartMeters)} · " +
+                                    "${formatEditorElapsed(selectedWaypoint.elapsedMillis)} · " +
+                                    formatClock(selectedWaypoint.point.recordedAt),
+                                color = Ink.copy(alpha = 0.58f),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                placementTarget = MomentPlacementTarget.Waypoint(
+                                    tourId = tourId,
+                                    trackPointId = selectedWaypoint.point.id,
+                                    coordinate = SpurCoordinate(
+                                        selectedWaypoint.point.latitude,
+                                        selectedWaypoint.point.longitude,
+                                    ),
+                                )
+                            },
+                            modifier = Modifier.size(52.dp),
+                            contentPadding = PaddingValues(0.dp),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(containerColor = Ink),
+                        ) {
+                            PlusIcon()
+                        }
+                    }
+
+                    selectedWaypoint.moments.forEach { moment ->
+                        Surface(
+                            color = Color.White,
+                            shape = CircleShape,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 18.dp, end = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = moment.type.editorLabel(),
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                IconButton(
+                                    onClick = {
+                                        deleteTarget = EditorDeleteTarget.Moment(moment)
+                                    },
+                                ) {
+                                    PhotoDeleteIcon(color = Ink)
+                                }
+                            }
+                        }
+                    }
+
+                    TextButton(
+                        enabled = points.size > 2,
+                        onClick = {
+                            deleteTarget = EditorDeleteTarget.Waypoint(selectedWaypoint.point)
+                        },
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text("Wegmarke löschen", color = Ink)
+                    }
+                }
+                EditorWaypointRail(
+                    waypoints = waypoints,
+                    selectedPointId = selectedWaypoint.point.id,
+                    onSelected = { selectedPointId = it },
+                )
+            }
+        }
+    }
+
+    MomentComposer(
+        target = placementTarget,
+        showFeedbackNotice = showFeedbackNotice,
+        onDismiss = { placementTarget = null },
+        onMomentAccepted = { target, pending ->
+            val waypoint = target as? MomentPlacementTarget.Waypoint
+            if (waypoint == null) {
+                pending.deletePayload()
+            } else {
+                val moment = MapMoment(
+                    id = pending.id,
+                    type = pending.type,
+                    latitude = waypoint.coordinate.latitude,
+                    longitude = waypoint.coordinate.longitude,
+                    payload = pending.payload,
+                    tourId = waypoint.tourId,
+                    trackPointId = waypoint.trackPointId,
+                )
+                scope.launch { saveMoments(moments + moment) }
+            }
+            placementTarget = null
+        },
+    )
+
+    deleteTarget?.let { target ->
+        EditorDeleteSheet(
+            title = when (target) {
+                EditorDeleteTarget.Tour -> "Tour löschen?"
+                is EditorDeleteTarget.Waypoint -> "Wegmarke löschen?"
+                is EditorDeleteTarget.Moment -> "${target.moment.type.editorLabel()} löschen?"
+            },
+            primaryLabel = when (target) {
+                EditorDeleteTarget.Tour -> "Tour löschen"
+                is EditorDeleteTarget.Waypoint -> "Wegmarke löschen"
+                is EditorDeleteTarget.Moment -> "${target.moment.type.editorLabel()} löschen"
+            },
+            onDismiss = { deleteTarget = null },
+            onConfirm = {
+                deleteTarget = null
+                when (target) {
+                    EditorDeleteTarget.Tour -> scope.launch {
+                        if (currentTour?.endedAt == null) {
+                            context.startService(
+                                Intent(context, TrackingService::class.java)
+                                    .setAction(TrackingService.ACTION_STOP),
+                            )
+                        }
+                        var remainingMoments = context.loadMapMoments()
+                        moments.forEach { moment ->
+                            remainingMoments = context.deleteMapMoment(
+                                moment,
+                                remainingMoments,
+                            ) ?: run {
+                                showFeedbackNotice(
+                                    FeedbackNoticeKind.ERROR,
+                                    "Tour konnte nicht gelöscht werden.",
+                                )
+                                return@launch
+                            }
+                        }
+                        withContext(Dispatchers.IO) { store.deleteTour(tourId) }
+                        onDeleted()
+                    }
+                    is EditorDeleteTarget.Moment -> scope.launch {
+                        val updated = context.deleteMapMoment(
+                            moment = target.moment,
+                            moments = context.loadMapMoments(),
+                        )
+                        if (updated == null) {
+                            showFeedbackNotice(
+                                FeedbackNoticeKind.ERROR,
+                                "${target.moment.type.editorLabel()} konnte nicht gelöscht werden.",
+                            )
+                        } else {
+                            moments = mapMomentsForTour(updated, currentTour ?: return@launch)
+                            onChanged()
+                        }
+                    }
+                    is EditorDeleteTarget.Waypoint -> scope.launch {
+                        val retained = points.filterNot { it.id == target.point.id }
+                        val retainedIds = retained.mapTo(mutableSetOf(), TrackPoint::id)
+                        withContext(Dispatchers.IO) {
+                            store.updateTourPoints(tourId, retainedIds)
+                        }
+                        points = retained
+                        saveMoments(
+                            moments.map { moment ->
+                                if (moment.trackPointId != target.point.id) {
+                                    moment
+                                } else {
+                                    moment.copy(
+                                        trackPointId = nearestTrackPoint(
+                                            retained,
+                                            moment.latitude,
+                                            moment.longitude,
+                                        )?.id,
+                                    )
+                                }
+                            },
+                        )
+                        val deletedIndex = points.indexOf(target.point)
+                        selectedPointId = retained[
+                            deletedIndex.coerceIn(0, retained.lastIndex)
+                        ].id
+                        tour = withContext(Dispatchers.IO) { store.tour(tourId) }
+                    }
+                }
+            },
+        )
+    }
+}
+
+private sealed interface EditorDeleteTarget {
+    data object Tour : EditorDeleteTarget
+    data class Waypoint(val point: TrackPoint) : EditorDeleteTarget
+    data class Moment(val moment: MapMoment) : EditorDeleteTarget
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun EditorDeleteSheet(
+    title: String,
+    primaryLabel: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Column(
+            modifier = Modifier
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.padding(bottom = 10.dp),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = CircleShape,
+            ) {
+                Text("Abbrechen", color = Ink)
+            }
+            Button(
+                onClick = onConfirm,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Ink,
+                    contentColor = Color.White,
+                ),
+            ) {
+                Text(primaryLabel)
             }
         }
     }
 }
 
 @Composable
-private fun PointScrubber(
-    points: List<TrackPoint>,
-    startIndex: Int,
-    endIndex: Int,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
-    modifier: Modifier = Modifier,
+private fun EditorWaypointRail(
+    waypoints: List<EditorWaypoint>,
+    selectedPointId: Long,
+    onSelected: (Long) -> Unit,
 ) {
-    if (endIndex <= startIndex) return
-    Slider(
-        value = selectedIndex.toFloat(),
-        onValueChange = {
-            onSelect(it.roundToInt().coerceIn(startIndex, endIndex))
-        },
-        valueRange = startIndex.toFloat()..endIndex.toFloat(),
-        steps = (endIndex - startIndex - 1).coerceAtLeast(0),
-        modifier = modifier
-            .fillMaxWidth()
-            .semantics {
-                contentDescription = "Standortpunkt ${selectedIndex + 1} von ${points.size}"
-            }
+    val initialIndex = waypoints.indexOfFirst { it.point.id == selectedPointId }
+        .coerceAtLeast(0)
+    val state = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
+    val scope = rememberCoroutineScope()
+    val fling = rememberSnapFlingBehavior(
+        lazyListState = state,
+        snapPosition = SnapPosition.Center,
     )
+
+    LaunchedEffect(state, waypoints) {
+        snapshotFlow { state.isScrollInProgress }
+            .distinctUntilChanged()
+            .filter { !it }
+            .collect {
+                val layout = state.layoutInfo
+                val center = (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+                val item = layout.visibleItemsInfo.minByOrNull {
+                    abs(it.offset + it.size / 2 - center)
+                }
+                item?.index?.let { index ->
+                    waypoints.getOrNull(index)?.point?.id?.let(onSelected)
+                }
+            }
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(104.dp)
+            .background(Color.White),
+    ) {
+        val itemWidth = 72.dp
+        val edgePadding = (maxWidth - itemWidth) / 2
+        LazyRow(
+            state = state,
+            flingBehavior = fling,
+            contentPadding = PaddingValues(horizontal = edgePadding),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            items(
+                count = waypoints.size,
+                key = { waypoints[it].point.id },
+            ) { index ->
+                val waypoint = waypoints[index]
+                Box(
+                    modifier = Modifier
+                        .width(itemWidth)
+                        .fillMaxHeight()
+                        .border(0.5.dp, Ink.copy(alpha = 0.16f))
+                        .clickable {
+                            scope.launch { state.animateScrollToItem(index) }
+                        }
+                        .semantics {
+                            contentDescription = "Wegmarke ${index + 1} von ${waypoints.size}"
+                            selected = waypoint.point.id == selectedPointId
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${index + 1}",
+                            color = if (waypoint.point.id == selectedPointId) Moss else Ink,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        if (waypoint.moments.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 7.dp)
+                                    .size(5.dp)
+                                    .background(Moss, CircleShape),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .width(itemWidth)
+                .fillMaxHeight()
+                .border(2.dp, Ink),
+        )
+    }
+}
+
+private fun MomentType.editorLabel(): String = when (this) {
+    MomentType.PHOTO -> "Foto"
+    MomentType.VIDEO -> "Video"
+    MomentType.VOICE -> "Sprachnachricht"
+    MomentType.EMOJI -> "Emoji"
+}
+
+private fun formatEditorElapsed(millis: Long): String {
+    val minutes = millis.coerceAtLeast(0L) / 60_000
+    return String.format(Locale.getDefault(), "%d:%02d seit Start", minutes / 60, minutes % 60)
 }
 
 @Composable
@@ -7211,7 +7584,7 @@ private fun TourEditorMap(
                     CameraUpdateFactory.newLatLng(
                         LatLng(point.latitude, point.longitude),
                     ),
-                    140,
+                    MotionDurationDefaultMillis,
                 )
             }
         }
@@ -7833,6 +8206,7 @@ private fun MapPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
+        onEditTour = {},
     )
 }
 
@@ -7857,6 +8231,7 @@ private fun ActiveTourPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
+        onEditTour = {},
     )
 }
 

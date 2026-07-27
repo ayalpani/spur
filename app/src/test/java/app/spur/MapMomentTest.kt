@@ -16,6 +16,7 @@ class MapMomentTest {
                 longitude = 13.405,
                 payload = "/data/moment",
                 tourId = 42,
+                trackPointId = 7,
             )
             assertEquals(moment, decodeMapMoment(encodeMapMoment(moment)))
         }
@@ -33,6 +34,17 @@ class MapMomentTest {
                 payload = "/data/photo.jpg",
             ),
             decodeMapMoment("photo-1500|PHOTO|52.52|13.405|/data/photo.jpg"),
+        )
+        assertEquals(
+            MapMoment(
+                id = "photo-1500",
+                type = MomentType.PHOTO,
+                latitude = 52.52,
+                longitude = 13.405,
+                payload = "/data/photo.jpg",
+                tourId = 42,
+            ),
+            decodeMapMoment("photo-1500|PHOTO|52.52|13.405|42|/data/photo.jpg"),
         )
     }
 
