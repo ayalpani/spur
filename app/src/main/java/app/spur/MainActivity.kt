@@ -307,6 +307,10 @@ private const val MinimumSystemSplashDurationMillis = 3_000L
 private const val MinimumMapLoadingDurationMillis = 3_000L
 private const val PanelMotionDurationMillis = 300
 private const val MapRotationAnimationMillis = 350L
+private const val AsteriskRotationDurationMillis = 900
+private const val LoaderAsteriskAccelerationDurationMillis = 1_000
+private const val LoaderAsteriskAccelerationDegrees =
+    180f * LoaderAsteriskAccelerationDurationMillis / AsteriskRotationDurationMillis
 private val PhotoMapPreviewSize = 96.dp
 private val LoaderAsteriskSize = 128.dp
 private val LoaderTextGap = 20.dp
@@ -1259,6 +1263,7 @@ private fun MapPage(
         mutableStateOf(context.loadTrailStrokeColor())
     }
     var isMapRendered by remember { mutableStateOf(false) }
+    var systemSplashTimeElapsed by remember { mutableStateOf(false) }
     var minimumMapLoadingTimeElapsed by remember { mutableStateOf(false) }
     var mapInitializationStarted by remember { mutableStateOf(false) }
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
@@ -1286,10 +1291,9 @@ private fun MapPage(
         followRequest++
     }
     LaunchedEffect(Unit) {
-        delay(
-            MinimumSystemSplashDurationMillis +
-                MinimumMapLoadingDurationMillis,
-        )
+        delay(MinimumSystemSplashDurationMillis)
+        systemSplashTimeElapsed = true
+        delay(MinimumMapLoadingDurationMillis)
         minimumMapLoadingTimeElapsed = true
     }
     LaunchedEffect(isTourActive) {
@@ -1824,7 +1828,8 @@ private fun MapPage(
                     contentAlignment = Alignment.Center,
                 ) {
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                        RotatingAsterisk(
+                        AcceleratingAsterisk(
+                            isRunning = systemSplashTimeElapsed,
                             modifier = Modifier
                                 .align(Alignment.Center)
                                 .size(LoaderAsteriskSize),
@@ -4450,12 +4455,67 @@ private fun RotatingAsterisk(
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = 900,
+                durationMillis = AsteriskRotationDurationMillis,
                 easing = LinearEasing,
             ),
         ),
         label = "Asterisk rotation",
     )
+    AsteriskIcon(
+        rotation = rotation,
+        color = color,
+        contentDescription = contentDescription,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun AcceleratingAsterisk(
+    isRunning: Boolean,
+    color: Color,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    val rotation = remember { Animatable(0f) }
+    LaunchedEffect(isRunning) {
+        if (!isRunning) {
+            rotation.snapTo(0f)
+            return@LaunchedEffect
+        }
+        rotation.animateTo(
+            targetValue = LoaderAsteriskAccelerationDegrees,
+            animationSpec = tween(
+                durationMillis = LoaderAsteriskAccelerationDurationMillis,
+                easing = Easing(::loaderAsteriskAcceleration),
+            ),
+        )
+        while (true) {
+            rotation.animateTo(
+                targetValue = rotation.value + 360f,
+                animationSpec = tween(
+                    durationMillis = AsteriskRotationDurationMillis,
+                    easing = LinearEasing,
+                ),
+            )
+        }
+    }
+    AsteriskIcon(
+        rotation = rotation.value,
+        color = color,
+        contentDescription = contentDescription,
+        modifier = modifier,
+    )
+}
+
+internal fun loaderAsteriskAcceleration(fraction: Float): Float = fraction * fraction
+
+@Composable
+private fun AsteriskIcon(
+    rotation: Float,
+    color: Color,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
     LucideIcon(
         paths = listOf(
             "M12 6v12",
