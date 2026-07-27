@@ -220,6 +220,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.snapshotter.MapSnapshotter
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
@@ -656,6 +657,9 @@ private const val MapMomentLayer = "map-moment-layer"
 private const val MapMomentClusterLayer = "map-moment-cluster-layer"
 private const val MapMomentClusterCountLayer = "map-moment-cluster-count-layer"
 private const val MapPoiSourceLayer = "poi"
+private const val MapBuildingLayer = "building"
+private const val MapBuilding3dLayer = "building-3d"
+private const val MapBuildingMaxZoom = 24f
 private const val MapMomentIdProperty = "moment-id"
 private const val MapMomentImageProperty = "moment-image"
 private const val MapMomentRepresentativeProperty = "moment-representative"
@@ -1194,6 +1198,7 @@ private fun MapPage(
     var showTrailColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var selectedBuilding by remember { mutableStateOf<SpurCoordinate?>(null) }
     var showCamera by rememberSaveable { mutableStateOf(false) }
     var showVoiceRecorder by rememberSaveable { mutableStateOf(false) }
     var pendingMoment by remember { mutableStateOf<PendingMapMoment?>(null) }
@@ -1249,6 +1254,8 @@ private fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val directionBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val buildingDetailsBottomSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val followOwnLocation: () -> Unit = {
         isTourOverview = false
         isFollowingLocation = true
@@ -1540,6 +1547,7 @@ private fun MapPage(
                         MomentType.EMOJI -> Unit
                     }
                 },
+                onBuildingClick = { selectedBuilding = it },
                 onManualLocationChanged = { location ->
                     context.saveManualLocation(location)
                     manualLocation = location
@@ -1831,6 +1839,25 @@ private fun MapPage(
                         onStartTour(activity)
                     }
                 },
+            )
+        }
+    }
+
+    selectedBuilding?.let { building ->
+        val closeBuildingDetails: () -> Unit = {
+            scope.launch {
+                buildingDetailsBottomSheetState.hide()
+                selectedBuilding = null
+            }
+        }
+        ModalBottomSheet(
+            onDismissRequest = { selectedBuilding = null },
+            sheetState = buildingDetailsBottomSheetState,
+        ) {
+            BackHandler(onBack = closeBuildingDetails)
+            BuildingDetailsBottomSheet(
+                coordinate = building,
+                onBack = closeBuildingDetails,
             )
         }
     }
@@ -3136,6 +3163,51 @@ private fun BottomSheetHeader(
 }
 
 @Composable
+private fun BuildingDetailsBottomSheet(
+    coordinate: SpurCoordinate,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    var address by remember(coordinate) { mutableStateOf<String?>(null) }
+    var addressResolved by remember(coordinate) { mutableStateOf(false) }
+
+    LaunchedEffect(coordinate) {
+        address = context.reverseGeocode(
+            latitude = coordinate.latitude,
+            longitude = coordinate.longitude,
+        )
+        addressResolved = true
+    }
+
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 24.dp),
+    ) {
+        BottomSheetHeader(
+            title = "Gebäude",
+            onBack = onBack,
+        )
+        Text(
+            text = "Adresse",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = when {
+                !addressResolved -> "Adresse wird ermittelt…"
+                address != null -> address.orEmpty()
+                else -> "Für dieses Gebäude ist keine Adresse verfügbar."
+            },
+            color = Ink.copy(alpha = 0.72f),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+    }
+}
+
+@Composable
 private fun SheetMenuItem(
     label: String,
     onClick: () -> Unit,
@@ -3604,6 +3676,7 @@ private fun MapSurface(
     onMomentPlaced: (MapMoment) -> Unit,
     onMomentPlacementFailed: (PendingMapMoment) -> Unit,
     onMomentClick: (MapMoment, Offset) -> Unit,
+    onBuildingClick: (SpurCoordinate) -> Unit,
     onManualLocationChanged: (SpurCoordinate) -> Unit,
     onFollowingInterrupted: () -> Unit,
     onLocationPulseStarted: (Long) -> Unit,
@@ -3616,6 +3689,7 @@ private fun MapSurface(
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnMomentPlacementFailed by rememberUpdatedState(onMomentPlacementFailed)
     val currentOnMomentClick by rememberUpdatedState(onMomentClick)
+    val currentOnBuildingClick by rememberUpdatedState(onBuildingClick)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentOnFollowingInterrupted by rememberUpdatedState(onFollowingInterrupted)
     val currentOnLocationPulseStarted by rememberUpdatedState(onLocationPulseStarted)
@@ -3913,12 +3987,27 @@ private fun MapSurface(
                 MapMomentLayer,
             ).firstOrNull()?.getStringProperty(MapMomentIdProperty)
             val moment = currentMapMoments.firstOrNull { it.id == momentId }
-                ?: return@OnMapClickListener false
-            currentOnMomentClick(
-                moment,
-                Offset(screenPoint.x, screenPoint.y),
-            )
-            true
+            if (moment != null) {
+                currentOnMomentClick(
+                    moment,
+                    Offset(screenPoint.x, screenPoint.y),
+                )
+                return@OnMapClickListener true
+            }
+            val building = readyMap.queryRenderedFeatures(
+                screenPoint,
+                MapBuildingLayer,
+            ).firstOrNull()
+            if (building != null) {
+                currentOnBuildingClick(
+                    SpurCoordinate(
+                        latitude = point.latitude,
+                        longitude = point.longitude,
+                    ),
+                )
+                return@OnMapClickListener true
+            }
+            false
         }
         mapView.setOnTouchListener { _, event ->
             when (event.actionMasked) {
@@ -5269,6 +5358,7 @@ private fun setMapStyle(
     val cameraPosition = map.cameraPosition
     val styleLoaded: (Style) -> Unit = { style ->
         style.hideDistractingPoiLayers()
+        style.showOutlinedBuildings()
         enableLocationTracking(
             context = context,
             map = map,
@@ -5301,6 +5391,11 @@ private fun Style.hideDistractingPoiLayers() {
         .filterIsInstance<SymbolLayer>()
         .filter { it.sourceLayer == MapPoiSourceLayer }
         .forEach { it.setProperties(visibility(Property.NONE)) }
+}
+
+private fun Style.showOutlinedBuildings() {
+    getLayerAs<FillLayer>(MapBuildingLayer)?.setMaxZoom(MapBuildingMaxZoom)
+    getLayer(MapBuilding3dLayer)?.setProperties(visibility(Property.NONE))
 }
 
 private data class PreparedMapMoments(
