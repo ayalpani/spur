@@ -1815,14 +1815,21 @@ private fun MapPage(
                     contentAlignment = Alignment.Center,
                 ) {
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                        val textAlpha by animateFloatAsState(
-                            targetValue = if (systemSplashTimeElapsed) 1f else 0f,
-                            animationSpec = tween(
-                                durationMillis = LoaderAsteriskAccelerationDurationMillis,
-                                easing = LinearEasing,
-                            ),
-                            label = "Loading text alpha",
-                        )
+                        val textAlpha = remember { Animatable(0f) }
+                        LaunchedEffect(systemSplashTimeElapsed) {
+                            textAlpha.snapTo(0f)
+                            if (systemSplashTimeElapsed) {
+                                withFrameNanos { }
+                                textAlpha.animateTo(
+                                    targetValue = 1f,
+                                    animationSpec = tween(
+                                        durationMillis =
+                                            LoaderAsteriskAccelerationDurationMillis,
+                                        easing = LinearEasing,
+                                    ),
+                                )
+                            }
+                        }
                         AcceleratingAsterisk(
                             isRunning = systemSplashTimeElapsed,
                             modifier = Modifier
@@ -1836,7 +1843,7 @@ private fun MapPage(
                             color = Ink,
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
-                                .graphicsLayer { alpha = textAlpha }
+                                .graphicsLayer { alpha = textAlpha.value }
                                 .offset(
                                     y = maxHeight / 2 +
                                         LoaderAsteriskSize / 2 +
