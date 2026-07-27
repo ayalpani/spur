@@ -4392,16 +4392,7 @@ private fun PendingMomentMarker(
             )
             drawPath(
                 path = Path().apply {
-                    moveTo(6f * scale, 42f * scale)
-                    lineTo(6f * scale, 12f * scale)
-                    cubicTo(
-                        6f * scale,
-                        6.5f * scale,
-                        10.5f * scale,
-                        2f * scale,
-                        16f * scale,
-                        2f * scale,
-                    )
+                    moveTo(16f * scale, 2f * scale)
                     lineTo(46f * scale, 2f * scale)
                     cubicTo(
                         51.5f * scale,
@@ -4412,9 +4403,36 @@ private fun PendingMomentMarker(
                         12f * scale,
                     )
                     lineTo(56f * scale, 42f * scale)
-                    moveTo(26f * scale, 50f * scale)
+                    cubicTo(
+                        56f * scale,
+                        47.5f * scale,
+                        51.5f * scale,
+                        52f * scale,
+                        46f * scale,
+                        52f * scale,
+                    )
+                    lineTo(34.5f * scale, 52f * scale)
                     lineTo(31f * scale, 57f * scale)
-                    lineTo(36f * scale, 50f * scale)
+                    lineTo(27.5f * scale, 52f * scale)
+                    lineTo(16f * scale, 52f * scale)
+                    cubicTo(
+                        10.5f * scale,
+                        52f * scale,
+                        6f * scale,
+                        47.5f * scale,
+                        6f * scale,
+                        42f * scale,
+                    )
+                    lineTo(6f * scale, 12f * scale)
+                    cubicTo(
+                        6f * scale,
+                        6.5f * scale,
+                        10.5f * scale,
+                        2f * scale,
+                        16f * scale,
+                        2f * scale,
+                    )
+                    close()
                 },
                 color = Color.White,
                 style = Stroke(
