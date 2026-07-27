@@ -1,5 +1,4 @@
 <resources>
-    <string name="app_name">Spur</string>
     <string name="emoji_category_recent">Schnellauswahl</string>
     <string name="emoji_category_emotions">Smileys &amp; Emotionen</string>
     <string name="emoji_category_people">Menschen</string>

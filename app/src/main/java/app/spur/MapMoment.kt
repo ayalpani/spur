@@ -39,9 +39,22 @@ private fun Long?.orEmpty(): String = this?.toString().orEmpty()
 internal fun photoMomentsForTour(
     moments: List<MapMoment>,
     tour: Tour,
+): List<MapMoment> = momentsForTour(moments, tour) { it.type == MomentType.PHOTO }
+
+internal fun visualMomentsForTour(
+    moments: List<MapMoment>,
+    tour: Tour,
+): List<MapMoment> = momentsForTour(moments, tour) {
+    it.type == MomentType.PHOTO || it.type == MomentType.VIDEO
+}
+
+private fun momentsForTour(
+    moments: List<MapMoment>,
+    tour: Tour,
+    accepts: (MapMoment) -> Boolean,
 ): List<MapMoment> = moments
     .asSequence()
-    .filter { it.type == MomentType.PHOTO }
+    .filter(accepts)
     .filter { moment ->
         moment.tourId == tour.id ||
             moment.tourId == null && moment.captureTimeMillis()?.let { capturedAt ->

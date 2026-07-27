@@ -76,6 +76,40 @@ class MapMomentTest {
     }
 
     @Test
+    fun tourVisualsIncludePhotosAndVideos() {
+        val tour = Tour(
+            id = 7,
+            startedAt = 1_000,
+            endedAt = 2_000,
+            distanceMeters = 0.0,
+            pointCount = 0,
+        )
+        val photo = MapMoment(
+            id = "photo-1200",
+            type = MomentType.PHOTO,
+            latitude = 0.0,
+            longitude = 0.0,
+            payload = "/photo.jpg",
+            tourId = 7,
+        )
+        val video = photo.copy(
+            id = "video-1400",
+            type = MomentType.VIDEO,
+            payload = "/video.mp4",
+        )
+        val voice = photo.copy(
+            id = "voice-1600",
+            type = MomentType.VOICE,
+            payload = "/voice.m4a",
+        )
+
+        assertEquals(
+            listOf(voice, video, photo).filter { it.type != MomentType.VOICE },
+            visualMomentsForTour(listOf(photo, video, voice), tour),
+        )
+    }
+
+    @Test
     fun clusterStackShowsAtMostThreeMarkers() {
         assertEquals(listOf(8f), clusterStackOffsets(1))
         assertEquals(listOf(4f, 8f), clusterStackOffsets(2))

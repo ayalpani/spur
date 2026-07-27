@@ -68,6 +68,10 @@ recover.
 
 ## Durable rules
 
+- After completing and checking a requested Spur code or UI change, deploy the
+  current worktree to the registered phone and launch it by default. Skip this
+  automatic deployment only when Arash explicitly asks not to deploy, requests
+  analysis without implementation, or the device is unreachable.
 - Keep exactly one Spur installation. Do not create `.debug` or other parallel application IDs.
 - Let the most recently deployed thread replace the prior thread's build on the
   phone. Never merge other branches into a preview.

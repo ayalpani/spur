@@ -7,6 +7,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.location.Address
 import android.location.Geocoder
 import android.location.Location
@@ -17,10 +18,12 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.ContextThemeWrapper
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.MediaController
 import android.widget.VideoView
@@ -35,14 +38,17 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -118,6 +124,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -140,6 +147,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -158,6 +166,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -174,13 +183,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.emoji2.emojipicker.EmojiPickerView
+import androidx.emoji2.emojipicker.RecentEmojiProvider
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -234,6 +248,7 @@ import org.maplibre.android.style.layers.PropertyFactory.textHaloWidth
 import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
 import org.maplibre.android.style.layers.PropertyFactory.textOffset
 import org.maplibre.android.style.layers.PropertyFactory.textSize
+import org.maplibre.android.style.layers.PropertyFactory.visibility
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonOptions
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -286,21 +301,39 @@ private val FilterChipVisualInset = 8.dp
 private const val MotionDurationDefaultMillis = 200
 private const val FeedbackNoticeDurationMillis = 2_500L
 private const val PendingPhotoRevealDelayMillis = 1_000L
+private const val MinimumSystemSplashDurationMillis = 3_000L
 private const val MinimumMapLoadingDurationMillis = 3_000L
-private const val LoaderContentFadeInDurationMillis = 400
 private const val PanelMotionDurationMillis = 300
 private const val MapRotationAnimationMillis = 350L
 private val PhotoMapPreviewSize = 96.dp
+private val LoaderAsteriskSize = 128.dp
+private val LoaderTextGap = 20.dp
 private const val PhotoMapPreviewZoom = 17.5
 private const val TourRouteWidthPixels = 6f
 private const val TourRouteBorderPerSidePixels = 4f
 private const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
 private const val TrailStrokeAlpha = 0.5f
-private const val SignalButtonPulseAlpha = 0.42f
-private const val SignalButtonSecondaryPulseAlpha = 0.24f
-private const val SignalButtonBaseAlpha = 0.18f
-private val SignalButtonWobbleDistance = 7.dp
+private const val LocationPulseAlpha = 0.32f
+private const val LocationPulseDurationMillis = 3_000
+private const val LocationPulseMaxRadius = 35f
+private const val LocationPulseScale = 1.15f
+private const val EmojiPickerColumns = 8
+private const val MaxRecentEmojis = 18
+private const val EmojiPreferences = "emoji-picker"
+private const val RecentEmojiPreference = "recent-emojis"
+private const val EmojiPreferenceSeparator = "\n"
+private val DefaultProminentEmojis = listOf(
+    "❤️",
+    "😂",
+    "🔥",
+    "✨",
+    "👍",
+    "😍",
+    "🎉",
+    "😎",
+    "🙏",
+)
 private val DefaultTourActivities = listOf(
     "Inline-Skaten",
     "Spazieren",
@@ -359,6 +392,16 @@ private fun momentMarkerColor(type: MomentType): Color = when (type) {
     MomentType.EMOJI -> Ink
 }
 
+private fun momentMarkerContentColor(type: MomentType): Color =
+    if (
+        type == MomentType.VOICE ||
+        momentMarkerColor(type).luminance() <= 0.3f
+    ) {
+        Color.White
+    } else {
+        Ink
+    }
+
 private val MomentPhotoIconPaths = listOf(
     "M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z",
     "M15 13a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
@@ -371,6 +414,11 @@ private val MomentSpeechIconPaths = listOf(
     "M8.8 20v-4.1l1.9.2a2.3 2.3 0 0 0 2.164-2.1V8.3A5.37 5.37 0 0 0 2 8.25c0 2.8.656 3.054 1 4.55a5.77 5.77 0 0 1 .029 2.758L2 20",
     "M19.8 17.8a7.5 7.5 0 0 0 .003-10.603",
     "M17 15a3.5 3.5 0 0 0-.025-4.975",
+)
+private val MomentVoicePlaybackIconPaths = listOf(
+    "M11 5 6 9H2v6h4l5 4z",
+    "M15.54 8.46a5 5 0 0 1 0 7.07",
+    "M19.07 4.93a10 10 0 0 1 0 14.14",
 )
 
 internal enum class FeedbackNoticeKind(
@@ -402,8 +450,117 @@ private val LocalLucideStrokeWidth = staticCompositionLocalOf { LucideRegularStr
 
 private data class PendingMapMoment(
     val type: MomentType,
-    val file: File,
-)
+    val id: String,
+    val payload: String,
+) {
+    constructor(type: MomentType, file: File) : this(
+        type = type,
+        id = file.nameWithoutExtension,
+        payload = file.absolutePath,
+    )
+
+    fun deletePayload() {
+        if (type != MomentType.EMOJI) {
+            File(payload).delete()
+        }
+    }
+
+    companion object {
+        fun emoji(emoji: String) = PendingMapMoment(
+            type = MomentType.EMOJI,
+            id = "emoji-${System.currentTimeMillis()}",
+            payload = emoji,
+        )
+    }
+}
+
+private class SpurRecentEmojiProvider(context: Context) : RecentEmojiProvider {
+    private val preferences = context.getSharedPreferences(
+        EmojiPreferences,
+        Context.MODE_PRIVATE,
+    )
+
+    override suspend fun getRecentEmojiList(): List<String> =
+        synchronized(preferences) {
+            preferences.getString(RecentEmojiPreference, null)
+                ?.split(EmojiPreferenceSeparator)
+                ?.filter(String::isNotBlank)
+                ?.take(MaxRecentEmojis)
+                ?.ifEmpty { DefaultProminentEmojis }
+                ?: DefaultProminentEmojis
+        }
+
+    override fun recordSelection(emoji: String) {
+        synchronized(preferences) {
+            val recent = preferences.getString(RecentEmojiPreference, null)
+                ?.split(EmojiPreferenceSeparator)
+                ?.filter(String::isNotBlank)
+                .orEmpty()
+            val updated = (listOf(emoji) + recent)
+                .distinct()
+                .take(MaxRecentEmojis)
+            preferences.edit()
+                .putString(
+                    RecentEmojiPreference,
+                    updated.joinToString(EmojiPreferenceSeparator),
+                )
+                .apply()
+        }
+    }
+}
+
+@Composable
+private fun EmojiPickerSheet(
+    onBack: () -> Unit,
+    onEmojiPicked: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val recentEmojiProvider = remember(context) {
+        SpurRecentEmojiProvider(context.applicationContext)
+    }
+    val currentOnEmojiPicked by rememberUpdatedState(onEmojiPicked)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.82f)
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 12.dp),
+    ) {
+        BottomSheetHeader(
+            title = "Emoji wählen",
+            onBack = onBack,
+        )
+        AndroidView(
+            factory = { viewContext ->
+                val configuration = Configuration(viewContext.resources.configuration)
+                    .apply { setLocale(Locale.GERMAN) }
+                val localizedContext = viewContext.createConfigurationContext(configuration)
+                val pickerContext = ContextThemeWrapper(
+                    localizedContext,
+                    R.style.Theme_Spur,
+                )
+                EmojiPickerView(pickerContext).apply {
+                    emojiGridColumns = EmojiPickerColumns
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    setRecentEmojiProvider(recentEmojiProvider)
+                    setOnEmojiPickedListener { item ->
+                        currentOnEmojiPicked(item.emoji)
+                    }
+                }
+            },
+            update = { picker ->
+                picker.setOnEmojiPickedListener { item ->
+                    currentOnEmojiPicked(item.emoji)
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        )
+    }
+}
 
 private data class FeedbackNotice(
     val id: Long,
@@ -483,8 +640,12 @@ private const val SatelliteMapStyleJson =
 internal const val MomentMarkerWidth = 62
 private const val MomentMarkerHeight = 58
 private const val MomentMarkerStroke = 3f
+private const val MomentMarkerEdgeWidth = 1f
 private const val MapPreviewPixels = 180
-private const val MapLocationPulseDurationMillis = 3_000
+private const val LocationPulseWatchdogMillis = LocationPulseDurationMillis * 10L
+private val LocationPulseEasing = Easing { fraction ->
+    (cos((fraction + 1f) * PI) / 2f + 0.5f).toFloat()
+}
 private const val TourRouteSource = "tour-route-source"
 private const val TourRouteBorderLayer = "tour-route-border-layer"
 private const val TourRouteLayer = "tour-route-layer"
@@ -494,6 +655,7 @@ private const val MapMomentSource = "map-moment-source"
 private const val MapMomentLayer = "map-moment-layer"
 private const val MapMomentClusterLayer = "map-moment-cluster-layer"
 private const val MapMomentClusterCountLayer = "map-moment-cluster-count-layer"
+private const val MapPoiSourceLayer = "poi"
 private const val MapMomentIdProperty = "moment-id"
 private const val MapMomentImageProperty = "moment-image"
 private const val MapMomentRepresentativeProperty = "moment-representative"
@@ -619,7 +781,13 @@ internal fun overlappingMomentOffsets(moments: List<MapMoment>): Map<String, Off
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashStartedAt = SystemClock.uptimeMillis()
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        splashScreen.setKeepOnScreenCondition {
+            SystemClock.uptimeMillis() - splashStartedAt <
+                MinimumSystemSplashDurationMillis
+        }
         enableEdgeToEdge()
         setContent { SpurApp() }
     }
@@ -1009,6 +1177,8 @@ private fun MapPage(
     var followRequest by rememberSaveable { mutableStateOf(0) }
     var tourOverviewRequest by rememberSaveable { mutableStateOf(0) }
     var isFollowingLocation by rememberSaveable { mutableStateOf(false) }
+    var requestedLocationPulseGeneration by remember { mutableLongStateOf(0L) }
+    var activeLocationPulseGeneration by remember { mutableStateOf<Long?>(null) }
     var isTourOverview by rememberSaveable { mutableStateOf(false) }
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
     var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -1016,6 +1186,7 @@ private fun MapPage(
     var showStartTourBottomSheet by rememberSaveable { mutableStateOf(false) }
     var isStartingTour by rememberSaveable { mutableStateOf(false) }
     var showMomentSheet by rememberSaveable { mutableStateOf(false) }
+    var showEmojiPicker by rememberSaveable { mutableStateOf(false) }
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
     var showTourMenu by rememberSaveable { mutableStateOf(false) }
     var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
@@ -1036,7 +1207,12 @@ private fun MapPage(
     var photoDetailOrigin by remember { mutableStateOf<Offset?>(null) }
     var focusedPhoto by remember { mutableStateOf<MapMoment?>(null) }
     var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
+    var activeVoiceMoment by remember { mutableStateOf<MapMoment?>(null) }
+    var voicePlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var isVoicePlaying by remember { mutableStateOf(false) }
+    var voiceProgress by remember { mutableFloatStateOf(0f) }
     var manualLocation by remember { mutableStateOf(context.loadManualLocation()) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val initialMapZoom = remember { context.loadDefaultMapZoom() }
     var defaultMapRotation by remember {
         mutableStateOf(context.loadDefaultMapRotation())
@@ -1055,21 +1231,14 @@ private fun MapPage(
     }
     var isMapRendered by remember { mutableStateOf(false) }
     var minimumMapLoadingTimeElapsed by remember { mutableStateOf(false) }
-    var loaderContentVisible by remember { mutableStateOf(false) }
     var mapInitializationStarted by remember { mutableStateOf(false) }
-    val loaderContentAlpha by animateFloatAsState(
-        targetValue = if (loaderContentVisible) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = LoaderContentFadeInDurationMillis,
-            easing = FastOutSlowInEasing,
-        ),
-        label = "Loader content alpha",
-    )
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
     var isMapGestureActive by remember { mutableStateOf(false) }
     val startTourBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val emojiPickerSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val tourMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val homeAutoStartBottomSheetState =
@@ -1086,7 +1255,10 @@ private fun MapPage(
         followRequest++
     }
     LaunchedEffect(Unit) {
-        delay(MinimumMapLoadingDurationMillis)
+        delay(
+            MinimumSystemSplashDurationMillis +
+                MinimumMapLoadingDurationMillis,
+        )
         minimumMapLoadingTimeElapsed = true
     }
     LaunchedEffect(isTourActive) {
@@ -1094,13 +1266,123 @@ private fun MapPage(
     }
     LaunchedEffect(Unit) {
         withFrameNanos { }
-        loaderContentVisible = true
-        delay(LoaderContentFadeInDurationMillis.toLong())
         mapInitializationStarted = true
+    }
+    LaunchedEffect(
+        isMapReady,
+        manualLocation,
+        trailFillColor,
+        isFollowingLocation,
+    ) {
+        if (!isMapReady || manualLocation != null) {
+            activeLocationPulseGeneration = null
+            return@LaunchedEffect
+        }
+        while (true) {
+            if (isFollowingLocation) activeLocationPulseGeneration = null
+            requestedLocationPulseGeneration++
+            delay(LocationPulseWatchdogMillis)
+        }
     }
     LaunchedEffect(Unit) {
         if (context.loadHomeAutoStartSettings().enabled) {
             context.registerHomeExitGeofence()
+        }
+    }
+    DisposableEffect(activeVoiceMoment?.id) {
+        val moment = activeVoiceMoment
+        isVoicePlaying = false
+        voiceProgress = 0f
+        if (moment == null) {
+            voicePlayer = null
+            onDispose {}
+        } else {
+            val player = MediaPlayer()
+            voicePlayer = player
+            player.setOnPreparedListener {
+                if (voicePlayer === player) {
+                    player.start()
+                    isVoicePlaying = true
+                }
+            }
+            player.setOnCompletionListener {
+                if (voicePlayer === player) {
+                    isVoicePlaying = false
+                    voiceProgress = 1f
+                }
+            }
+            player.setOnErrorListener { _, _, _ ->
+                if (voicePlayer === player) {
+                    isVoicePlaying = false
+                    activeVoiceMoment = null
+                    showFeedbackNotice(
+                        FeedbackNoticeKind.ERROR,
+                        "Die Sprachnachricht konnte nicht abgespielt werden.",
+                    )
+                }
+                true
+            }
+            runCatching {
+                player.setDataSource(moment.payload)
+                player.prepareAsync()
+            }.onFailure {
+                activeVoiceMoment = null
+                showFeedbackNotice(
+                    FeedbackNoticeKind.ERROR,
+                    "Die Sprachnachricht konnte nicht abgespielt werden.",
+                )
+            }
+            onDispose {
+                if (voicePlayer === player) voicePlayer = null
+                runCatching { player.release() }
+            }
+        }
+    }
+    LaunchedEffect(voicePlayer, isVoicePlaying) {
+        val player = voicePlayer ?: return@LaunchedEffect
+        while (isVoicePlaying) {
+            val duration = runCatching { player.duration }.getOrDefault(0)
+            val position = runCatching { player.currentPosition }.getOrDefault(0)
+            voiceProgress = if (duration > 0) {
+                position.toFloat() / duration
+            } else {
+                0f
+            }
+            delay(100)
+        }
+    }
+    DisposableEffect(lifecycle, voicePlayer) {
+        val player = voicePlayer
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE && player != null) {
+                runCatching {
+                    if (player.isPlaying) player.pause()
+                }
+                isVoicePlaying = false
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    val toggleVoicePlayback: (MapMoment) -> Unit = { moment ->
+        if (activeVoiceMoment?.id != moment.id) {
+            activeVoiceMoment = moment
+        } else {
+            voicePlayer?.let { player ->
+                runCatching {
+                    if (player.isPlaying) {
+                        player.pause()
+                        isVoicePlaying = false
+                    } else {
+                        if (player.duration > 0 && player.currentPosition >= player.duration) {
+                            player.seekTo(0)
+                            voiceProgress = 0f
+                        }
+                        player.start()
+                        isVoicePlaying = true
+                    }
+                }
+            }
         }
     }
     BackHandler(
@@ -1138,7 +1420,12 @@ private fun MapPage(
         val video = pendingVideoCapturePath?.let(::File)
         pendingVideoCapturePath = null
         if (saved && video?.isFile == true && video.length() > 0L) {
-            pendingMoment = PendingMapMoment(MomentType.VIDEO, video)
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    ensureVideoThumbnail(video)
+                }
+                pendingMoment = PendingMapMoment(MomentType.VIDEO, video)
+            }
         } else {
             video?.delete()
         }
@@ -1204,6 +1491,7 @@ private fun MapPage(
                 followRequest = followRequest,
                 tourOverviewRequest = tourOverviewRequest,
                 isFollowingLocation = isFollowingLocation,
+                locationPulseGeneration = requestedLocationPulseGeneration,
                 isSatelliteView = isSatelliteView,
                 manualLocation = manualLocation,
                 initialMapZoom = initialMapZoom,
@@ -1215,6 +1503,8 @@ private fun MapPage(
                 trailColors = trailColors,
                 momentToPlace = pendingMoment,
                 focusedMoment = focusedPhoto,
+                activeVoiceMoment = activeVoiceMoment,
+                voicePlaybackProgress = voiceProgress,
                 onAlternateMapPreviewChanged = { alternateMapPreview = it },
                 onAlternateMapPreviewLoadingChanged = {
                     isAlternateMapPreviewLoading = it
@@ -1226,7 +1516,7 @@ private fun MapPage(
                     pendingMoment = null
                 },
                 onMomentPlacementFailed = { failedMoment ->
-                    failedMoment.file.delete()
+                    failedMoment.deletePayload()
                     pendingMoment = null
                     showFeedbackNotice(
                         FeedbackNoticeKind.ERROR,
@@ -1236,11 +1526,18 @@ private fun MapPage(
                 onMomentClick = { moment, origin ->
                     isFollowingLocation = false
                     isTourOverview = false
-                    if (moment.type == MomentType.PHOTO) {
-                        photoDetailOrigin = origin
-                        photoDetail = moment
-                    } else if (moment.type == MomentType.VIDEO || moment.type == MomentType.VOICE) {
-                        mediaDetail = moment
+                    when (moment.type) {
+                        MomentType.PHOTO -> {
+                            activeVoiceMoment = null
+                            photoDetailOrigin = origin
+                            photoDetail = moment
+                        }
+                        MomentType.VIDEO -> {
+                            activeVoiceMoment = null
+                            mediaDetail = moment
+                        }
+                        MomentType.VOICE -> toggleVoicePlayback(moment)
+                        MomentType.EMOJI -> Unit
                     }
                 },
                 onManualLocationChanged = { location ->
@@ -1251,6 +1548,13 @@ private fun MapPage(
                 onFollowingInterrupted = {
                     isFollowingLocation = false
                     isTourOverview = false
+                },
+                onLocationPulseStarted = { generation ->
+                    activeLocationPulseGeneration = generation
+                },
+                onLocationPulseResync = {
+                    if (isFollowingLocation) activeLocationPulseGeneration = null
+                    requestedLocationPulseGeneration++
                 },
                 onMapReadyChanged = { isMapRendered = it },
                 onMapGestureActiveChanged = { isMapGestureActive = it },
@@ -1289,7 +1593,10 @@ private fun MapPage(
                     }
                     MapIconButton(
                         contentDescription = "Tour-History öffnen",
-                        onClick = onOpenHistory,
+                        onClick = {
+                            activeVoiceMoment = null
+                            onOpenHistory()
+                        },
                     ) {
                         HistoryIcon()
                     }
@@ -1419,7 +1726,10 @@ private fun MapPage(
                             }
                         },
                     ) {
-                        FollowLocationIcon(selected = isFollowingLocation)
+                        FollowLocationIcon(
+                            selected = isFollowingLocation,
+                            pulseGeneration = activeLocationPulseGeneration,
+                        )
                     }
                 }
 
@@ -1478,20 +1788,24 @@ private fun MapPage(
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(
-                        modifier = Modifier.graphicsLayer { alpha = loaderContentAlpha },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         RotatingAsterisk(
                             modifier = Modifier
-                                .size(128.dp),
-                            color = Ink,
+                                .align(Alignment.Center)
+                                .size(LoaderAsteriskSize),
+                            color = Color.Black,
                             contentDescription = "Karte wird geladen",
                         )
-                        Spacer(modifier = Modifier.height(20.dp))
                         Text(
                             text = "Spur startet…",
                             color = Ink,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .offset(
+                                    y = maxHeight / 2 +
+                                        LoaderAsteriskSize / 2 +
+                                        LoaderTextGap,
+                                ),
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Medium,
                         )
@@ -1599,7 +1913,6 @@ private fun MapPage(
                     MomentOption(
                         label = "Emoji",
                         accentColor = momentMarkerColor(MomentType.EMOJI),
-                        containerColor = Mist,
                         icon = {
                             Text(
                                 text = "🙂",
@@ -1608,14 +1921,40 @@ private fun MapPage(
                         },
                         modifier = Modifier.weight(1f),
                     ) {
-                        showMomentSheet = false
-                        showFeedbackNotice(
-                            FeedbackNoticeKind.PLACEHOLDER,
-                            "Emojimarker kommt als Nächstes.",
-                        )
+                        scope.launch {
+                            momentSheetState.hide()
+                            showMomentSheet = false
+                            showEmojiPicker = true
+                        }
                     }
                 }
             }
+        }
+    }
+
+    if (showEmojiPicker) {
+        val closeEmojiPicker: () -> Unit = {
+            scope.launch {
+                emojiPickerSheetState.hide()
+                showEmojiPicker = false
+                showMomentSheet = true
+            }
+        }
+        ModalBottomSheet(
+            onDismissRequest = { showEmojiPicker = false },
+            sheetState = emojiPickerSheetState,
+        ) {
+            BackHandler(onBack = closeEmojiPicker)
+            EmojiPickerSheet(
+                onBack = closeEmojiPicker,
+                onEmojiPicked = { emoji ->
+                    scope.launch {
+                        emojiPickerSheetState.hide()
+                        showEmojiPicker = false
+                        pendingMoment = PendingMapMoment.emoji(emoji)
+                    }
+                },
+            )
         }
     }
 
@@ -2307,6 +2646,7 @@ private fun MediaMomentDetailPage(
             decorFitsSystemWindows = false,
         ),
     ) {
+        DarkMediaSystemBars()
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -3090,7 +3430,6 @@ private fun CompassCircle() {
 private fun MomentOption(
     label: String,
     accentColor: Color,
-    containerColor: Color = Ink,
     icon: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
@@ -3100,7 +3439,7 @@ private fun MomentOption(
         modifier = modifier.height(88.dp),
         shape = RoundedCornerShape(20.dp),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = containerColor,
+            containerColor = Color.Transparent,
             contentColor = accentColor,
         ),
         border = BorderStroke(1.dp, accentColor.copy(alpha = 0.55f)),
@@ -3246,6 +3585,7 @@ private fun MapSurface(
     followRequest: Int,
     tourOverviewRequest: Int,
     isFollowingLocation: Boolean,
+    locationPulseGeneration: Long,
     isSatelliteView: Boolean,
     manualLocation: SpurCoordinate?,
     initialMapZoom: Double,
@@ -3257,6 +3597,8 @@ private fun MapSurface(
     trailColors: TrailColors,
     momentToPlace: PendingMapMoment?,
     focusedMoment: MapMoment?,
+    activeVoiceMoment: MapMoment?,
+    voicePlaybackProgress: Float,
     onAlternateMapPreviewChanged: (ImageBitmap) -> Unit,
     onAlternateMapPreviewLoadingChanged: (Boolean) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
@@ -3264,6 +3606,8 @@ private fun MapSurface(
     onMomentClick: (MapMoment, Offset) -> Unit,
     onManualLocationChanged: (SpurCoordinate) -> Unit,
     onFollowingInterrupted: () -> Unit,
+    onLocationPulseStarted: (Long) -> Unit,
+    onLocationPulseResync: () -> Unit,
     onMapReadyChanged: (Boolean) -> Unit,
     onMapGestureActiveChanged: (Boolean) -> Unit,
 ) {
@@ -3274,6 +3618,8 @@ private fun MapSurface(
     val currentOnMomentClick by rememberUpdatedState(onMomentClick)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentOnFollowingInterrupted by rememberUpdatedState(onFollowingInterrupted)
+    val currentOnLocationPulseStarted by rememberUpdatedState(onLocationPulseStarted)
+    val currentOnLocationPulseResync by rememberUpdatedState(onLocationPulseResync)
     val currentOnMapReadyChanged by rememberUpdatedState(onMapReadyChanged)
     val currentOnMapGestureActiveChanged by rememberUpdatedState(onMapGestureActiveChanged)
     val currentOnAlternateMapPreviewChanged by rememberUpdatedState(
@@ -3288,7 +3634,9 @@ private fun MapSurface(
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
+    val currentLocationPulseGeneration by rememberUpdatedState(locationPulseGeneration)
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
+    val currentDefaultMapBearing by rememberUpdatedState(defaultMapBearing)
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
@@ -3296,6 +3644,7 @@ private fun MapSurface(
     var pendingMapMoment by remember { mutableStateOf<MapMoment?>(null) }
     var pendingMomentPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var preparedMapMoments by remember { mutableStateOf<PreparedMapMoments?>(null) }
+    var renderedVoicePlaybackId by remember { mutableStateOf<String?>(null) }
     var mapStyleRevision by remember { mutableStateOf(0) }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
@@ -3319,28 +3668,44 @@ private fun MapSurface(
         lastMapSettingsBearing = defaultMapBearing
         if (!mapSettingsVisible) return@LaunchedEffect
         mapView.getMapAsync { map ->
-            if (currentIsFollowingLocation) {
-                map.followLocation(
-                    context = context,
-                    manualLocation = currentManualLocation,
-                    transitionDuration = if (animateRotation) {
-                        MapRotationAnimationMillis
-                    } else {
-                        0L
+            val targetBearing = defaultMapBearing
+            val resumeTracking =
+                currentIsFollowingLocation &&
+                    currentManualLocation == null &&
+                    map.locationComponent.isLocationComponentActivated
+            if (resumeTracking) map.locationComponent.cameraMode = CameraMode.NONE
+            val update = CameraUpdateFactory.newCameraPosition(
+                org.maplibre.android.camera.CameraPosition.Builder(map.cameraPosition)
+                    .bearing(targetBearing)
+                    .build(),
+            )
+            val resumeTrackingIfCurrent = {
+                if (
+                    resumeTracking &&
+                    currentIsFollowingLocation &&
+                    currentDefaultMapBearing == targetBearing
+                ) {
+                    map.followLocation(
+                        context = context,
+                        manualLocation = null,
+                        transitionDuration = 0L,
+                        defaultMapBearing = targetBearing,
+                    )
+                }
+            }
+            if (animateRotation) {
+                map.animateCamera(
+                    update,
+                    MapRotationAnimationMillis.toInt(),
+                    object : MapLibreMap.CancelableCallback {
+                        override fun onCancel() = Unit
+
+                        override fun onFinish() = resumeTrackingIfCurrent()
                     },
-                    defaultMapBearing = defaultMapBearing,
                 )
             } else {
-                val update = CameraUpdateFactory.newCameraPosition(
-                    org.maplibre.android.camera.CameraPosition.Builder(map.cameraPosition)
-                        .bearing(defaultMapBearing)
-                        .build(),
-                )
-                if (animateRotation) {
-                    map.animateCamera(update, MapRotationAnimationMillis.toInt())
-                } else {
-                    map.moveCamera(update)
-                }
+                map.moveCamera(update)
+                resumeTrackingIfCurrent()
             }
         }
     }
@@ -3446,7 +3811,10 @@ private fun MapSurface(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_RESUME -> {
+                    mapView.onResume()
+                    if (currentManualLocation == null) currentOnLocationPulseResync()
+                }
                 Lifecycle.Event.ON_PAUSE -> mapView.onPause()
                 Lifecycle.Event.ON_STOP -> mapView.onStop()
                 else -> Unit
@@ -3643,11 +4011,11 @@ private fun MapSurface(
             return@LaunchedEffect
         }
         val moment = MapMoment(
-            id = pending.file.nameWithoutExtension,
+            id = pending.id,
             type = pending.type,
             latitude = location.latitude,
             longitude = location.longitude,
-            payload = pending.file.absolutePath,
+            payload = pending.payload,
         )
         pendingMapMoment = moment
         pendingMomentPosition = map.projection.toScreenLocation(
@@ -3692,7 +4060,7 @@ private fun MapSurface(
     }
 
     LaunchedEffect(mapMoments, momentImageRevision) {
-        preparedMapMoments = withContext(Dispatchers.Default) {
+        preparedMapMoments = withContext(Dispatchers.IO) {
             prepareMapMoments(context.applicationContext, mapMoments)
         }
     }
@@ -3710,6 +4078,40 @@ private fun MapSurface(
         }
     }
 
+    val voiceProgressFrame =
+        (voicePlaybackProgress.coerceIn(0f, 1f) * 100f).roundToInt() / 100f
+    LaunchedEffect(
+        activeVoiceMoment?.id,
+        voiceProgressFrame,
+        preparedMapMoments,
+        mapStyleRevision,
+    ) {
+        val prepared = preparedMapMoments ?: return@LaunchedEffect
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        val activeVoice = activeVoiceMoment
+        val playbackMarker = activeVoice?.let {
+            createMomentMarkerBitmap(
+                context = context.applicationContext,
+                moment = it,
+                selected = false,
+                voiceProgress = voiceProgressFrame,
+            )
+        }
+        mapView.getMapAsync { map ->
+            val style = map.style ?: return@getMapAsync
+            val previousId = renderedVoicePlaybackId
+            if (previousId != null && previousId != activeVoice?.id) {
+                prepared.images[MapMomentImagePrefix + previousId]?.let { marker ->
+                    style.addImage(MapMomentImagePrefix + previousId, marker)
+                }
+            }
+            if (activeVoice != null && playbackMarker != null) {
+                style.addImage(MapMomentImagePrefix + activeVoice.id, playbackMarker)
+            }
+            renderedVoicePlaybackId = activeVoice?.id
+        }
+    }
+
     LaunchedEffect(routePoints, trailColors) {
         val points = routePoints
         val routeFeature = withContext(Dispatchers.Default) {
@@ -3721,15 +4123,20 @@ private fun MapSurface(
         }
     }
 
-    LaunchedEffect(mapStyleRevision, trailColors.fill, manualLocation) {
-        if (mapStyleRevision == 0 || manualLocation != null) return@LaunchedEffect
-        while (true) {
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                mapView.getMapAsync { map ->
-                    map.restartLocationPulse(currentTrailColors.fill)
-                }
-            }
-            delay(MapLocationPulseDurationMillis.toLong())
+    LaunchedEffect(
+        mapStyleRevision,
+        locationPulseGeneration,
+    ) {
+        val generation = locationPulseGeneration
+        if (
+            mapStyleRevision == 0 ||
+            generation == 0L ||
+            currentManualLocation != null
+        ) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            if (generation != currentLocationPulseGeneration) return@getMapAsync
+            map.restartLocationPulse(currentTrailColors.fill)
+            currentOnLocationPulseStarted(generation)
         }
     }
 
@@ -3777,28 +4184,49 @@ private fun MapSurface(
         val pendingMarkerWidthPx = with(density) { MomentMarkerWidth.dp.roundToPx() }
         val pendingMarkerHeightPx = with(density) { MomentMarkerHeight.dp.roundToPx() }
         pendingMomentPosition?.let { position ->
-            PendingMomentMarker(
-                type = pendingMapMoment?.type ?: MomentType.PHOTO,
-                modifier = Modifier.offset {
-                    IntOffset(
-                        x = position.x.roundToInt() - pendingMarkerWidthPx / 2,
-                        y = position.y.roundToInt() - pendingMarkerHeightPx,
-                    )
-                },
-            )
+            pendingMapMoment?.let { moment ->
+                PendingMomentMarker(
+                    moment = moment,
+                    modifier = Modifier.offset {
+                        IntOffset(
+                            x = position.x.roundToInt() - pendingMarkerWidthPx / 2,
+                            y = position.y.roundToInt() - pendingMarkerHeightPx,
+                        )
+                    },
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun PendingMomentMarker(
-    type: MomentType,
+    moment: MapMoment,
     modifier: Modifier = Modifier,
 ) {
-    val markerColor = momentMarkerColor(type)
+    val markerColor = momentMarkerColor(moment.type)
+    val bounceScale = remember(moment.id) {
+        Animatable(if (moment.type == MomentType.EMOJI) 0.25f else 1f)
+    }
+    LaunchedEffect(moment.id) {
+        if (moment.type == MomentType.EMOJI) {
+            bounceScale.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            )
+        }
+    }
     Box(
         modifier = modifier
-            .size(MomentMarkerWidth.dp, MomentMarkerHeight.dp),
+            .size(MomentMarkerWidth.dp, MomentMarkerHeight.dp)
+            .graphicsLayer {
+                scaleX = bounceScale.value
+                scaleY = bounceScale.value
+                transformOrigin = TransformOrigin(0.5f, 1f)
+            },
         contentAlignment = Alignment.TopCenter,
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -3821,28 +4249,61 @@ private fun PendingMomentMarker(
                 },
                 color = markerColor,
             )
-            drawRoundRect(
+            drawPath(
+                path = Path().apply {
+                    moveTo(6f * scale, 42f * scale)
+                    lineTo(6f * scale, 12f * scale)
+                    cubicTo(
+                        6f * scale,
+                        6.5f * scale,
+                        10.5f * scale,
+                        2f * scale,
+                        16f * scale,
+                        2f * scale,
+                    )
+                    lineTo(46f * scale, 2f * scale)
+                    cubicTo(
+                        51.5f * scale,
+                        2f * scale,
+                        56f * scale,
+                        6.5f * scale,
+                        56f * scale,
+                        12f * scale,
+                    )
+                    moveTo(26f * scale, 50f * scale)
+                    lineTo(31f * scale, 57f * scale)
+                },
                 color = Color.White,
-                topLeft = Offset(9f * scale, 5f * scale),
-                size = Size(44f * scale, 44f * scale),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                    7f * scale,
-                    7f * scale,
+                style = Stroke(
+                    width = MomentMarkerEdgeWidth * scale,
+                    cap = StrokeCap.Round,
                 ),
             )
         }
-        RotatingAsterisk(
-            modifier = Modifier
-                .padding(top = 15.dp)
-                .size(24.dp),
-            color = markerColor,
-            contentDescription = when (type) {
-                MomentType.PHOTO -> "Foto wird geladen"
-                MomentType.VIDEO -> "Video wird geladen"
-                MomentType.VOICE -> "Sprache wird geladen"
-                MomentType.EMOJI -> "Moment wird geladen"
-            },
-        )
+        if (moment.type == MomentType.EMOJI) {
+            Text(
+                text = moment.payload,
+                modifier = Modifier
+                    .padding(top = 10.dp)
+                    .semantics {
+                        contentDescription = "Emoji ${moment.payload} wird abgelegt"
+                    },
+                fontSize = 28.sp,
+            )
+        } else {
+            RotatingAsterisk(
+                modifier = Modifier
+                    .padding(top = 15.dp)
+                    .size(24.dp),
+                color = momentMarkerContentColor(moment.type),
+                contentDescription = when (moment.type) {
+                    MomentType.PHOTO -> "Foto wird geladen"
+                    MomentType.VIDEO -> "Video wird geladen"
+                    MomentType.VOICE -> "Sprache wird geladen"
+                    MomentType.EMOJI -> "Moment wird geladen"
+                },
+            )
+        }
     }
 }
 
@@ -3893,6 +4354,28 @@ private fun SimulatedLocationPuck(modifier: Modifier = Modifier) {
             radius = 10.dp.toPx(),
             style = Stroke(width = 1.5.dp.toPx()),
         )
+    }
+}
+
+@Composable
+@Suppress("DEPRECATION")
+private fun DarkMediaSystemBars() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.parent as? DialogWindowProvider)?.window
+        window?.let {
+            it.statusBarColor = Color.Black.toArgb()
+            it.navigationBarColor = Color.Black.toArgb()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                it.isStatusBarContrastEnforced = false
+                it.isNavigationBarContrastEnforced = false
+            }
+            WindowCompat.getInsetsController(it, it.decorView).apply {
+                isAppearanceLightStatusBars = false
+                isAppearanceLightNavigationBars = false
+            }
+        }
+        onDispose {}
     }
 }
 
@@ -4080,6 +4563,7 @@ private fun PhotoDetailPage(
             decorFitsSystemWindows = false,
         ),
     ) {
+        DarkMediaSystemBars()
         AnimatedVisibility(
             visible = isVisible,
             enter = if (openOrigin == null) {
@@ -4784,6 +5268,7 @@ private fun setMapStyle(
 ) {
     val cameraPosition = map.cameraPosition
     val styleLoaded: (Style) -> Unit = { style ->
+        style.hideDistractingPoiLayers()
         enableLocationTracking(
             context = context,
             map = map,
@@ -4809,6 +5294,13 @@ private fun setMapStyle(
     } else {
         map.setStyle(StreetMapStyle, styleLoaded)
     }
+}
+
+private fun Style.hideDistractingPoiLayers() {
+    layers
+        .filterIsInstance<SymbolLayer>()
+        .filter { it.sourceLayer == MapPoiSourceLayer }
+        .forEach { it.setProperties(visibility(Property.NONE)) }
 }
 
 private data class PreparedMapMoments(
@@ -5079,17 +5571,7 @@ private fun enableLocationTracking(
 
     val locationComponent = map.locationComponent
     val options = LocationComponentOptions.builder(context)
-        .foregroundTintColor(Ink.toArgb())
-        .backgroundTintColor(Color.White.toArgb())
-        .foregroundStaleTintColor(Ink.toArgb())
-        .backgroundStaleTintColor(Color.White.toArgb())
-        .bearingTintColor(Ink.toArgb())
-        .accuracyColor(Ink.toArgb())
-        .pulseEnabled(true)
-        .pulseFadeEnabled(true)
-        .pulseColor(pulseColor.toArgb())
-        .pulseSingleDuration(MapLocationPulseDurationMillis.toFloat())
-        .pulseInterpolator(AccelerateDecelerateInterpolator())
+        .spurLocationAppearance(pulseColor)
         .build()
     locationComponent.activateLocationComponent(
         LocationComponentActivationOptions.builder(context, style)
@@ -5120,18 +5602,31 @@ private fun enableLocationTracking(
 
 private fun MapLibreMap.restartLocationPulse(color: Color) {
     val component = locationComponent
-    if (!component.isLocationComponentActivated) return
+    if (!component.isLocationComponentActivated || !component.isLocationComponentEnabled) return
     component.applyStyle(
         component.locationComponentOptions
             .toBuilder()
-            .pulseEnabled(true)
-            .pulseFadeEnabled(true)
-            .pulseColor(color.toArgb())
-            .pulseSingleDuration(MapLocationPulseDurationMillis.toFloat())
-            .pulseInterpolator(AccelerateDecelerateInterpolator())
+            .spurLocationAppearance(color)
             .build(),
     )
 }
+
+private fun LocationComponentOptions.Builder.spurLocationAppearance(
+    color: Color,
+): LocationComponentOptions.Builder =
+    foregroundTintColor(color.toArgb())
+        .backgroundTintColor(color.toArgb())
+        .foregroundStaleTintColor(color.toArgb())
+        .backgroundStaleTintColor(color.toArgb())
+        .bearingTintColor(color.toArgb())
+        .accuracyColor(color.toArgb())
+        .pulseEnabled(true)
+        .pulseFadeEnabled(true)
+        .pulseColor(Color.White.toArgb())
+        .pulseSingleDuration(LocationPulseDurationMillis.toFloat())
+        .pulseMaxRadius(LocationPulseMaxRadius)
+        .pulseAlpha(LocationPulseAlpha)
+        .pulseInterpolator(AccelerateDecelerateInterpolator())
 
 private fun MapLibreMap.followLocation(
     context: Context,
@@ -5387,6 +5882,9 @@ private suspend fun Context.deleteMapMoment(
         return@withContext null
     }
     if (mediaFile.exists() && !mediaFile.delete()) return@withContext null
+    if (moment.type == MomentType.VIDEO) {
+        videoThumbnailFile(mediaFile).takeIf(File::exists)?.delete()
+    }
     val updatedMoments = moments.filterNot { it.id == moment.id }
     saveMapMoments(updatedMoments)
     getSharedPreferences(PhotoPlacePreferences, Context.MODE_PRIVATE)
@@ -5411,6 +5909,7 @@ private fun createMomentMarkerBitmap(
     context: Context,
     moment: MapMoment,
     selected: Boolean,
+    voiceProgress: Float? = null,
 ) =
     android.graphics.Bitmap.createBitmap(
             (MomentMarkerWidth * context.resources.displayMetrics.density).toInt(),
@@ -5454,38 +5953,53 @@ private fun createMomentMarkerBitmap(
             val content = android.graphics.RectF(flag).apply {
                 inset(MomentMarkerStroke * scale, MomentMarkerStroke * scale)
             }
-            paint.color = android.graphics.Color.WHITE
-            paint.style = android.graphics.Paint.Style.FILL
-            canvas.drawRoundRect(content, 7 * scale, 7 * scale, paint)
-            canvas.drawPath(
-                android.graphics.Path().apply {
-                    moveTo(28 * scale, 47 * scale)
-                    lineTo(34 * scale, 47 * scale)
-                    lineTo(31 * scale, 54 * scale)
-                    close()
-                },
-                paint,
-            )
-
-            val photo = if (moment.type == MomentType.PHOTO) {
-                decodeMarkerPhoto(moment.payload)
-            } else {
-                null
+            if (moment.type == MomentType.VOICE && voiceProgress != null) {
+                canvas.save()
+                canvas.clipPath(
+                    android.graphics.Path().apply {
+                        addRoundRect(
+                            flag,
+                            10 * scale,
+                            10 * scale,
+                            android.graphics.Path.Direction.CW,
+                        )
+                    },
+                )
+                paint.color = Color.White.copy(alpha = 0.24f).toArgb()
+                paint.style = android.graphics.Paint.Style.FILL
+                canvas.drawRect(
+                    flag.left,
+                    flag.top,
+                    flag.left + flag.width() * voiceProgress.coerceIn(0f, 1f),
+                    flag.bottom,
+                    paint,
+                )
+                canvas.restore()
             }
-            if (photo != null) {
+
+            val preview = when (moment.type) {
+                MomentType.PHOTO -> decodeMarkerPhoto(moment.payload)
+                MomentType.VIDEO -> ensureVideoThumbnail(File(moment.payload))
+                    ?.let { decodeMarkerPhoto(it.absolutePath) }
+                else -> null
+            }
+            if (preview != null) {
                 val photoContent = android.graphics.RectF(content).apply {
                     inset(2 * scale, 2 * scale)
                 }
-                drawMarkerPhoto(canvas, paint, photoContent, photo, scale)
-                photo.recycle()
+                drawMarkerPhoto(canvas, paint, photoContent, preview, scale)
+                preview.recycle()
+                if (moment.type == MomentType.VIDEO) {
+                    drawVideoPlayOverlay(canvas, paint, photoContent, scale)
+                }
             } else if (moment.type == MomentType.EMOJI) {
-                paint.color = Ink.toArgb()
+                paint.color = momentMarkerContentColor(moment.type).toArgb()
                 paint.style = android.graphics.Paint.Style.FILL
                 paint.textAlign = android.graphics.Paint.Align.CENTER
                 paint.textSize = 28 * scale
                 canvas.drawText(moment.payload.ifBlank { "🙂" }, 31 * scale, 38 * scale, paint)
             } else {
-                paint.color = android.graphics.Color.rgb(24, 32, 28)
+                paint.color = momentMarkerContentColor(moment.type).toArgb()
                 paint.style = android.graphics.Paint.Style.STROKE
                 paint.strokeWidth = 2 * scale
                 canvas.save()
@@ -5493,6 +6007,13 @@ private fun createMomentMarkerBitmap(
                 drawMomentGlyph(canvas, paint, scale, moment.type)
                 canvas.restore()
             }
+
+            val edge = createMomentMarkerEdgeBitmap(
+                bitmap,
+                MomentMarkerEdgeWidth * scale,
+            )
+            canvas.drawBitmap(edge, 0f, 0f, null)
+            edge.recycle()
         }
 
 private fun createMomentClusterBitmap(
@@ -5513,6 +6034,29 @@ private fun createMomentClusterBitmap(
         }
     }
 }
+
+private fun createMomentMarkerEdgeBitmap(
+    marker: android.graphics.Bitmap,
+    edgeWidth: Float,
+): android.graphics.Bitmap =
+    android.graphics.Bitmap.createBitmap(
+        marker.width,
+        marker.height,
+        android.graphics.Bitmap.Config.ARGB_8888,
+    ).also { edge ->
+        val canvas = android.graphics.Canvas(edge)
+        val whitePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            colorFilter = android.graphics.PorterDuffColorFilter(
+                Color.White.toArgb(),
+                android.graphics.PorterDuff.Mode.SRC_IN,
+            )
+        }
+        canvas.drawBitmap(marker, 0f, 0f, whitePaint)
+        val erasePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_OUT)
+        }
+        canvas.drawBitmap(marker, edgeWidth, edgeWidth, erasePaint)
+    }
 
 private fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
     runCatching {
@@ -5561,6 +6105,29 @@ private fun drawMarkerPhoto(
     canvas.restore()
 }
 
+private fun drawVideoPlayOverlay(
+    canvas: android.graphics.Canvas,
+    paint: android.graphics.Paint,
+    destination: android.graphics.RectF,
+    scale: Float,
+) {
+    val centerX = destination.centerX()
+    val centerY = destination.centerY()
+    paint.style = android.graphics.Paint.Style.FILL
+    paint.color = Ink.copy(alpha = 0.62f).toArgb()
+    canvas.drawCircle(centerX, centerY, 11 * scale, paint)
+    paint.color = android.graphics.Color.WHITE
+    canvas.drawPath(
+        android.graphics.Path().apply {
+            moveTo(centerX - 3.5f * scale, centerY - 6f * scale)
+            lineTo(centerX + 6f * scale, centerY)
+            lineTo(centerX - 3.5f * scale, centerY + 6f * scale)
+            close()
+        },
+        paint,
+    )
+}
+
 private fun drawMomentGlyph(
     canvas: android.graphics.Canvas,
     paint: android.graphics.Paint,
@@ -5570,7 +6137,7 @@ private fun drawMomentGlyph(
     val paths = when (type) {
         MomentType.PHOTO -> MomentPhotoIconPaths
         MomentType.VIDEO -> MomentVideoIconPaths
-        MomentType.VOICE -> MomentSpeechIconPaths
+        MomentType.VOICE -> MomentVoicePlaybackIconPaths
         MomentType.EMOJI -> emptyList()
     }
 
@@ -5611,45 +6178,57 @@ private fun HistoryPage(
     var selectedTour by remember { mutableStateOf<Tour?>(null) }
     var tourToDelete by remember { mutableStateOf<Tour?>(null) }
     var deletingTourId by remember { mutableStateOf<Long?>(null) }
-    var selectedPhoto by remember { mutableStateOf<MapMoment?>(null) }
+    var selectedMoment by remember { mutableStateOf<MapMoment?>(null) }
     var isPhotoDetailVisible by remember { mutableStateOf(false) }
-    val photosByTour = remember(tours, mapMoments) {
+    var isMediaDetailVisible by remember { mutableStateOf(false) }
+    val visualsByTour = remember(tours, mapMoments) {
         tours.associate { tour ->
-            tour.id to photoMomentsForTour(mapMoments, tour)
+            tour.id to visualMomentsForTour(mapMoments, tour)
         }
     }
-    val historyPhotos = remember(photosByTour) {
+    val historyPhotos = remember(visualsByTour) {
         orderedPhotoMoments(
-            photosByTour.values
+            visualsByTour.values
                 .flatten()
                 .distinctBy(MapMoment::id),
         )
     }
-    val selectedTourIndex = remember(selectedPhoto?.id, tours, photosByTour) {
-        val selectedId = selectedPhoto?.id
+    val selectedTourIndex = remember(selectedMoment?.id, tours, visualsByTour) {
+        val selectedId = selectedMoment?.id
         tours.indexOfFirst { tour ->
-            photosByTour[tour.id].orEmpty().any { it.id == selectedId }
+            visualsByTour[tour.id].orEmpty().any { it.id == selectedId }
         }
     }
-    BackHandler(enabled = isVisible) {
+    BackHandler(
+        enabled = isVisible &&
+            !isPhotoDetailVisible &&
+            !isMediaDetailVisible,
+    ) {
         if (deletingTourId == null) onBack()
     }
     LaunchedEffect(revision) {
         val (loadedTours, loadedMoments) = withContext(Dispatchers.IO) {
-            store.tours() to context.loadMapMoments()
+            val moments = context.loadMapMoments()
+            moments
+                .filter { it.type == MomentType.VIDEO }
+                .forEach { ensureVideoThumbnail(File(it.payload)) }
+            store.tours() to moments
         }
         tours = loadedTours
         mapMoments = loadedMoments
         if (loadedTours.none { it.id == deletingTourId }) deletingTourId = null
     }
-    LaunchedEffect(historyPhotos, selectedPhoto?.id) {
-        val selectedId = selectedPhoto?.id ?: return@LaunchedEffect
-        if (historyPhotos.none { it.id == selectedId }) {
+    LaunchedEffect(historyPhotos, selectedMoment?.id) {
+        val selected = selectedMoment ?: return@LaunchedEffect
+        if (
+            selected.type == MomentType.PHOTO &&
+            historyPhotos.none { it.id == selected.id }
+        ) {
             isPhotoDetailVisible = false
-            selectedPhoto = null
+            selectedMoment = null
         }
     }
-    LaunchedEffect(selectedPhoto?.id, selectedTourIndex) {
+    LaunchedEffect(selectedMoment?.id, selectedTourIndex) {
         if (selectedTourIndex < 0) return@LaunchedEffect
         val margin = with(context.resources.displayMetrics) { (24 * density).roundToInt() }
         val item = tourListState.layoutInfo.visibleItemsInfo
@@ -5720,7 +6299,7 @@ private fun HistoryPage(
                     .padding(top = 20.dp),
             ) {
                 items(tours, key = { it.id }) { tour ->
-                    val photos = photosByTour[tour.id].orEmpty()
+                    val visuals = visualsByTour[tour.id].orEmpty()
                     AnimatedVisibility(
                         visible = deletingTourId != tour.id,
                         exit = shrinkVertically(
@@ -5749,7 +6328,7 @@ private fun HistoryPage(
                                             .fillMaxWidth()
                                             .padding(18.dp)
                                             .padding(
-                                                bottom = if (photos.isEmpty()) 0.dp else 4.dp,
+                                                bottom = if (visuals.isEmpty()) 0.dp else 4.dp,
                                             ),
                                         verticalAlignment = Alignment.Top,
                                     ) {
@@ -5778,14 +6357,18 @@ private fun HistoryPage(
                                             fontWeight = FontWeight.SemiBold,
                                         )
                                     }
-                                    if (photos.isNotEmpty()) {
-                                        TourPhotoStrip(
-                                            photos = photos,
+                                    if (visuals.isNotEmpty()) {
+                                        TourMomentStrip(
+                                            moments = visuals,
                                             photoRevision = photoRevision,
-                                            selectedPhotoId = selectedPhoto?.id,
+                                            selectedMomentId = selectedMoment?.id,
                                             onOpen = {
-                                                selectedPhoto = it
-                                                isPhotoDetailVisible = true
+                                                selectedMoment = it
+                                                if (it.type == MomentType.PHOTO) {
+                                                    isPhotoDetailVisible = true
+                                                } else if (it.type == MomentType.VIDEO) {
+                                                    isMediaDetailVisible = true
+                                                }
                                             },
                                         )
                                     }
@@ -5874,13 +6457,15 @@ private fun HistoryPage(
         )
     }
 
-    if (isPhotoDetailVisible) selectedPhoto?.let { photo ->
+    if (isPhotoDetailVisible) selectedMoment
+        ?.takeIf { it.type == MomentType.PHOTO }
+        ?.let { photo ->
         PhotoDetailPage(
             photos = historyPhotos,
             initialPhotoId = photo.id,
             showFeedbackNotice = showFeedbackNotice,
             photoRevision = photoRevision,
-            onPhotoChanged = { selectedPhoto = it },
+            onPhotoChanged = { selectedMoment = it },
             onPhotoRotated = onPhotoRotated,
             onPhotoDeleted = { deletedPhoto ->
                 scope.launch {
@@ -5895,7 +6480,7 @@ private fun HistoryPage(
                         )
                     } else {
                         mapMoments = updatedMoments
-                        selectedPhoto = null
+                        selectedMoment = null
                         isPhotoDetailVisible = false
                     }
                 }
@@ -5903,19 +6488,28 @@ private fun HistoryPage(
             onDismiss = { isPhotoDetailVisible = false },
         )
     }
+
+    if (isMediaDetailVisible) selectedMoment
+        ?.takeIf { it.type == MomentType.VIDEO }
+        ?.let { video ->
+            MediaMomentDetailPage(
+                moment = video,
+                onDismiss = { isMediaDetailVisible = false },
+            )
+        }
 }
 
 @Composable
-private fun TourPhotoStrip(
-    photos: List<MapMoment>,
+private fun TourMomentStrip(
+    moments: List<MapMoment>,
     photoRevision: Long,
-    selectedPhotoId: String?,
+    selectedMomentId: String?,
     onOpen: (MapMoment) -> Unit,
 ) {
     val context = LocalContext.current
     val listState = rememberLazyListState()
-    val selectedIndex = remember(photos, selectedPhotoId) {
-        photos.indexOfFirst { it.id == selectedPhotoId }
+    val selectedIndex = remember(moments, selectedMomentId) {
+        moments.indexOfFirst { it.id == selectedMomentId }
     }
     LaunchedEffect(selectedIndex) {
         if (selectedIndex < 0) return@LaunchedEffect
@@ -5944,19 +6538,23 @@ private fun TourPhotoStrip(
         ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(photos, key = { it.id }) { photo ->
-            val isSelected = photo.id == selectedPhotoId
-            val imageRequest = remember(photo.payload, photoRevision) {
+        items(moments, key = { it.id }) { moment ->
+            val isSelected = moment.id == selectedMomentId
+            val previewFile = remember(moment.payload, moment.type) {
+                if (moment.type == MomentType.VIDEO) {
+                    videoThumbnailFile(File(moment.payload))
+                } else {
+                    File(moment.payload)
+                }
+            }
+            val imageRequest = remember(previewFile, photoRevision) {
                 ImageRequest.Builder(context)
-                    .data(File(photo.payload))
-                    .memoryCacheKey("${photo.payload}:$photoRevision")
+                    .data(previewFile)
+                    .memoryCacheKey("${previewFile.absolutePath}:$photoRevision")
                     .diskCachePolicy(CachePolicy.DISABLED)
                     .build()
             }
-            AsyncImage(
-                model = imageRequest,
-                contentDescription = "Foto dieser Tour öffnen",
-                contentScale = ContentScale.Crop,
+            Box(
                 modifier = Modifier
                     .size(64.dp)
                     .border(
@@ -5966,9 +6564,37 @@ private fun TourPhotoStrip(
                     )
                     .clip(RoundedCornerShape(12.dp))
                     .background(Mist)
-                    .clickable { onOpen(photo) }
-                    .semantics { selected = isSelected },
-            )
+                    .clickable { onOpen(moment) }
+                    .semantics {
+                        selected = isSelected
+                        contentDescription = if (moment.type == MomentType.VIDEO) {
+                            "Video dieser Tour öffnen"
+                        } else {
+                            "Foto dieser Tour öffnen"
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                AsyncImage(
+                    model = imageRequest,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (moment.type == MomentType.VIDEO) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .background(Ink.copy(alpha = 0.62f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        PlayIcon(
+                            modifier = Modifier.size(18.dp),
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -6627,6 +7253,7 @@ private fun ShareIcon() = LucideIcon(
         "M8.59 13.51 15.42 17.49",
         "M15.41 6.51 8.59 10.49",
     ),
+    strokeWidth = LucideRegularStrokeWidth,
 )
 
 @Composable
@@ -6694,8 +7321,13 @@ private fun MicrophoneIcon(
 )
 
 @Composable
-private fun PlayIcon() = LucideIcon(
+private fun PlayIcon(
+    modifier: Modifier = Modifier.size(24.dp),
+    color: Color = LocalContentColor.current,
+) = LucideIcon(
     paths = listOf("m6 3 14 9-14 9z"),
+    modifier = modifier,
+    color = color,
 )
 
 @Composable
@@ -6704,73 +7336,64 @@ private fun PauseIcon() = LucideIcon(
 )
 
 @Composable
-private fun FollowLocationIcon(selected: Boolean) {
-    val pulseColor = LocalTrailColors.current.fill
-    val phase = if (selected) {
-        val transition = rememberInfiniteTransition(label = "Location following signal")
-        transition.animateFloat(
-            initialValue = 0f,
-            targetValue = (Math.PI * 2).toFloat(),
-            animationSpec = infiniteRepeatable(
-                animation = tween(
-                    durationMillis = MapLocationPulseDurationMillis,
-                    easing = LinearEasing,
+private fun FollowLocationIcon(
+    selected: Boolean,
+    pulseGeneration: Long?,
+) {
+    val trailColor = LocalTrailColors.current.fill
+    val rippleProgress = if (selected && pulseGeneration != null) {
+        key(pulseGeneration) {
+            val transition = rememberInfiniteTransition(label = "Location following signal")
+            transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(
+                        durationMillis = LocationPulseDurationMillis,
+                        easing = LocationPulseEasing,
+                    ),
+                    repeatMode = RepeatMode.Restart,
                 ),
-            ),
-            label = "Location following background wobble",
-        ).value
+                label = "Location following white ripple",
+            )
+        }
     } else {
-        0f
+        null
     }
-    val wobbleDistance = with(LocalDensity.current) {
-        SignalButtonWobbleDistance.toPx()
-    }
-    val primaryWaveWidth = MapControlSize + SignalButtonWobbleDistance * 4
-    val primaryWaveHeight = MapControlSize + SignalButtonWobbleDistance * 2
-    val secondaryWaveWidth = MapControlSize + SignalButtonWobbleDistance * 3
-    val secondaryWaveHeight = MapControlSize + SignalButtonWobbleDistance
     Box(
         modifier = Modifier
             .size(MapControlSize)
             .clip(CircleShape)
-            .background(
-                pulseColor.copy(alpha = if (selected) SignalButtonBaseAlpha else 0f),
-            ),
+            .background(if (selected) trailColor else Color.Transparent),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(width = primaryWaveWidth, height = primaryWaveHeight)
-                .graphicsLayer {
-                    translationX = cos(phase) * wobbleDistance
-                    translationY = sin(phase) * wobbleDistance
-                    rotationZ = 24f
-                    alpha = if (selected) SignalButtonPulseAlpha else 0f
-                }
-                .background(pulseColor, CircleShape),
-        )
-        Box(
-            modifier = Modifier
-                .size(width = secondaryWaveWidth, height = secondaryWaveHeight)
-                .graphicsLayer {
-                    translationX = -sin(phase) * wobbleDistance
-                    translationY = cos(phase) * wobbleDistance
-                    rotationZ = -28f
-                    alpha = if (selected) SignalButtonSecondaryPulseAlpha else 0f
-                }
-                .background(pulseColor, CircleShape),
-        )
-        LucideIcon(
-            paths = listOf(
-                "M16.247 7.761a6 6 0 0 1 0 8.478",
-                "M19.075 4.933a10 10 0 0 1 0 14.134",
-                "M4.925 19.067a10 10 0 0 1 0-14.134",
-                "M7.753 16.239a6 6 0 0 1 0-8.478",
-                "M14 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
-            ),
-            color = LocalContentColor.current,
-            strokeWidth = LucideRegularStrokeWidth,
-        )
+        if (rippleProgress != null) {
+            Box(
+                modifier = Modifier
+                    .size(MapControlSize)
+                    .graphicsLayer {
+                        val phase = rippleProgress.value
+                        val rippleScale = phase * LocationPulseScale
+                        scaleX = rippleScale
+                        scaleY = rippleScale
+                        alpha = (1f - phase) * LocationPulseAlpha
+                    }
+                    .background(Color.White, CircleShape),
+            )
+        }
+        if (!selected) {
+            LucideIcon(
+                paths = listOf(
+                    "M16.247 7.761a6 6 0 0 1 0 8.478",
+                    "M19.075 4.933a10 10 0 0 1 0 14.134",
+                    "M4.925 19.067a10 10 0 0 1 0-14.134",
+                    "M7.753 16.239a6 6 0 0 1 0-8.478",
+                    "M14 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
+                ),
+                color = LocalContentColor.current,
+                strokeWidth = LucideRegularStrokeWidth,
+            )
+        }
     }
 }
 
@@ -6781,6 +7404,7 @@ private fun HistoryIcon() = LucideIcon(
         "M3 3v5h5",
         "M12 7v5l4 2",
     ),
+    strokeWidth = LucideRegularStrokeWidth,
 )
 
 @Composable
