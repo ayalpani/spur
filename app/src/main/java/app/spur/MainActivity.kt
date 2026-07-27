@@ -52,9 +52,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
@@ -1039,64 +1037,69 @@ private fun SpurApp() {
                         }
                     }
 
-                    AnimatedVisibility(
-                        visible = isHistoryVisible,
+                    val historyPanelOffset by animateFloatAsState(
+                        targetValue = if (isHistoryVisible) 0f else 1f,
+                        animationSpec = tween(
+                            durationMillis = PanelMotionDurationMillis,
+                            easing = FastOutSlowInEasing,
+                        ),
+                        label = "History panel offset",
+                    )
+                    BoxWithConstraints(
                         modifier = Modifier
                             .fillMaxSize()
                             .zIndex(2f),
-                        enter = slideInHorizontally(
-                            initialOffsetX = { fullWidth -> fullWidth },
-                            animationSpec = tween(
-                                durationMillis = PanelMotionDurationMillis,
-                                easing = FastOutSlowInEasing,
-                            ),
-                        ),
-                        exit = slideOutHorizontally(
-                            targetOffsetX = { fullWidth -> fullWidth },
-                            animationSpec = tween(
-                                durationMillis = PanelMotionDurationMillis,
-                                easing = FastOutSlowInEasing,
-                            ),
-                        ),
                     ) {
-                        HistoryPage(
-                            store = store,
-                            revision = historyRevision,
-                            isVisible = isHistoryVisible,
-                            onBack = { isHistoryVisible = false },
-                            onOpenTour = { id ->
-                                if (displayedTourId != id) {
-                                    displayedTour = null
-                                    routePoints = emptyList()
-                                }
-                                displayedTourId = id
-                                displayedTourRequest++
-                                isHistoryVisible = false
-                            },
-                            onEditTour = { id ->
-                                isHistoryVisible = false
-                                navController.navigate(SpurRoute.editor(id))
-                            },
-                            onDeleteTour = { id ->
-                                scope.launch {
-                                    withContext(Dispatchers.IO) {
-                                        store.deleteTour(id)
-                                    }
-                                    tourActivityUsage = withContext(Dispatchers.IO) {
-                                        store.activityUsage()
-                                    }
-                                    if (displayedTourId == id) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset {
+                                    IntOffset(
+                                        x = (constraints.maxWidth * historyPanelOffset)
+                                            .roundToInt(),
+                                        y = 0,
+                                    )
+                                },
+                        ) {
+                            HistoryPage(
+                                store = store,
+                                revision = historyRevision,
+                                isVisible = isHistoryVisible,
+                                onBack = { isHistoryVisible = false },
+                                onOpenTour = { id ->
+                                    if (displayedTourId != id) {
                                         displayedTour = null
-                                        displayedTourId = null
                                         routePoints = emptyList()
                                     }
-                                    historyRevision++
-                                }
-                            },
-                            showFeedbackNotice = showFeedbackNotice,
-                            photoRevision = photoRevision,
-                            onPhotoRotated = { photoRevision++ },
-                        )
+                                    displayedTourId = id
+                                    displayedTourRequest++
+                                    isHistoryVisible = false
+                                },
+                                onEditTour = { id ->
+                                    isHistoryVisible = false
+                                    navController.navigate(SpurRoute.editor(id))
+                                },
+                                onDeleteTour = { id ->
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            store.deleteTour(id)
+                                        }
+                                        tourActivityUsage = withContext(Dispatchers.IO) {
+                                            store.activityUsage()
+                                        }
+                                        if (displayedTourId == id) {
+                                            displayedTour = null
+                                            displayedTourId = null
+                                            routePoints = emptyList()
+                                        }
+                                        historyRevision++
+                                    }
+                                },
+                                showFeedbackNotice = showFeedbackNotice,
+                                photoRevision = photoRevision,
+                                onPhotoRotated = { photoRevision++ },
+                            )
+                        }
                     }
                     FeedbackNoticeHost(
                         notice = feedbackNotice,
