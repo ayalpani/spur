@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.PointF
 import android.location.Address
 import android.location.Geocoder
 import android.location.Location
@@ -23,6 +24,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.ContextThemeWrapper
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.MediaController
@@ -306,6 +308,8 @@ private const val FeedbackNoticeDurationMillis = 2_500L
 private const val PendingPhotoRevealDelayMillis = 1_000L
 private const val MinimumSystemSplashDurationMillis = 3_000L
 private const val MinimumMapLoadingDurationMillis = 3_000L
+private const val InitialManualLocationHoldDurationMillis = 5_000L
+private const val ActiveManualLocationHoldDurationMillis = 1_000L
 private const val PanelMotionDurationMillis = 300
 private const val MapRotationAnimationMillis = 350L
 private const val AsteriskRotationDurationMillis = 900
@@ -757,6 +761,18 @@ internal fun shouldShowMapPreviewLoading(
     cameraMoveReason: Int,
 ): Boolean = !isFollowingLocation || shouldStopFollowing(cameraMoveReason)
 
+internal fun shouldShowInitialMapLoading(
+    initialLoadingComplete: Boolean,
+    isMapReady: Boolean,
+): Boolean = !initialLoadingComplete && !isMapReady
+
+internal fun manualLocationHoldDurationMillis(isManualLocationActive: Boolean): Long =
+    if (isManualLocationActive) {
+        ActiveManualLocationHoldDurationMillis
+    } else {
+        InitialManualLocationHoldDurationMillis
+    }
+
 internal fun mapPreviewZoom(
     mapZoom: Double,
     mapWidthPixels: Int,
@@ -831,6 +847,7 @@ private fun SpurApp() {
     var tourActivityUsage by remember { mutableStateOf(emptyList<TourActivityUsage>()) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
+    var initialMapLoadingComplete by rememberSaveable { mutableStateOf(false) }
     var hasLocationPermission by rememberSaveable {
         mutableStateOf(context.hasLocationPermission())
     }
@@ -1022,6 +1039,10 @@ private fun SpurApp() {
                                 showFeedbackNotice = showFeedbackNotice,
                                 photoRevision = photoRevision,
                                 onPhotoRotated = { photoRevision++ },
+                                initialLoadingComplete = initialMapLoadingComplete,
+                                onInitialLoadingComplete = {
+                                    initialMapLoadingComplete = true
+                                },
                             )
                         }
                         composable(
@@ -1202,6 +1223,8 @@ private fun MapPage(
     showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
     photoRevision: Long = 0L,
     onPhotoRotated: () -> Unit = {},
+    initialLoadingComplete: Boolean = false,
+    onInitialLoadingComplete: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val isTourActive = activeTour != null
@@ -1271,8 +1294,12 @@ private fun MapPage(
         mutableStateOf(context.loadTrailStrokeColor())
     }
     var isMapRendered by remember { mutableStateOf(false) }
-    var systemSplashTimeElapsed by remember { mutableStateOf(false) }
-    var minimumMapLoadingTimeElapsed by remember { mutableStateOf(false) }
+    var systemSplashTimeElapsed by remember(initialLoadingComplete) {
+        mutableStateOf(initialLoadingComplete)
+    }
+    var minimumMapLoadingTimeElapsed by remember(initialLoadingComplete) {
+        mutableStateOf(initialLoadingComplete)
+    }
     var mapInitializationStarted by remember { mutableStateOf(false) }
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
     var isMapGestureActive by remember { mutableStateOf(false) }
@@ -1298,11 +1325,15 @@ private fun MapPage(
         isFollowingLocation = true
         followRequest++
     }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(initialLoadingComplete) {
+        if (initialLoadingComplete) return@LaunchedEffect
         delay(MinimumSystemSplashDurationMillis)
         systemSplashTimeElapsed = true
         delay(MinimumMapLoadingDurationMillis)
         minimumMapLoadingTimeElapsed = true
+    }
+    LaunchedEffect(isMapReady, initialLoadingComplete) {
+        if (isMapReady && !initialLoadingComplete) onInitialLoadingComplete()
     }
     LaunchedEffect(isTourActive) {
         if (isTourActive) isStartingTour = false
@@ -1799,7 +1830,10 @@ private fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = !isMapReady,
+                visible = shouldShowInitialMapLoading(
+                    initialLoadingComplete = initialLoadingComplete,
+                    isMapReady = isMapReady,
+                ),
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(2f),
@@ -3950,6 +3984,13 @@ private fun MapSurface(
         var map: MapLibreMap? = null
         var isMapTouchActive = false
         var isCameraMoving = false
+        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+        var holdStart = PointF()
+        var manualLocationHold: Runnable? = null
+        fun cancelManualLocationHold() {
+            manualLocationHold?.let(mapView::removeCallbacks)
+            manualLocationHold = null
+        }
         fun publishManualLocationPosition() {
             val readyMap = map ?: return
             manualLocationPosition = currentManualLocation?.let { location ->
@@ -3997,16 +4038,6 @@ private fun MapSurface(
             }
             cameraMoveReason =
                 MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
-        }
-        val longClickListener = MapLibreMap.OnMapLongClickListener { point ->
-            mapView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            currentOnManualLocationChanged(
-                SpurCoordinate(
-                    latitude = point.latitude,
-                    longitude = point.longitude,
-                ),
-            )
-            true
         }
         val clickListener = MapLibreMap.OnMapClickListener { point ->
             val readyMap = map ?: return@OnMapClickListener false
@@ -4056,10 +4087,42 @@ private fun MapSurface(
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     isMapTouchActive = true
+                    cancelManualLocationHold()
+                    holdStart = PointF(event.x, event.y)
+                    manualLocationHold = Runnable {
+                        val point = map?.projection?.fromScreenLocation(holdStart)
+                            ?: return@Runnable
+                        mapView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        currentOnManualLocationChanged(
+                            SpurCoordinate(
+                                latitude = point.latitude,
+                                longitude = point.longitude,
+                            ),
+                        )
+                        manualLocationHold = null
+                    }.also { hold ->
+                        mapView.postDelayed(
+                            hold,
+                            manualLocationHoldDurationMillis(
+                                isManualLocationActive = currentManualLocation != null,
+                            ),
+                        )
+                    }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val deltaX = event.x - holdStart.x
+                    val deltaY = event.y - holdStart.y
+                    if (deltaX * deltaX + deltaY * deltaY > touchSlop * touchSlop) {
+                        cancelManualLocationHold()
+                    }
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    cancelManualLocationHold()
                 }
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL,
                 -> {
+                    cancelManualLocationHold()
                     isMapTouchActive = false
                     if (!isCameraMoving) currentOnMapGestureActiveChanged(false)
                 }
@@ -4071,18 +4134,17 @@ private fun MapSurface(
             readyMap.addOnCameraMoveStartedListener(moveStartedListener)
             readyMap.addOnCameraMoveListener(moveListener)
             readyMap.addOnCameraIdleListener(idleListener)
-            readyMap.addOnMapLongClickListener(longClickListener)
             readyMap.addOnMapClickListener(clickListener)
             publishManualLocationPosition()
             publishPendingMomentPosition()
         }
         onDispose {
+            cancelManualLocationHold()
             currentOnMapGestureActiveChanged(false)
             mapView.setOnTouchListener(null)
             map?.removeOnCameraMoveStartedListener(moveStartedListener)
             map?.removeOnCameraMoveListener(moveListener)
             map?.removeOnCameraIdleListener(idleListener)
-            map?.removeOnMapLongClickListener(longClickListener)
             map?.removeOnMapClickListener(clickListener)
         }
     }

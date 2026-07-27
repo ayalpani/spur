@@ -91,6 +91,28 @@ class FollowLocationTest {
     }
 
     @Test
+    fun startupLoaderDoesNotReturnAfterLeavingTheMap() {
+        assertTrue(
+            shouldShowInitialMapLoading(
+                initialLoadingComplete = false,
+                isMapReady = false,
+            ),
+        )
+        assertFalse(
+            shouldShowInitialMapLoading(
+                initialLoadingComplete = true,
+                isMapReady = false,
+            ),
+        )
+    }
+
+    @Test
+    fun manualLocationRequiresFiveSecondsOnlyForModeEntry() {
+        assertEquals(5_000L, manualLocationHoldDurationMillis(false))
+        assertEquals(1_000L, manualLocationHoldDurationMillis(true))
+    }
+
+    @Test
     fun storedMapRotationFallsBackToNorth() {
         assertEquals(MapRotation.WEST, mapRotationFromStored("WEST"))
         assertEquals(270.0, MapRotation.WEST.bearing, 0.0)
