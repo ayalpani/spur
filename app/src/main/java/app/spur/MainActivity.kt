@@ -315,7 +315,7 @@ private const val TourRouteBorderPerSidePixels = 4f
 private const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
 private const val TrailStrokeAlpha = 0.5f
-private const val LocationPulseAlpha = 0.32f
+private const val LocationPulseAlpha = 0.48f
 private const val LocationPulseDurationMillis = 3_000
 private const val LocationPulseMaxRadius = 35f
 private const val LocationPulseScale = 1.15f
