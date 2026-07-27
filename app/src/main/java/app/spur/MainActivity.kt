@@ -319,6 +319,11 @@ private const val LocationPulseAlpha = 0.32f
 private const val LocationPulseDurationMillis = 3_000
 private const val LocationPulseMaxRadius = 35f
 private const val LocationPulseScale = 1.15f
+private const val MapPinTipY = 21.799f
+private val MapPinIconPaths = listOf(
+    "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
+    "M15 10a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+)
 private const val EmojiPickerColumns = 8
 private const val MaxRecentEmojis = 18
 private const val EmojiPreferences = "emoji-picker"
@@ -4654,6 +4659,10 @@ private fun PhotoDetailPage(
             decorFitsSystemWindows = false,
         ),
     ) {
+        BackHandler(
+            enabled = !isClosing && !showPhotoActionsSheet && !showDeletePhotoSheet,
+            onBack = ::dismissAnimated,
+        )
         DarkMediaSystemBars()
         AnimatedVisibility(
             visible = isVisible,
@@ -5031,7 +5040,6 @@ private fun PhotoLocationMetadata(
 
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
             .background(Color.Black.copy(alpha = 0.58f)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -5045,19 +5053,16 @@ private fun PhotoLocationMetadata(
             Text(
                 text = photoCaptureLabel(photo),
                 color = Color.White,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
+                style = MaterialTheme.typography.bodyLarge,
             )
-            Box(modifier = Modifier.height(20.dp)) {
-                place?.let { description ->
-                    Text(
-                        text = description,
-                        modifier = Modifier.padding(top = 2.dp),
-                        color = Color.White.copy(alpha = 0.72f),
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                    )
-                }
+            Spacer(modifier = Modifier.height(4.dp))
+            place?.let { description ->
+                Text(
+                    text = description.replaceFirst(", ", "\n"),
+                    color = Color.White.copy(alpha = 0.72f),
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 2,
+                )
             }
         }
     }
@@ -5103,13 +5108,8 @@ private fun PhotoMapPreview(
     Box(
         modifier = modifier
             .size(PhotoMapPreviewSize)
-            .clip(
-                RoundedCornerShape(
-                    topStart = 16.dp,
-                    bottomStart = 16.dp,
-                ),
-            )
-            .background(Mist),
+            .background(Mist)
+            .semantics { contentDescription = "Karte des Aufnahmeorts" },
         contentAlignment = Alignment.Center,
     ) {
         preview?.let { bitmap ->
@@ -5120,9 +5120,9 @@ private fun PhotoMapPreview(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        MapPinIcon(
+        FilledMapPinAtCenter(
             color = MapPinRed,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.fillMaxSize(),
         )
     }
 }
@@ -7389,13 +7389,36 @@ private fun MapPinIcon(
     color: Color = LocalContentColor.current,
     modifier: Modifier = Modifier.size(32.dp),
 ) = LucideIcon(
-    paths = listOf(
-        "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
-        "M15 10a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
-    ),
+    paths = MapPinIconPaths,
     color = color,
     modifier = modifier,
 )
+
+@Composable
+private fun FilledMapPinAtCenter(
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val pinPath = remember {
+        ComposePathParser().parsePathString(MapPinIconPaths.first()).toPath()
+    }
+    Canvas(modifier = modifier) {
+        val pinSize = 28.dp.toPx()
+        val scale = pinSize / 24f
+        withTransform({
+            translate(
+                left = (size.width - pinSize) / 2f,
+                top = size.height / 2f - MapPinTipY * scale,
+            )
+            scale(scaleX = scale, scaleY = scale, pivot = Offset.Zero)
+        }) {
+            drawPath(
+                path = pinPath,
+                color = color,
+            )
+        }
+    }
+}
 
 @Composable
 private fun MomentPhotoIcon() = LucideIcon(
