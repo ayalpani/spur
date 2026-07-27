@@ -107,6 +107,10 @@ class MapMomentTest {
             listOf(voice, video, photo).filter { it.type != MomentType.VOICE },
             visualMomentsForTour(listOf(photo, video, voice), tour),
         )
+        assertEquals(
+            listOf(voice, video, photo),
+            mapMomentsForTour(listOf(photo, video, voice), tour),
+        )
     }
 
     @Test

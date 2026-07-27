@@ -48,6 +48,11 @@ internal fun visualMomentsForTour(
     it.type == MomentType.PHOTO || it.type == MomentType.VIDEO
 }
 
+internal fun mapMomentsForTour(
+    moments: List<MapMoment>,
+    tour: Tour,
+): List<MapMoment> = momentsForTour(moments, tour) { true }
+
 private fun momentsForTour(
     moments: List<MapMoment>,
     tour: Tour,

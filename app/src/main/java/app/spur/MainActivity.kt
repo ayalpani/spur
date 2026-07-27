@@ -720,8 +720,12 @@ internal fun mapRotationOptionCenterDistance(
 internal fun shouldFitTourRoute(
     tourId: Long?,
     fittedTourId: Long?,
+    displayRequest: Long,
+    fittedDisplayRequest: Long,
     pointCount: Int,
-): Boolean = tourId != null && tourId != fittedTourId && pointCount > 0
+): Boolean = tourId != null &&
+    pointCount > 0 &&
+    (tourId != fittedTourId || displayRequest != fittedDisplayRequest)
 
 internal fun shouldShowTourOverview(
     isFollowingLocation: Boolean,
@@ -811,6 +815,7 @@ private fun SpurApp() {
     var activeTour by remember { mutableStateOf<Tour?>(null) }
     var displayedTour by remember { mutableStateOf<Tour?>(null) }
     var displayedTourId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var displayedTourRequest by rememberSaveable { mutableLongStateOf(0L) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
     var historyRevision by remember { mutableLongStateOf(0L) }
     var photoRevision by remember { mutableLongStateOf(0L) }
@@ -853,7 +858,7 @@ private fun SpurApp() {
     }
 
     LaunchedEffect(activeTour?.id, displayedTourId, historyRevision) {
-        val id = activeTour?.id ?: displayedTourId
+        val id = displayedTourId ?: activeTour?.id
         if (id == null) {
             displayedTour = null
             routePoints = emptyList()
@@ -939,7 +944,8 @@ private fun SpurApp() {
                         composable(SpurRoute.MAP) {
                             MapPage(
                                 tour = displayedTour,
-                                isTourActive = activeTour != null,
+                                activeTour = activeTour,
+                                tourDisplayRequest = displayedTourRequest,
                                 routePoints = routePoints,
                                 now = now,
                                 tourActivityUsage = tourActivityUsage,
@@ -967,6 +973,7 @@ private fun SpurApp() {
                                         activeTour = started
                                         displayedTour = started
                                         displayedTourId = id
+                                        displayedTourRequest++
                                         routePoints = emptyList()
                                         historyRevision++
                                     }
@@ -994,6 +1001,7 @@ private fun SpurApp() {
                                         activeTour = null
                                         displayedTour = result.first
                                         displayedTourId = id
+                                        displayedTourRequest++
                                         routePoints = result.second
                                         now = System.currentTimeMillis()
                                         historyRevision++
@@ -1053,7 +1061,12 @@ private fun SpurApp() {
                             isVisible = isHistoryVisible,
                             onBack = { isHistoryVisible = false },
                             onOpenTour = { id ->
+                                if (displayedTourId != id) {
+                                    displayedTour = null
+                                    routePoints = emptyList()
+                                }
                                 displayedTourId = id
+                                displayedTourRequest++
                                 isHistoryVisible = false
                             },
                             onEditTour = { id ->
@@ -1163,7 +1176,8 @@ private fun LocationOnboarding(
 @OptIn(ExperimentalMaterial3Api::class)
 private fun MapPage(
     tour: Tour?,
-    isTourActive: Boolean,
+    activeTour: Tour?,
+    tourDisplayRequest: Long,
     routePoints: List<TrackPoint>,
     now: Long,
     tourActivityUsage: List<TourActivityUsage>,
@@ -1176,6 +1190,7 @@ private fun MapPage(
     onPhotoRotated: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val isTourActive = activeTour != null
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
     )
@@ -1218,6 +1233,9 @@ private fun MapPage(
     var photoDetailOrigin by remember { mutableStateOf<Offset?>(null) }
     var focusedPhoto by remember { mutableStateOf<MapMoment?>(null) }
     var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
+    val visibleMapMoments = remember(mapMoments, tour) {
+        tour?.let { mapMomentsForTour(mapMoments, it) } ?: mapMoments
+    }
     var activeVoiceMoment by remember { mutableStateOf<MapMoment?>(null) }
     var voicePlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isVoicePlaying by remember { mutableStateOf(false) }
@@ -1501,6 +1519,7 @@ private fun MapPage(
             MapSurface(
                 modifier = Modifier.zIndex(if (isMapGestureActive) 1f else 0f),
                 tourId = tour?.id,
+                tourDisplayRequest = tourDisplayRequest,
                 followRequest = followRequest,
                 tourOverviewRequest = tourOverviewRequest,
                 isFollowingLocation = isFollowingLocation,
@@ -1510,7 +1529,7 @@ private fun MapPage(
                 initialMapZoom = initialMapZoom,
                 defaultMapBearing = defaultMapRotation.bearing,
                 mapSettingsVisible = showDirectionBottomSheet,
-                mapMoments = mapMoments,
+                mapMoments = visibleMapMoments,
                 momentImageRevision = photoRevision,
                 routePoints = routePoints,
                 trailColors = trailColors,
@@ -1523,7 +1542,9 @@ private fun MapPage(
                     isAlternateMapPreviewLoading = it
                 },
                 onMomentPlaced = { moment ->
-                    val updatedMoments = mapMoments + moment.copy(tourId = tour?.id)
+                    val updatedMoments = mapMoments + moment.copy(
+                        tourId = activeTour?.id ?: tour?.id,
+                    )
                     context.saveMapMoments(updatedMoments)
                     mapMoments = updatedMoments
                     pendingMoment = null
@@ -1681,9 +1702,9 @@ private fun MapPage(
                     }
                 }
                 val playerControl: @Composable (Modifier) -> Unit = { modifier ->
-                    if (isTourActive && tour != null) {
+                    if (activeTour != null) {
                         TourPlayer(
-                            tour = tour,
+                            tour = activeTour,
                             now = now,
                             onStop = onEndTour,
                             modifier = modifier,
@@ -2374,7 +2395,9 @@ private fun MapPage(
     }
 
     photoDetail?.let { moment ->
-        val photos = remember(mapMoments) { orderedPhotoMoments(mapMoments) }
+        val photos = remember(visibleMapMoments) {
+            orderedPhotoMoments(visibleMapMoments)
+        }
         PhotoDetailPage(
             photos = photos,
             initialPhotoId = moment.id,
@@ -3660,6 +3683,7 @@ private fun MapPreviewLoadingOverlay() {
 private fun MapSurface(
     modifier: Modifier = Modifier,
     tourId: Long?,
+    tourDisplayRequest: Long,
     followRequest: Int,
     tourOverviewRequest: Int,
     isFollowingLocation: Boolean,
@@ -3728,6 +3752,7 @@ private fun MapSurface(
     var mapStyleRevision by remember { mutableStateOf(0) }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
+    var fittedTourDisplayRequest by remember { mutableLongStateOf(-1L) }
     var lastMapSettingsBearing by remember { mutableStateOf(defaultMapBearing) }
     val mapView = remember {
         MapLibre.getInstance(context)
@@ -4235,8 +4260,16 @@ private fun MapSurface(
         }
     }
 
-    LaunchedEffect(tourId, routePoints) {
-        if (!shouldFitTourRoute(tourId, fittedTourId, routePoints.size)) return@LaunchedEffect
+    LaunchedEffect(tourId, tourDisplayRequest, routePoints) {
+        if (
+            !shouldFitTourRoute(
+                tourId = tourId,
+                fittedTourId = fittedTourId,
+                displayRequest = tourDisplayRequest,
+                fittedDisplayRequest = fittedTourDisplayRequest,
+                pointCount = routePoints.size,
+            )
+        ) return@LaunchedEffect
         val id = tourId ?: return@LaunchedEffect
         mapView.getMapAsync { map ->
             mapView.post {
@@ -4251,6 +4284,7 @@ private fun MapSurface(
                     animated = true,
                 )
                 fittedTourId = id
+                fittedTourDisplayRequest = tourDisplayRequest
             }
         }
     }
@@ -7621,7 +7655,8 @@ private fun BackIcon() = LucideIcon(
 private fun MapPagePreview() {
     MapPage(
         tour = null,
-        isTourActive = false,
+        activeTour = null,
+        tourDisplayRequest = 0,
         routePoints = emptyList(),
         now = System.currentTimeMillis(),
         tourActivityUsage = emptyList(),
@@ -7635,15 +7670,17 @@ private fun MapPagePreview() {
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
 private fun ActiveTourPagePreview() {
+    val tour = Tour(
+        id = 1,
+        startedAt = System.currentTimeMillis() - 754_000,
+        endedAt = null,
+        distanceMeters = 1_840.0,
+        pointCount = 42,
+    )
     MapPage(
-        tour = Tour(
-            id = 1,
-            startedAt = System.currentTimeMillis() - 754_000,
-            endedAt = null,
-            distanceMeters = 1_840.0,
-            pointCount = 42,
-        ),
-        isTourActive = true,
+        tour = tour,
+        activeTour = tour,
+        tourDisplayRequest = 0,
         routePoints = emptyList(),
         now = System.currentTimeMillis(),
         tourActivityUsage = emptyList(),
