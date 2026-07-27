@@ -141,7 +141,7 @@ internal fun shouldAcceptPoint(
 }
 
 class TourStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "spur.db", null, 2) {
+    SQLiteOpenHelper(context.applicationContext, "spur.db", null, 3) {
     private val gpsStartStabilizers = mutableMapOf<Long, GpsStartStabilizer>()
 
     override fun onCreate(db: SQLiteDatabase) {
