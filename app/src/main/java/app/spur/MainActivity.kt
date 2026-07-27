@@ -4359,8 +4359,10 @@ private fun PendingMomentMarker(
                         56f * scale,
                         12f * scale,
                     )
+                    lineTo(56f * scale, 42f * scale)
                     moveTo(26f * scale, 50f * scale)
                     lineTo(31f * scale, 57f * scale)
+                    lineTo(36f * scale, 50f * scale)
                 },
                 color = Color.White,
                 style = Stroke(
@@ -6079,9 +6081,17 @@ private fun createMomentMarkerBitmap(
                 else -> null
             }
             if (preview != null) {
-                val photoContent = android.graphics.RectF(content).apply {
-                    inset(2 * scale, 2 * scale)
-                }
+                val photoSide = (40 * scale).roundToInt().toFloat()
+                val photoContentLeft =
+                    (flag.centerX() - photoSide / 2f).roundToInt().toFloat()
+                val photoContentTop =
+                    (flag.centerY() - photoSide / 2f).roundToInt().toFloat()
+                val photoContent = android.graphics.RectF(
+                    photoContentLeft,
+                    photoContentTop,
+                    photoContentLeft + photoSide,
+                    photoContentTop + photoSide,
+                )
                 drawMarkerPhoto(canvas, paint, photoContent, preview, scale)
                 preview.recycle()
                 if (moment.type == MomentType.VIDEO) {
@@ -6146,11 +6156,23 @@ private fun createMomentMarkerEdgeBitmap(
                 android.graphics.PorterDuff.Mode.SRC_IN,
             )
         }
-        canvas.drawBitmap(marker, 0f, 0f, whitePaint)
         val erasePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_OUT)
         }
-        canvas.drawBitmap(marker, edgeWidth, edgeWidth, erasePaint)
+        fun drawInsetEdge(horizontalOffset: Float) {
+            val layer = canvas.saveLayer(
+                0f,
+                0f,
+                edge.width.toFloat(),
+                edge.height.toFloat(),
+                null,
+            )
+            canvas.drawBitmap(marker, 0f, 0f, whitePaint)
+            canvas.drawBitmap(marker, horizontalOffset, edgeWidth, erasePaint)
+            canvas.restoreToCount(layer)
+        }
+        drawInsetEdge(edgeWidth)
+        drawInsetEdge(-edgeWidth)
     }
 
 private fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
