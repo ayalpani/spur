@@ -1203,9 +1203,7 @@ private fun MapPage(
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
     )
-    val sideControlsBottomPadding = MapControlVerticalPadding +
-        MapControlSize +
-        MapControlGap +
+    val mapActionsBottomPadding = MapControlVerticalPadding +
         if (usesStackedMapPlayer) MapControlSize + MapControlGap else 0.dp
     val scope = rememberCoroutineScope()
     var followRequest by rememberSaveable { mutableStateOf(0) }
@@ -1607,60 +1605,14 @@ private fun MapPage(
 
             AnimatedVisibility(
                 visible = isMapReady,
-                modifier = Modifier.align(Alignment.TopCenter),
+                modifier = Modifier.align(Alignment.TopEnd),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
             ) {
-                Row(
+                Box(
                     modifier = Modifier
                         .statusBarsPadding()
-                        .padding(horizontal = 18.dp, vertical = 14.dp)
-                        .fillMaxWidth()
-                        .widthIn(max = 560.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    MapIconButton(
-                        contentDescription = "Hauptmenü öffnen",
-                        onClick = { showMainMenu = true },
-                    ) {
-                        MenuIcon()
-                    }
-                    Spacer(modifier = Modifier.weight(1f))
-                    if (isTourActive) {
-                        MapIconButton(
-                            contentDescription = "Tour teilen",
-                            onClick = { shareActiveTour(context) },
-                        ) {
-                            ShareIcon()
-                        }
-                        Spacer(modifier = Modifier.width(MapControlGap))
-                    }
-                    MapIconButton(
-                        contentDescription = "Tour-History öffnen",
-                        onClick = {
-                            activeVoiceMoment = null
-                            onOpenHistory()
-                        },
-                    ) {
-                        HistoryIcon()
-                    }
-                }
-            }
-
-            AnimatedVisibility(
-                visible = isMapReady,
-                modifier = Modifier.align(Alignment.BottomStart),
-                enter = fadeIn(tween(MotionDurationDefaultMillis)),
-                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .navigationBarsPadding()
-                        .padding(
-                            start = MapControlHorizontalPadding,
-                            bottom = sideControlsBottomPadding,
-                        ),
-                    verticalArrangement = Arrangement.spacedBy(MapControlGap),
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
                 ) {
                     MapStyleButton(
                         contentDescription = if (isSatelliteView) {
@@ -1682,6 +1634,54 @@ private fun MapPage(
                             R.drawable.map_preview_satellite
                         },
                     )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isMapReady,
+                modifier = Modifier.align(Alignment.BottomEnd),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(
+                            end = MapControlHorizontalPadding,
+                            bottom = mapActionsBottomPadding,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(MapControlGap),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    if (isTourActive) {
+                        MapIconButton(
+                            contentDescription = "Tour teilen",
+                            onClick = { shareActiveTour(context) },
+                        ) {
+                            ShareIcon()
+                        }
+                    }
+                    MapIconButton(
+                        contentDescription = "Hauptmenü öffnen",
+                        onClick = { showMainMenu = true },
+                    ) {
+                        MenuIcon()
+                    }
+                    MapIconButton(
+                        contentDescription = "Tour-History öffnen",
+                        onClick = {
+                            activeVoiceMoment = null
+                            onOpenHistory()
+                        },
+                    ) {
+                        HistoryIcon()
+                    }
+                    MapIconButton(
+                        contentDescription = "Moment hinzufügen",
+                        onClick = { showMomentSheet = true },
+                    ) {
+                        PlusIcon()
+                    }
                     if (manualLocation != null) {
                         MapIconButton(
                             contentDescription = "Simulierten Standort zurücksetzen",
@@ -1693,6 +1693,33 @@ private fun MapPage(
                             LucideLocateOffIcon()
                         }
                     }
+                    MapIconButton(
+                        contentDescription = when {
+                            isTourOverview -> "Zur Standortverfolgung zurückkehren"
+                            isFollowingLocation -> "Gesamte Tour anzeigen"
+                            else -> "Eigenem Standort folgen"
+                        },
+                        onClick = {
+                            if (
+                                shouldShowTourOverview(
+                                    isFollowingLocation = isFollowingLocation,
+                                    isTourActive = isTourActive,
+                                    routePointCount = routePoints.size,
+                                )
+                            ) {
+                                isFollowingLocation = false
+                                isTourOverview = true
+                                tourOverviewRequest++
+                            } else {
+                                followOwnLocation()
+                            }
+                        },
+                    ) {
+                        FollowLocationIcon(
+                            selected = isFollowingLocation,
+                            pulseGeneration = activeLocationPulseGeneration,
+                        )
+                    }
                 }
             }
 
@@ -1702,14 +1729,6 @@ private fun MapPage(
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
             ) {
-                val momentControl: @Composable () -> Unit = {
-                    MapIconButton(
-                        contentDescription = "Moment hinzufügen",
-                        onClick = { showMomentSheet = true },
-                    ) {
-                        PlusIcon()
-                    }
-                }
                 val playerControl: @Composable (Modifier) -> Unit = { modifier ->
                     if (activeTour != null) {
                         TourPlayer(
@@ -1747,35 +1766,6 @@ private fun MapPage(
                         }
                     }
                 }
-                val followControl: @Composable () -> Unit = {
-                    MapIconButton(
-                        contentDescription = when {
-                            isTourOverview -> "Zur Standortverfolgung zurückkehren"
-                            isFollowingLocation -> "Gesamte Tour anzeigen"
-                            else -> "Eigenem Standort folgen"
-                        },
-                        onClick = {
-                            if (
-                                shouldShowTourOverview(
-                                    isFollowingLocation = isFollowingLocation,
-                                    isTourActive = isTourActive,
-                                    routePointCount = routePoints.size,
-                                )
-                            ) {
-                                isFollowingLocation = false
-                                isTourOverview = true
-                                tourOverviewRequest++
-                            } else {
-                                followOwnLocation()
-                            }
-                        },
-                    ) {
-                        FollowLocationIcon(
-                            selected = isFollowingLocation,
-                            pulseGeneration = activeLocationPulseGeneration,
-                        )
-                    }
-                }
 
                 Column(
                     modifier = Modifier
@@ -1789,13 +1779,6 @@ private fun MapPage(
                     verticalArrangement = Arrangement.spacedBy(MapControlGap),
                 ) {
                     if (usesStackedMapPlayer) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            momentControl()
-                            followControl()
-                        }
                         playerControl(Modifier.fillMaxWidth())
                     } else {
                         Row(
@@ -1803,9 +1786,8 @@ private fun MapPage(
                             horizontalArrangement = Arrangement.spacedBy(MapControlGap),
                             verticalAlignment = Alignment.Bottom,
                         ) {
-                            momentControl()
                             playerControl(Modifier.weight(1f))
-                            followControl()
+                            Spacer(modifier = Modifier.size(MapControlSize))
                         }
                     }
                 }
