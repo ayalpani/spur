@@ -34,6 +34,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -61,6 +62,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -305,6 +307,7 @@ private fun SpurApp() {
                         )
                     } else {
                         MapScreen(
+                            store = store,
                             tour = displayedTour,
                             isTourActive = activeTour != null,
                             routePoints = routePoints,
@@ -360,6 +363,28 @@ private fun SpurApp() {
                                 }
                             },
                             onOpenHistory = { showHistory = true },
+                            onDeleteTour = {
+                                val id = displayedTour?.id ?: return@MapScreen
+                                scope.launch {
+                                    if (activeTour?.id == id) {
+                                        context.startService(
+                                            Intent(context, TrackingService::class.java)
+                                                .setAction(TrackingService.ACTION_STOP),
+                                        )
+                                    }
+                                    val deletedMoments = withContext(Dispatchers.IO) {
+                                        store.deleteTour(id)
+                                    }
+                                    deletedMoments
+                                        .filter { it.type != MomentType.EMOJI }
+                                        .forEach { File(it.payload).delete() }
+                                    activeTour = null
+                                    displayedTour = null
+                                    displayedTourId = null
+                                    routePoints = emptyList()
+                                    historyRevision++
+                                }
+                            },
                         )
                     }
                 }
@@ -436,6 +461,7 @@ private fun LocationOnboarding(
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 private fun MapScreen(
+    store: TourStore,
     tour: Tour?,
     isTourActive: Boolean,
     routePoints: List<TrackPoint>,
@@ -444,6 +470,7 @@ private fun MapScreen(
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
+    onDeleteTour: () -> Unit,
 ) {
     val context = LocalContext.current
     val drawerState = androidx.compose.material3.rememberDrawerState(DrawerValue.Closed)
@@ -454,24 +481,36 @@ private fun MapScreen(
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
     var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
     var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
-    var showMomentSheet by rememberSaveable { mutableStateOf(false) }
-    var showCamera by rememberSaveable { mutableStateOf(false) }
+    var momentTarget by remember { mutableStateOf<MomentPlacementTarget?>(null) }
+    var showEditor by rememberSaveable { mutableStateOf(false) }
     var pendingPhoto by remember { mutableStateOf<File?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
-    var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
+    var mapMoments by remember { mutableStateOf(emptyList<MapMoment>()) }
     var manualLocation by remember { mutableStateOf(context.loadManualLocation()) }
-    val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
-            showCamera = true
-        } else {
-            Toast.makeText(
-                context,
-                "Für Fotos braucht Spur Zugriff auf die Kamera.",
-                Toast.LENGTH_LONG,
-            ).show()
+    LaunchedEffect(tour?.id) {
+        val storedMoments = withContext(Dispatchers.IO) {
+            val legacyMoments = context.loadMapMoments()
+            val tours = store.tours()
+            val pointsByTour = tours.associate { storedTour ->
+                storedTour.id to store.points(storedTour.id)
+            }
+            legacyMoments.forEach { legacy ->
+                runCatching {
+                    store.addMoment(associateLegacyMoment(legacy, tours, pointsByTour))
+                }
+            }
+            store.moments()
+        }
+        if (context.loadMapMoments().isNotEmpty()) context.saveMapMoments(emptyList())
+        mapMoments = storedMoments
+    }
+
+    fun deleteStoredMoment(moment: MapMoment) {
+        scope.launch {
+            withContext(Dispatchers.IO) { store.deleteMoment(moment.id) }
+            if (moment.type != MomentType.EMOJI) File(moment.payload).delete()
+            mapMoments = mapMoments.filterNot { it.id == moment.id }
+            if (photoDetail?.id == moment.id) photoDetail = null
         }
     }
 
@@ -524,9 +563,15 @@ private fun MapScreen(
                     isAlternateMapPreviewLoading = it
                 },
                 onMomentPlaced = { moment ->
-                    val updatedMoments = mapMoments + moment
-                    context.saveMapMoments(updatedMoments)
-                    mapMoments = updatedMoments
+                    val anchor = routePoints.lastOrNull().takeIf { isTourActive }
+                    val stored = moment.copy(
+                        tourId = tour?.id.takeIf { isTourActive },
+                        trackPointId = anchor?.id,
+                    )
+                    scope.launch {
+                        withContext(Dispatchers.IO) { store.addMoment(stored) }
+                        mapMoments = mapMoments + stored
+                    }
                     pendingPhoto = null
                     Toast.makeText(context, "Foto auf der Karte abgelegt.", Toast.LENGTH_SHORT)
                         .show()
@@ -577,6 +622,15 @@ private fun MapScreen(
                         onClick = { shareActiveTour(context) },
                     ) {
                         ShareIcon()
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
+                if (tour != null) {
+                    MapIconButton(
+                        contentDescription = "Tour bearbeiten",
+                        onClick = { showEditor = true },
+                    ) {
+                        EditIcon()
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                 }
@@ -643,7 +697,9 @@ private fun MapScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(
-                    onClick = { showMomentSheet = true },
+                    onClick = {
+                        momentTarget = MomentPlacementTarget.CurrentLocation
+                    },
                     modifier = Modifier.size(60.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(
                         containerColor = Color.White,
@@ -695,85 +751,83 @@ private fun MapScreen(
         }
     }
 
-    if (showMomentSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showMomentSheet = false },
-            sheetState = momentSheetState,
-        ) {
-            Column(
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(
-                    text = "Auf der Karte ablegen",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
+    if (showEditor && tour != null) {
+        TourEditorDialog(
+            tour = tour,
+            points = routePoints,
+            moments = mapMoments.filter { it.tourId == tour.id },
+            onDismiss = { showEditor = false },
+            onAddMoment = { target ->
+                momentTarget = target
+            },
+            onDeleteMoment = { moment ->
+                deleteStoredMoment(moment)
+            },
+            onDeleteTour = {
+                showEditor = false
+                onDeleteTour()
+            },
+            onOpenMoment = { moment ->
+                if (moment.type == MomentType.PHOTO) photoDetail = moment
+            },
+            mapContent = { modifier, focus, _ ->
+                MapSurface(
+                    modifier = modifier,
+                    recenterRequest = 0,
+                    recenterNorth = false,
+                    isSatelliteView = isSatelliteView,
+                    manualLocation = manualLocation,
+                    mapMoments = mapMoments.filter { it.tourId == tour.id },
+                    routePoints = routePoints,
+                    focusCoordinate = focus,
+                    alternatePreviewEnabled = false,
+                    manualLocationEditingEnabled = false,
+                    photoToPlace = null,
+                    onAlternateMapPreviewChanged = {},
+                    onAlternateMapPreviewLoadingChanged = {},
+                    onMomentPlaced = {},
+                    onPhotoPlacementFailed = {},
+                    onMomentClick = { moment ->
+                        if (moment.type == MomentType.PHOTO) photoDetail = moment
+                    },
+                    onManualLocationChanged = {},
                 )
-                Text(
-                    text = "Was möchtest du an dieser Stelle festhalten?",
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                MomentOption(label = "Sprachnachricht") {
-                    Toast.makeText(
-                        context,
-                        "Sprachaufnahme kommt als Nächstes.",
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-                MomentOption(label = "Emoji") {
-                    Toast.makeText(context, "Emojimarker kommt als Nächstes.", Toast.LENGTH_SHORT)
-                        .show()
-                }
-                MomentOption(label = "Video") {
-                    Toast.makeText(context, "Videomarker kommt als Nächstes.", Toast.LENGTH_SHORT)
-                        .show()
-                }
-                MomentOption(label = "Foto") {
-                    showMomentSheet = false
-                    if (context.hasCameraPermission()) {
-                        showCamera = true
-                    } else {
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                    }
-                }
-            }
-        }
-    }
-
-    if (showCamera) {
-        CameraScreen(
-            onClose = { showCamera = false },
-            onPhotoAccepted = { photo ->
-                showCamera = false
-                pendingPhoto = photo
             },
         )
     }
+
+    MomentComposer(
+        target = momentTarget,
+        onDismiss = { momentTarget = null },
+        onPhotoAccepted = { target, photo ->
+                when (target) {
+                    is MomentPlacementTarget.Waypoint -> {
+                        val moment = MapMoment(
+                            id = photo.nameWithoutExtension,
+                            type = MomentType.PHOTO,
+                            latitude = target.coordinate.latitude,
+                            longitude = target.coordinate.longitude,
+                            payload = photo.absolutePath,
+                            tourId = target.tourId,
+                            trackPointId = target.trackPointId,
+                        )
+                        scope.launch {
+                            withContext(Dispatchers.IO) { store.addMoment(moment) }
+                            mapMoments = mapMoments + moment
+                        }
+                    }
+                    MomentPlacementTarget.CurrentLocation -> pendingPhoto = photo
+                }
+                momentTarget = null
+        },
+    )
 
     photoDetail?.let { moment ->
         PhotoDetailDialog(
             photoPath = moment.payload,
             onDismiss = { photoDetail = null },
+            onDelete = { deleteStoredMoment(moment) },
         )
-    }
-}
-
-@Composable
-private fun MomentOption(
-    label: String,
-    onClick: () -> Unit,
-) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        shape = CircleShape,
-    ) {
-        Text(label, style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -888,12 +942,16 @@ private fun MapPreviewLoadingOverlay() {
 
 @Composable
 private fun MapSurface(
+    modifier: Modifier = Modifier,
     recenterRequest: Int,
     recenterNorth: Boolean,
     isSatelliteView: Boolean,
     manualLocation: SpurCoordinate?,
     mapMoments: List<MapMoment>,
     routePoints: List<TrackPoint>,
+    focusCoordinate: SpurCoordinate? = null,
+    alternatePreviewEnabled: Boolean = true,
+    manualLocationEditingEnabled: Boolean = true,
     photoToPlace: File?,
     onAlternateMapPreviewChanged: (ImageBitmap) -> Unit,
     onAlternateMapPreviewLoadingChanged: (Boolean) -> Unit,
@@ -916,11 +974,13 @@ private fun MapSurface(
     val currentMapMoments by rememberUpdatedState(mapMoments)
     val currentRoutePoints by rememberUpdatedState(routePoints)
     val currentManualLocation by rememberUpdatedState(manualLocation)
+    val currentFocusCoordinate by rememberUpdatedState(focusCoordinate)
     val currentRecenterRequest by rememberUpdatedState(recenterRequest)
     var markerPositions by remember {
         mutableStateOf<Map<String, android.graphics.PointF>>(emptyMap())
     }
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
+    var focusPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
     }
@@ -951,9 +1011,9 @@ private fun MapSurface(
         }
     }
 
-    DisposableEffect(previewCameraPosition, isSatelliteView) {
+    DisposableEffect(previewCameraPosition, isSatelliteView, alternatePreviewEnabled) {
         val cameraPosition = previewCameraPosition
-        if (cameraPosition == null) {
+        if (cameraPosition == null || !alternatePreviewEnabled) {
             onDispose {}
         } else {
             var disposed = false
@@ -1032,7 +1092,7 @@ private fun MapSurface(
         }
     }
 
-    DisposableEffect(mapView) {
+    DisposableEffect(mapView, alternatePreviewEnabled, manualLocationEditingEnabled) {
         var map: MapLibreMap? = null
 
         fun publishMarkerPositions() {
@@ -1047,13 +1107,18 @@ private fun MapSurface(
                     LatLng(location.latitude, location.longitude),
                 )
             }
+            focusPosition = currentFocusCoordinate?.let { coordinate ->
+                readyMap.projection.toScreenLocation(
+                    LatLng(coordinate.latitude, coordinate.longitude),
+                )
+            }
         }
 
         val moveListener = MapLibreMap.OnCameraMoveListener {
             publishMarkerPositions()
         }
         val moveStartedListener = MapLibreMap.OnCameraMoveStartedListener {
-            currentOnAlternateMapPreviewLoadingChanged(true)
+            if (alternatePreviewEnabled) currentOnAlternateMapPreviewLoadingChanged(true)
         }
         val idleListener = MapLibreMap.OnCameraIdleListener {
             publishMarkerPositions()
@@ -1074,14 +1139,18 @@ private fun MapSurface(
             readyMap.addOnCameraMoveStartedListener(moveStartedListener)
             readyMap.addOnCameraMoveListener(moveListener)
             readyMap.addOnCameraIdleListener(idleListener)
-            readyMap.addOnMapLongClickListener(longClickListener)
+            if (manualLocationEditingEnabled) {
+                readyMap.addOnMapLongClickListener(longClickListener)
+            }
             publishMarkerPositions()
         }
         onDispose {
             map?.removeOnCameraMoveStartedListener(moveStartedListener)
             map?.removeOnCameraMoveListener(moveListener)
             map?.removeOnCameraIdleListener(idleListener)
-            map?.removeOnMapLongClickListener(longClickListener)
+            if (manualLocationEditingEnabled) {
+                map?.removeOnMapLongClickListener(longClickListener)
+            }
         }
     }
 
@@ -1110,6 +1179,21 @@ private fun MapSurface(
                         .build(),
                 ),
                 if (resetNorth) 300 else 500,
+            )
+        }
+    }
+
+    LaunchedEffect(focusCoordinate) {
+        val focus = focusCoordinate ?: return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            val current = map.cameraPosition
+            map.animateCamera(
+                CameraUpdateFactory.newCameraPosition(
+                    org.maplibre.android.camera.CameraPosition.Builder(current)
+                        .target(LatLng(focus.latitude, focus.longitude))
+                        .build(),
+                ),
+                SpurMotion.MapFocusDurationMillis,
             )
         }
     }
@@ -1167,7 +1251,7 @@ private fun MapSurface(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier) {
         AndroidView(
             factory = { mapView },
             modifier = Modifier
@@ -1187,6 +1271,23 @@ private fun MapSurface(
                         y = position.y.roundToInt() - manualPuckSizePx / 2,
                     )
                 },
+            )
+        }
+        focusPosition?.let { position ->
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = position.x.roundToInt() - with(density) { 13.dp.roundToPx() },
+                            y = position.y.roundToInt() - with(density) { 13.dp.roundToPx() },
+                        )
+                    }
+                    .size(26.dp)
+                    .background(Color.White, CircleShape)
+                    .border(2.dp, Moss, CircleShape)
+                    .padding(6.dp)
+                    .background(Moss, CircleShape)
+                    .zIndex(Float.MAX_VALUE),
             )
         }
         mapMoments.forEach { moment ->
@@ -1238,9 +1339,11 @@ private fun SimulatedLocationPuck(modifier: Modifier = Modifier) {
 private fun PhotoDetailDialog(
     photoPath: String,
     onDismiss: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     val context = LocalContext.current
     val photo = remember(photoPath) { decodePhotoDetail(context, photoPath) }
+    var confirmDelete by remember { mutableStateOf(false) }
     DisposableEffect(photo) {
         onDispose { photo?.recycle() }
     }
@@ -1282,7 +1385,41 @@ private fun PhotoDetailDialog(
                     contentDescription = "Foto schließen",
                 )
             }
+            IconButton(
+                onClick = { confirmDelete = true },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(16.dp)
+                    .size(56.dp),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = Color.White,
+                    contentColor = Ink,
+                ),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Delete,
+                    contentDescription = "Foto löschen",
+                )
+            }
         }
+    }
+    if (confirmDelete) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Foto löschen?") },
+            text = { Text("Das Foto wird dauerhaft vom Gerät entfernt.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = onDelete) {
+                    Text("Löschen")
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmDelete = false }) {
+                    Text("Abbrechen")
+                }
+            },
+        )
     }
 }
 
@@ -1400,7 +1537,7 @@ private fun enableLocationTracking(
 private fun Context.hasLocationPermission(): Boolean =
     checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-private fun Context.hasCameraPermission(): Boolean =
+internal fun Context.hasCameraPermission(): Boolean =
     checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
 private fun Location.toSpurCoordinate() =
@@ -2028,6 +2165,14 @@ private fun PlusIcon() = LucideIcon(
 )
 
 @Composable
+private fun EditIcon() = LucideIcon(
+    paths = listOf(
+        "M12 20h9",
+        "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z",
+    ),
+)
+
+@Composable
 private fun RecenterIcon() = LucideIcon(
     paths = listOf(
         "M2 12h3",
@@ -2104,6 +2249,7 @@ private fun BackIcon() {
 @Composable
 private fun MapScreenPreview() {
     MapScreen(
+        store = TourStore(LocalContext.current),
         tour = null,
         isTourActive = false,
         routePoints = emptyList(),
@@ -2112,6 +2258,7 @@ private fun MapScreenPreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
+        onDeleteTour = {},
     )
 }
 
@@ -2119,6 +2266,7 @@ private fun MapScreenPreview() {
 @Composable
 private fun ActiveTourScreenPreview() {
     MapScreen(
+        store = TourStore(LocalContext.current),
         tour = Tour(
             id = 1,
             startedAt = System.currentTimeMillis() - 754_000,
@@ -2133,6 +2281,7 @@ private fun ActiveTourScreenPreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
+        onDeleteTour = {},
     )
 }
 

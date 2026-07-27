@@ -15,6 +15,7 @@ data class Tour(
 )
 
 data class TrackPoint(
+    val id: Long,
     val latitude: Double,
     val longitude: Double,
     val recordedAt: Long,
@@ -35,7 +36,11 @@ internal fun shouldAcceptPoint(
 }
 
 class TourStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "spur.db", null, 1) {
+    SQLiteOpenHelper(context.applicationContext, "spur.db", null, 2) {
+
+    override fun onConfigure(db: SQLiteDatabase) {
+        db.setForeignKeyConstraintsEnabled(true)
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -61,9 +66,30 @@ class TourStore(context: Context) :
             """.trimIndent(),
         )
         db.execSQL("CREATE INDEX track_points_tour_id ON track_points(tour_id, id)")
+        createMomentsTable(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) createMomentsTable(db)
+    }
+
+    private fun createMomentsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS moments (
+                id TEXT PRIMARY KEY,
+                tour_id INTEGER REFERENCES tours(id) ON DELETE CASCADE,
+                track_point_id INTEGER REFERENCES track_points(id) ON DELETE CASCADE,
+                type TEXT NOT NULL,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
+                payload TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS moments_tour_id ON moments(tour_id, created_at)")
+    }
 
     @Synchronized
     fun startTour(now: Long = System.currentTimeMillis()): Long {
@@ -188,7 +214,7 @@ class TourStore(context: Context) :
     fun points(tourId: Long): List<TrackPoint> =
         readableDatabase.rawQuery(
             """
-            SELECT latitude, longitude, recorded_at
+            SELECT id, latitude, longitude, recorded_at
             FROM track_points
             WHERE tour_id = ?
             ORDER BY id
@@ -199,14 +225,81 @@ class TourStore(context: Context) :
                 while (cursor.moveToNext()) {
                     add(
                         TrackPoint(
-                            latitude = cursor.getDouble(0),
-                            longitude = cursor.getDouble(1),
-                            recordedAt = cursor.getLong(2),
+                            id = cursor.getLong(0),
+                            latitude = cursor.getDouble(1),
+                            longitude = cursor.getDouble(2),
+                            recordedAt = cursor.getLong(3),
                         ),
                     )
                 }
             }
         }
+
+    @Synchronized
+    internal fun moments(tourId: Long? = null): List<MapMoment> {
+        val where = if (tourId == null) "" else "WHERE tour_id = ?"
+        val args = if (tourId == null) emptyArray() else arrayOf(tourId.toString())
+        return readableDatabase.rawQuery(
+            """
+            SELECT id, type, latitude, longitude, payload, tour_id, track_point_id, created_at
+            FROM moments
+            $where
+            ORDER BY created_at
+            """.trimIndent(),
+            args,
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    val type = runCatching { MomentType.valueOf(cursor.getString(1)) }.getOrNull()
+                        ?: continue
+                    add(
+                        MapMoment(
+                            id = cursor.getString(0),
+                            type = type,
+                            latitude = cursor.getDouble(2),
+                            longitude = cursor.getDouble(3),
+                            payload = cursor.getString(4),
+                            tourId = if (cursor.isNull(5)) null else cursor.getLong(5),
+                            trackPointId = if (cursor.isNull(6)) null else cursor.getLong(6),
+                            createdAt = cursor.getLong(7),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    @Synchronized
+    internal fun addMoment(moment: MapMoment) {
+        writableDatabase.insertOrThrow(
+            "moments",
+            null,
+            ContentValues().apply {
+                put("id", moment.id)
+                put("type", moment.type.name)
+                put("latitude", moment.latitude)
+                put("longitude", moment.longitude)
+                put("payload", moment.payload)
+                put("created_at", moment.createdAt)
+                moment.tourId?.let { put("tour_id", it) }
+                moment.trackPointId?.let { put("track_point_id", it) }
+            },
+        )
+    }
+
+    @Synchronized
+    internal fun deleteMoment(id: String): MapMoment? {
+        val moment = moments().firstOrNull { it.id == id } ?: return null
+        writableDatabase.delete("moments", "id = ?", arrayOf(id))
+        return moment
+    }
+
+    @Synchronized
+    internal fun deleteTour(id: Long): List<MapMoment> {
+        val deletedMoments = moments(id)
+        writableDatabase.delete("tours", "id = ?", arrayOf(id.toString()))
+        return deletedMoments
+    }
 
     private fun queryTours(
         where: String? = null,
