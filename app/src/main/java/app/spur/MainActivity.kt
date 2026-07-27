@@ -5611,7 +5611,7 @@ private fun Style.showMapMoments(prepared: PreparedMapMoments) {
                     textColor(android.graphics.Color.WHITE),
                     textHaloColor(Ink.toArgb()),
                     textHaloWidth(5f),
-                    textOffset(arrayOf(1.45f, -3.8f)),
+                    textOffset(arrayOf(1.15f, -3.5f)),
                     textAnchor(Property.TEXT_ANCHOR_CENTER),
                     textAllowOverlap(true),
                     textIgnorePlacement(true),
