@@ -6216,10 +6216,7 @@ private fun createMomentMarkerBitmap(
                 paint.color = momentMarkerContentColor(moment.type).toArgb()
                 paint.style = android.graphics.Paint.Style.STROKE
                 paint.strokeWidth = 2 * scale
-                canvas.save()
-                canvas.translate(5 * scale, 5 * scale)
-                drawMomentGlyph(canvas, paint, scale, moment.type)
-                canvas.restore()
+                drawMomentGlyph(canvas, paint, content, scale, moment.type)
             }
 
             val edge = createMomentMarkerEdgeBitmap(
@@ -6357,6 +6354,7 @@ private fun drawVideoPlayOverlay(
 private fun drawMomentGlyph(
     canvas: android.graphics.Canvas,
     paint: android.graphics.Paint,
+    destination: android.graphics.RectF,
     scale: Float,
     type: MomentType,
 ) {
@@ -6371,9 +6369,13 @@ private fun drawMomentGlyph(
     paint.strokeWidth = 2f
     paint.strokeCap = android.graphics.Paint.Cap.ROUND
     paint.strokeJoin = android.graphics.Paint.Join.ROUND
+    val glyphScale = 1.17f * scale
     canvas.save()
-    canvas.translate(12 * scale, 12 * scale)
-    canvas.scale(1.17f * scale, 1.17f * scale)
+    canvas.translate(
+        destination.centerX() - 12f * glyphScale,
+        destination.centerY() - 12f * glyphScale,
+    )
+    canvas.scale(glyphScale, glyphScale)
     paths.forEach { pathData ->
         androidx.core.graphics.PathParser.createPathFromPathData(pathData)?.let {
             canvas.drawPath(it, paint)
