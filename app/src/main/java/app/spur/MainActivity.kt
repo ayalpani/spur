@@ -225,6 +225,8 @@ import org.maplibre.android.style.layers.PropertyFactory.circleColor
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
+import org.maplibre.android.style.layers.PropertyFactory.circleTranslate
+import org.maplibre.android.style.layers.PropertyFactory.circleTranslateAnchor
 import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
 import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
@@ -242,11 +244,10 @@ import org.maplibre.android.style.layers.PropertyFactory.textAnchor
 import org.maplibre.android.style.layers.PropertyFactory.textColor
 import org.maplibre.android.style.layers.PropertyFactory.textField
 import org.maplibre.android.style.layers.PropertyFactory.textFont
-import org.maplibre.android.style.layers.PropertyFactory.textHaloColor
-import org.maplibre.android.style.layers.PropertyFactory.textHaloWidth
 import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
-import org.maplibre.android.style.layers.PropertyFactory.textOffset
 import org.maplibre.android.style.layers.PropertyFactory.textSize
+import org.maplibre.android.style.layers.PropertyFactory.textTranslate
+import org.maplibre.android.style.layers.PropertyFactory.textTranslateAnchor
 import org.maplibre.android.style.layers.PropertyFactory.visibility
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonOptions
@@ -665,7 +666,11 @@ private const val SelectedTrackPointLayer = "selected-track-point-layer"
 private const val MapMomentSource = "map-moment-source"
 private const val MapMomentLayer = "map-moment-layer"
 private const val MapMomentClusterLayer = "map-moment-cluster-layer"
+private const val MapMomentClusterCountBadgeLayer = "map-moment-cluster-count-badge-layer"
 private const val MapMomentClusterCountLayer = "map-moment-cluster-count-layer"
+private const val MapMomentClusterCountBadgeRadius = 9f
+private const val MapMomentClusterCountPositionX = 15f
+private const val MapMomentClusterCountPositionY = -42f
 private const val MapPoiSourceLayer = "poi"
 private const val MapBuildingLayer = "building"
 private const val MapBuilding3dLayer = "building-3d"
@@ -1840,10 +1845,9 @@ private fun MapPage(
                         )
                         Text(
                             text = "Spur startet…",
-                            color = Ink,
+                            color = Ink.copy(alpha = textAlpha.value),
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
-                                .graphicsLayer { alpha = textAlpha.value }
                                 .offset(
                                     y = maxHeight / 2 +
                                         LoaderAsteriskSize / 2 +
@@ -5600,6 +5604,28 @@ private fun Style.showMapMoments(prepared: PreparedMapMoments) {
         clusterLayer.setProperties(iconImage(clusterImage))
     }
 
+    if (getLayer(MapMomentClusterCountBadgeLayer) == null) {
+        val countBadgeLayer =
+            CircleLayer(MapMomentClusterCountBadgeLayer, MapMomentSource)
+                .withFilter(Expression.has("point_count"))
+                .withProperties(
+                    circleRadius(MapMomentClusterCountBadgeRadius),
+                    circleColor(Ink.toArgb()),
+                    circleTranslate(
+                        arrayOf(
+                            MapMomentClusterCountPositionX,
+                            MapMomentClusterCountPositionY,
+                        ),
+                    ),
+                    circleTranslateAnchor(Property.CIRCLE_TRANSLATE_ANCHOR_VIEWPORT),
+                )
+        if (getLayer(MapMomentClusterCountLayer) == null) {
+            addLayer(countBadgeLayer)
+        } else {
+            addLayerBelow(countBadgeLayer, MapMomentClusterCountLayer)
+        }
+    }
+
     if (getLayer(MapMomentClusterCountLayer) == null) {
         addLayer(
             SymbolLayer(MapMomentClusterCountLayer, MapMomentSource)
@@ -5609,9 +5635,13 @@ private fun Style.showMapMoments(prepared: PreparedMapMoments) {
                     textFont(arrayOf("Noto Sans Bold")),
                     textSize(13f),
                     textColor(android.graphics.Color.WHITE),
-                    textHaloColor(Ink.toArgb()),
-                    textHaloWidth(5f),
-                    textOffset(arrayOf(1.15f, -3.5f)),
+                    textTranslate(
+                        arrayOf(
+                            MapMomentClusterCountPositionX,
+                            MapMomentClusterCountPositionY,
+                        ),
+                    ),
+                    textTranslateAnchor(Property.TEXT_TRANSLATE_ANCHOR_VIEWPORT),
                     textAnchor(Property.TEXT_ANCHOR_CENTER),
                     textAllowOverlap(true),
                     textIgnorePlacement(true),
