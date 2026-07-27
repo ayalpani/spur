@@ -36,7 +36,7 @@ internal fun shouldAcceptPoint(
 }
 
 class TourStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "spur.db", null, 2) {
+    SQLiteOpenHelper(context.applicationContext, "spur.db", null, 3) {
 
     override fun onConfigure(db: SQLiteDatabase) {
         db.setForeignKeyConstraintsEnabled(true)
@@ -70,7 +70,7 @@ class TourStore(context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion < 2) createMomentsTable(db)
+        if (oldVersion < 3) createMomentsTable(db)
     }
 
     private fun createMomentsTable(db: SQLiteDatabase) {
