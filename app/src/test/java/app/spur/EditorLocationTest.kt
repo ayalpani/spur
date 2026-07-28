@@ -37,6 +37,28 @@ class EditorLocationTest {
         )
     }
 
+    @Test
+    fun momentFromCollapsedPointMovesToNearestClusterPoint() {
+        val points = listOf(
+            point(1, 52.0, 1_000L),
+            point(3, 52.00020, 3_000L),
+        )
+        val moment = MapMoment(
+            id = "emoji",
+            type = MomentType.EMOJI,
+            latitude = 52.00018,
+            longitude = 13.0,
+            payload = "🙂",
+            tourId = 1,
+            trackPointId = 2,
+        )
+
+        assertEquals(
+            listOf(moment),
+            editorLocations(tour, points, listOf(moment)).last().moments,
+        )
+    }
+
     private fun point(id: Long, latitude: Double, recordedAt: Long) =
         TrackPoint(id, latitude, 13.0, recordedAt)
 }

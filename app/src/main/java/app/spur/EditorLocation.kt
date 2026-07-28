@@ -25,8 +25,9 @@ internal fun editorLocations(
             editorDistanceMeters(points[index - 1], points[index])
     }
 
+    val pointIds = points.mapTo(mutableSetOf(), TrackPoint::id)
     val momentsByPoint = moments.groupBy { moment ->
-        moment.trackPointId ?: closestPoint(points, moment)?.id
+        moment.trackPointId?.takeIf { it in pointIds } ?: closestPoint(points, moment)?.id
     }
     return points.mapIndexed { index, point ->
         EditorLocation(
