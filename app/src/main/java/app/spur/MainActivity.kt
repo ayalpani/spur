@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.PointF
+import android.graphics.RectF
 import android.location.Address
 import android.location.Geocoder
 import android.location.Location
@@ -237,6 +238,8 @@ import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.circleTranslate
 import org.maplibre.android.style.layers.PropertyFactory.circleTranslateAnchor
+import org.maplibre.android.style.layers.PropertyFactory.fillColor
+import org.maplibre.android.style.layers.PropertyFactory.fillOpacity
 import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
 import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
@@ -268,7 +271,9 @@ import org.maplibre.android.style.expressions.Expression
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
+import org.maplibre.geojson.MultiPolygon
 import org.maplibre.geojson.Point
+import org.maplibre.geojson.Polygon
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -1083,6 +1088,11 @@ private const val MapPoiSourceLayer = "poi"
 private const val MapBuildingLayer = "building"
 private const val MapBuilding3dLayer = "building-3d"
 private const val MapBuildingMaxZoom = 24f
+private const val HomeBuildingSource = "home-building-source"
+private const val HomeBuildingFillLayer = "home-building-fill-layer"
+private const val HomeBuildingOutlineLayer = "home-building-outline-layer"
+private const val HomeBuildingSelectionZoom = 18.5
+private const val HomeBuildingSelectionSearchRadiusDp = 64
 private const val MapMomentIdProperty = "moment-id"
 private const val MapMomentImageProperty = "moment-image"
 private const val MapMomentRepresentativeProperty = "moment-representative"
@@ -3292,6 +3302,7 @@ private fun HomeAutoStartBottomSheet(
     val lifecycleOwner = LocalLifecycleOwner.current
     var settings by remember { mutableStateOf(context.loadHomeAutoStartSettings()) }
     var setupRequested by rememberSaveable { mutableStateOf(false) }
+    var homeSearchOrigin by remember { mutableStateOf<SpurCoordinate?>(settings.home) }
     var candidateHome by remember { mutableStateOf<SpurCoordinate?>(null) }
     var locating by remember { mutableStateOf(false) }
     var needsBackgroundPermission by remember { mutableStateOf(false) }
@@ -3302,6 +3313,7 @@ private fun HomeAutoStartBottomSheet(
         settings = HomeAutoStartSettings(enabled = false, home = null)
         context.saveHomeAutoStartSettings(settings)
         setupRequested = false
+        homeSearchOrigin = null
         candidateHome = null
         needsBackgroundPermission = false
         message = null
@@ -3313,7 +3325,7 @@ private fun HomeAutoStartBottomSheet(
         context.registerHomeExitGeofence()
         setupRequested = false
         needsBackgroundPermission = false
-        message = "Automatischer Tourstart ist aktiv."
+        message = "Startautomatik ist aktiv."
     }
 
     val backgroundPermissionLauncher = rememberLauncherForActivityResult(
@@ -3378,7 +3390,7 @@ private fun HomeAutoStartBottomSheet(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         BottomSheetHeader(
-            title = "Automatischer Tourstart",
+            title = "Startautomatik",
             onBack = onBack,
         )
         Row(
@@ -3388,7 +3400,7 @@ private fun HomeAutoStartBottomSheet(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Automatischer Tourstart",
+                text = "Startautomatik",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium,
@@ -3403,9 +3415,11 @@ private fun HomeAutoStartBottomSheet(
                         locating = true
                         message = null
                         scope.launch {
-                            candidateHome = context.currentSpurLocation()
+                            val currentLocation = context.currentSpurLocation()
+                            homeSearchOrigin = currentLocation
+                            candidateHome = null
                             locating = false
-                            if (candidateHome == null) {
+                            if (currentLocation == null) {
                                 setupRequested = false
                                 message = "Dein aktueller Standort konnte nicht bestimmt werden."
                             }
@@ -3415,9 +3429,13 @@ private fun HomeAutoStartBottomSheet(
             )
         }
 
-        val shownHome = settings.home ?: candidateHome
-        shownHome?.let { home ->
-            HomeLocationPreview(home)
+        val shownHomeOrigin = settings.home ?: homeSearchOrigin
+        if (shownHomeOrigin != null) {
+            HomeBuildingSelector(
+                origin = shownHomeOrigin,
+                selectionEnabled = !settings.enabled,
+                onBuildingSelected = { candidateHome = it },
+            )
         }
 
         when {
@@ -3454,6 +3472,7 @@ private fun HomeAutoStartBottomSheet(
                 OutlinedButton(
                     onClick = {
                         setupRequested = false
+                        homeSearchOrigin = null
                         candidateHome = null
                         message = "Komm später wieder, wenn du zu Hause bist."
                     },
@@ -3465,6 +3484,7 @@ private fun HomeAutoStartBottomSheet(
                     Text("Nein")
                 }
             }
+            homeSearchOrigin != null -> Text("Passendes Gebäude wird gesucht.")
         }
 
         message?.let {
@@ -3478,59 +3498,198 @@ private fun HomeAutoStartBottomSheet(
 }
 
 @Composable
-private fun HomeLocationPreview(
-    home: SpurCoordinate,
+private fun HomeBuildingSelector(
+    origin: SpurCoordinate,
+    selectionEnabled: Boolean,
+    onBuildingSelected: (SpurCoordinate) -> Unit,
 ) {
     val context = LocalContext.current
-    val previewPixels = with(LocalDensity.current) { 180.dp.roundToPx() }
-    var preview by remember(home) { mutableStateOf<ImageBitmap?>(null) }
-
-    DisposableEffect(home, previewPixels) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val currentSelectionEnabled by rememberUpdatedState(selectionEnabled)
+    val currentOnBuildingSelected by rememberUpdatedState(onBuildingSelected)
+    val searchRadiusPixels = with(LocalDensity.current) {
+        HomeBuildingSelectionSearchRadiusDp.dp.toPx()
+    }
+    val mapView = remember(origin) {
         MapLibre.getInstance(context)
-        var disposed = false
-        val snapshotter = MapSnapshotter(
-            context,
-            MapSnapshotter.Options(previewPixels, previewPixels)
-                .withCameraPosition(
-                    org.maplibre.android.camera.CameraPosition.Builder()
-                        .target(LatLng(home.latitude, home.longitude))
-                        .zoom(PhotoMapPreviewZoom)
-                        .build(),
-                )
-                .withPixelRatio(1f)
-                .withLogo(false)
-                .withStyleBuilder(Style.Builder().fromUri(StreetMapStyle)),
-        )
-        snapshotter.start(
-            { snapshot ->
-                if (!disposed) preview = snapshot.bitmap.asImageBitmap()
-            },
-            { _ -> },
-        )
+        MapView(context).apply { onCreate(null) }
+    }
+
+    DisposableEffect(lifecycle, mapView) {
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStart()
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onResume()
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> mapView.onStart()
+                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_STOP -> mapView.onStop()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
         onDispose {
-            disposed = true
-            snapshotter.cancel()
+            lifecycle.removeObserver(observer)
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
+            mapView.onDestroy()
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(180.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(Mist),
-        contentAlignment = Alignment.Center,
-    ) {
-        preview?.let {
-            Image(
-                bitmap = it,
-                contentDescription = "Karte deines aktuellen Standorts",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+    DisposableEffect(mapView, origin, searchRadiusPixels) {
+        var map: MapLibreMap? = null
+        var selectedBuilding: Feature? = null
+
+        fun selectBuilding(feature: Feature) {
+            val readyMap = map ?: return
+            val home = homeCoordinate(feature) ?: return
+            selectedBuilding = feature
+            readyMap.style?.showSelectedHomeBuilding(feature)
+            currentOnBuildingSelected(home)
+        }
+
+        fun selectBuildingAt(screenPoint: PointF, searchNearby: Boolean): Boolean {
+            val readyMap = map ?: return false
+            val feature = readyMap.homeBuildingAt(
+                screenPoint = screenPoint,
+                searchRadiusPixels = if (searchNearby) searchRadiusPixels else 0f,
+            ) ?: return false
+            selectBuilding(feature)
+            return true
+        }
+
+        val clickListener = MapLibreMap.OnMapClickListener { point ->
+            if (!currentSelectionEnabled) return@OnMapClickListener false
+            val readyMap = map ?: return@OnMapClickListener false
+            selectBuildingAt(
+                screenPoint = readyMap.projection.toScreenLocation(point),
+                searchNearby = false,
             )
         }
-        HomeIcon(modifier = Modifier.size(32.dp))
+        val renderListener = MapView.OnDidFinishRenderingMapListener { fully ->
+            if (!fully || selectedBuilding != null) return@OnDidFinishRenderingMapListener
+            val readyMap = map ?: return@OnDidFinishRenderingMapListener
+            selectBuildingAt(
+                screenPoint = readyMap.projection.toScreenLocation(
+                    LatLng(origin.latitude, origin.longitude),
+                ),
+                searchNearby = true,
+            )
+        }
+        mapView.addOnDidFinishRenderingMapListener(renderListener)
+        mapView.getMapAsync { readyMap ->
+            map = readyMap
+            readyMap.uiSettings.apply {
+                isCompassEnabled = false
+                isLogoEnabled = false
+                isAttributionEnabled = false
+                isRotateGesturesEnabled = false
+                isTiltGesturesEnabled = false
+            }
+            readyMap.addOnMapClickListener(clickListener)
+            readyMap.moveCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    LatLng(origin.latitude, origin.longitude),
+                    HomeBuildingSelectionZoom,
+                ),
+            )
+            readyMap.setStyle(StreetMapStyle) { style ->
+                style.hideDistractingPoiLayers()
+                style.showOutlinedBuildings()
+                mapView.postInvalidate()
+            }
+        }
+
+        onDispose {
+            map?.removeOnMapClickListener(clickListener)
+            mapView.removeOnDidFinishRenderingMapListener(renderListener)
+        }
     }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        AndroidView(
+            factory = { mapView },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Mist)
+                .semantics {
+                    contentDescription = "Gebäudeauswahl für dein Zuhause"
+                },
+        )
+        if (selectionEnabled) {
+            Text(
+                text = "Gebäude antippen, um die Auswahl zu ändern.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+private fun MapLibreMap.homeBuildingAt(
+    screenPoint: PointF,
+    searchRadiusPixels: Float,
+): Feature? {
+    queryRenderedFeatures(screenPoint, MapBuildingLayer).firstOrNull()?.let { return it }
+    if (searchRadiusPixels <= 0f) return null
+    val nearby = queryRenderedFeatures(
+        RectF(
+            screenPoint.x - searchRadiusPixels,
+            screenPoint.y - searchRadiusPixels,
+            screenPoint.x + searchRadiusPixels,
+            screenPoint.y + searchRadiusPixels,
+        ),
+        MapBuildingLayer,
+    )
+    return nearby.minByOrNull { feature ->
+        val center = homeCoordinate(feature) ?: return@minByOrNull Float.MAX_VALUE
+        val renderedCenter = projection.toScreenLocation(
+            LatLng(center.latitude, center.longitude),
+        )
+        val dx = renderedCenter.x - screenPoint.x
+        val dy = renderedCenter.y - screenPoint.y
+        dx * dx + dy * dy
+    }
+}
+
+internal fun homeCoordinate(feature: Feature): SpurCoordinate? {
+    val points = when (val geometry = feature.geometry()) {
+        is Polygon -> geometry.coordinates().flatten()
+        is MultiPolygon -> geometry.coordinates().flatten().flatten()
+        else -> return null
+    }
+    if (points.isEmpty()) return null
+    return SpurCoordinate(
+        latitude = (points.minOf(Point::latitude) + points.maxOf(Point::latitude)) / 2,
+        longitude = (points.minOf(Point::longitude) + points.maxOf(Point::longitude)) / 2,
+    )
+}
+
+private fun Style.showSelectedHomeBuilding(feature: Feature) {
+    val source = getSourceAs<GeoJsonSource>(HomeBuildingSource)
+        ?: GeoJsonSource(HomeBuildingSource).also(::addSource)
+    if (getLayer(HomeBuildingFillLayer) == null) {
+        addLayerAbove(
+            FillLayer(HomeBuildingFillLayer, HomeBuildingSource).withProperties(
+                fillColor(Ink.toArgb()),
+                fillOpacity(0.18f),
+            ),
+            MapBuildingLayer,
+        )
+    }
+    if (getLayer(HomeBuildingOutlineLayer) == null) {
+        addLayerAbove(
+            LineLayer(HomeBuildingOutlineLayer, HomeBuildingSource).withProperties(
+                lineColor(Ink.toArgb()),
+                lineWidth(3f),
+                lineCap(Property.LINE_CAP_ROUND),
+                lineJoin(Property.LINE_JOIN_ROUND),
+            ),
+            HomeBuildingFillLayer,
+        )
+    }
+    source.setGeoJson(feature)
 }
 
 @Composable
@@ -3636,7 +3795,7 @@ private fun TourMenu(
             onBack = onBack,
         )
         SheetMenuItem(
-            label = "Automatischer Tourstart",
+            label = "Startautomatik",
             leading = { HomeIcon() },
             onClick = onOpenHomeAutoStart,
         )
