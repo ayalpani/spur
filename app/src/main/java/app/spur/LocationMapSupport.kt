@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
-import android.net.Uri
 import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.height
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.LocationComponentConstants
@@ -231,9 +229,6 @@ internal fun Context.createMomentFile(type: MomentType): File {
     val directory = File(filesDir, "moments/$directoryName").apply { mkdirs() }
     return File(directory, "${type.name.lowercase()}-${System.currentTimeMillis()}.$extension")
 }
-
-internal fun Context.momentContentUri(file: File): Uri =
-    FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
 
 private fun Location.toSpurCoordinate() =
     SpurCoordinate(latitude = latitude, longitude = longitude)

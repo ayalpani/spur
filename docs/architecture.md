@@ -57,7 +57,10 @@ service is destroyed.
 
 Audio recording and playback are Compose-owned resources. Disposal stops and
 releases the current `MediaRecorder`/`MediaPlayer`. CameraX remains isolated in
-`CameraScreen` and binds to the current lifecycle owner.
+`CameraScreen` and `VideoCameraScreen`; both bind to the current lifecycle
+owner. `VideoConfirmationScreen` owns preview playback. Video recordings are
+finalized before preview, deleted when discarded, and retained only after the
+user confirms them.
 
 ## Intended file boundaries
 

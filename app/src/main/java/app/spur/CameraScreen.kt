@@ -18,19 +18,18 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -53,7 +52,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.io.File
 
-private val CameraChrome = Color.Black.copy(alpha = 0.42f)
+internal val CameraChrome = Color.Black.copy(alpha = 0.42f)
 
 @Composable
 internal fun CameraScreen(
@@ -153,7 +152,8 @@ internal fun CameraScreen(
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
                     .padding(18.dp)
-                    .size(52.dp),
+                    .size(52.dp)
+                    .semantics { contentDescription = "Kamera schließen" },
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = CameraChrome,
                     contentColor = Color.White,
@@ -174,7 +174,8 @@ internal fun CameraScreen(
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
                     .padding(end = 26.dp, bottom = 25.dp)
-                    .size(58.dp),
+                    .size(58.dp)
+                    .semantics { contentDescription = "Kamera wechseln" },
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = CameraChrome,
                     contentColor = Color.White,
@@ -235,39 +236,26 @@ internal fun CameraScreen(
                 )
             }
 
-            Row(
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(SheetBackground)
                     .navigationBarsPadding()
                     .padding(horizontal = 18.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Button(
+                SpurSecondaryButton(
+                    label = "Verwerfen",
                     onClick = {
                         photo.delete()
                         capturedPhoto = null
                     },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 6.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black,
-                    ),
-                ) {
-                    Text("Verwerfen")
-                }
-                Button(
+                )
+                SpurPrimaryButton(
+                    label = "Bestätigen",
                     onClick = { onPhotoAccepted(photo) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 6.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black,
-                    ),
-                ) {
-                    Text("Verwenden")
-                }
+                )
             }
         }
     }
@@ -295,14 +283,14 @@ private fun decodePreviewBitmap(file: File): Bitmap? =
     }.getOrNull()
 
 @Composable
-private fun CloseCameraIcon() = LucideIcon(
+internal fun CloseCameraIcon() = LucideIcon(
     paths = listOf("M18 6 6 18", "m6 6 12 12"),
     modifier = Modifier.size(24.dp),
     strokeWidth = LucideBoldStrokeWidth,
 )
 
 @Composable
-private fun SwitchCameraIcon() = LucideIcon(
+internal fun SwitchCameraIcon() = LucideIcon(
     paths = listOf(
         "M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5",
         "M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5",

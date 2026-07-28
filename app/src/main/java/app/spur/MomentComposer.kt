@@ -21,7 +21,6 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -48,8 +47,8 @@ internal fun MomentComposer(
     var showPicker by remember(target) { mutableStateOf(target != null) }
     var showEmojiPicker by remember(target) { mutableStateOf(false) }
     var showCamera by remember(target) { mutableStateOf(false) }
+    var showVideoCamera by remember(target) { mutableStateOf(false) }
     var showVoiceRecorder by remember(target) { mutableStateOf(false) }
-    var pendingVideoCapturePath by rememberSaveable(target) { mutableStateOf<String?>(null) }
     var audioPermissionGranted by remember(target) {
         mutableStateOf(context.hasAudioRecordingPermission())
     }
@@ -73,45 +72,15 @@ internal fun MomentComposer(
             onDismiss()
         }
     }
-    val videoCaptureLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CaptureVideo(),
-    ) { saved ->
-        val video = pendingVideoCapturePath?.let(::File)
-        pendingVideoCapturePath = null
-        if (saved && video?.isFile == true && video.length() > 0L) {
-            scope.launch {
-                withContext(Dispatchers.IO) { ensureVideoThumbnail(video) }
-                accept(PendingMapMoment(MomentType.VIDEO, video))
-            }
-        } else {
-            video?.delete()
-            onDismiss()
-        }
-    }
-    val startVideoCapture: () -> Unit = {
-        val video = context.createMomentFile(MomentType.VIDEO)
-        pendingVideoCapturePath = video.absolutePath
-        runCatching {
-            videoCaptureLauncher.launch(context.momentContentUri(video))
-        }.onFailure {
-            pendingVideoCapturePath = null
-            video.delete()
-            showFeedbackNotice(
-                FeedbackNoticeKind.ERROR,
-                "Auf diesem Gerät ist keine Videoaufnahme verfügbar.",
-            )
-            onDismiss()
-        }
-    }
     val videoPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
-            startVideoCapture()
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        if (context.hasCameraPermission() && context.hasAudioRecordingPermission()) {
+            showVideoCamera = true
         } else {
             showFeedbackNotice(
                 FeedbackNoticeKind.PERMISSION,
-                "Für Videos braucht Spur Zugriff auf die Kamera.",
+                "Für Videos braucht Spur Zugriff auf Kamera und Mikrofon.",
             )
             onDismiss()
         }
@@ -150,10 +119,18 @@ internal fun MomentComposer(
                         }
                         MomentType.VIDEO -> {
                             showPicker = false
-                            if (context.hasCameraPermission()) {
-                                startVideoCapture()
+                            if (
+                                context.hasCameraPermission() &&
+                                context.hasAudioRecordingPermission()
+                            ) {
+                                showVideoCamera = true
                             } else {
-                                videoPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                videoPermissionLauncher.launch(
+                                    arrayOf(
+                                        Manifest.permission.CAMERA,
+                                        Manifest.permission.RECORD_AUDIO,
+                                    ),
+                                )
                             }
                         }
                         MomentType.VOICE -> {
@@ -196,6 +173,20 @@ internal fun MomentComposer(
             onPhotoAccepted = { photo ->
                 showCamera = false
                 accept(PendingMapMoment(MomentType.PHOTO, photo))
+            },
+        )
+    }
+
+    if (showVideoCamera) {
+        VideoCameraScreen(
+            showFeedbackNotice = showFeedbackNotice,
+            onClose = onDismiss,
+            onVideoAccepted = { video ->
+                showVideoCamera = false
+                scope.launch {
+                    withContext(Dispatchers.IO) { ensureVideoThumbnail(video) }
+                    accept(PendingMapMoment(MomentType.VIDEO, video))
+                }
             },
         )
     }
