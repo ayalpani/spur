@@ -63,3 +63,10 @@ checkpoints. Results and any deliberate file-size exception are recorded here.
 | Checkpoint | Result |
 | --- | --- |
 | TourEditor-v2 baseline on `main` | JVM tests, build, lint, and Galaxy-A54 smoke test passed |
+| Mechanical top-level extraction | `MainActivity.kt` reduced from 9,403 to 35 lines; JVM tests and build passed |
+
+Four cohesive declarations remain deliberately above the usual 500-line
+guideline: `MapPage` (screen/state coordinator), `MapSurface` (single MapLibre
+bridge), `PhotoDetailPage` (animated viewer), and the existing `TourStore`.
+Splitting inside those functions would mix behavioral redesign into this
+structural pass; they are recorded candidates for later focused refactors.
