@@ -87,6 +87,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -7662,6 +7663,32 @@ private fun EditorLocationRail(
                         },
                     contentAlignment = Alignment.BottomCenter,
                 ) {
+                    if (index == 0) {
+                        Text(
+                            text = "Start",
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .offset(x = (-26).dp, y = (-10).dp)
+                                .requiredWidth(40.dp),
+                            color = Ink.copy(alpha = 0.28f),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    if (index == locations.lastIndex) {
+                        Text(
+                            text = "Ende",
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .offset(x = 26.dp, y = (-10).dp)
+                                .requiredWidth(40.dp),
+                            color = Ink.copy(alpha = 0.28f),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(3.dp),
