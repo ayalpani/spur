@@ -1051,9 +1051,9 @@ private const val MomentMarkerStroke = 3f
 private const val MomentMarkerEdgeWidth = 1f
 private const val MapPreviewPixels = 180
 private const val LocationPulseWatchdogMillis = LocationPulseDurationMillis * 10L
-private const val CurrentLocationPersonImage = "current-location-person-image"
-private const val CurrentLocationPersonLayer = "current-location-person-layer"
-private const val CurrentLocationPersonLiftPixels = 16f
+private const val CurrentLocationFootprintsImage = "current-location-footprints-image"
+private const val CurrentLocationFootprintsLayer = "current-location-footprints-layer"
+private const val CurrentLocationFootprintsLiftPixels = 16f
 private val LocationPulseEasing = Easing { fraction ->
     (cos((fraction + 1f) * PI) / 2f + 0.5f).toFloat()
 }
@@ -6529,7 +6529,7 @@ private fun enableLocationTracking(
     locationComponent.isLocationComponentEnabled = manualLocation == null
     locationComponent.renderMode = RenderMode.NORMAL
     locationComponent.cameraMode = CameraMode.NONE
-    style.showCurrentLocationPerson(
+    style.showCurrentLocationFootprints(
         context = context,
         visible = manualLocation == null,
     )
@@ -6579,27 +6579,27 @@ private fun LocationComponentOptions.Builder.spurLocationAppearance(
         .pulseAlpha(LocationPulseAlpha)
         .pulseInterpolator(AccelerateDecelerateInterpolator())
 
-private fun Style.showCurrentLocationPerson(
+private fun Style.showCurrentLocationFootprints(
     context: Context,
     visible: Boolean,
 ) {
-    context.currentLocationPersonBitmap()?.let {
-        addImage(CurrentLocationPersonImage, it)
+    context.currentLocationFootprintsBitmap()?.let {
+        addImage(CurrentLocationFootprintsImage, it)
     }
-    val layer = getLayerAs<SymbolLayer>(CurrentLocationPersonLayer)
+    val layer = getLayerAs<SymbolLayer>(CurrentLocationFootprintsLayer)
     if (layer == null) {
         addLayerAbove(
             SymbolLayer(
-                CurrentLocationPersonLayer,
+                CurrentLocationFootprintsLayer,
                 LocationComponentConstants.LOCATION_SOURCE,
             ).withProperties(
-                iconImage(CurrentLocationPersonImage),
+                iconImage(CurrentLocationFootprintsImage),
                 iconAnchor(Property.ICON_ANCHOR_CENTER),
                 iconAllowOverlap(true),
                 iconIgnorePlacement(true),
                 iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
                 iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
-                iconTranslate(arrayOf(0f, -CurrentLocationPersonLiftPixels)),
+                iconTranslate(arrayOf(0f, -CurrentLocationFootprintsLiftPixels)),
                 iconTranslateAnchor(Property.ICON_TRANSLATE_ANCHOR_VIEWPORT),
                 visibility(
                     if (visible) Property.VISIBLE else Property.NONE,
@@ -6616,17 +6616,17 @@ private fun Style.showCurrentLocationPerson(
     }
 }
 
-private fun Context.currentLocationPersonBitmap(): android.graphics.Bitmap? {
+private fun Context.currentLocationFootprintsBitmap(): android.graphics.Bitmap? {
     val halo = ContextCompat.getDrawable(
         this,
-        R.drawable.ic_person_standing_location_halo,
+        R.drawable.ic_footprints_location_halo,
     )?.mutate() ?: return null
-    val person = ContextCompat.getDrawable(
+    val footprints = ContextCompat.getDrawable(
         this,
-        R.drawable.ic_person_standing_location,
+        R.drawable.ic_footprints_location,
     )?.mutate() ?: return null
-    val width = maxOf(halo.intrinsicWidth, person.intrinsicWidth)
-    val height = maxOf(halo.intrinsicHeight, person.intrinsicHeight)
+    val width = maxOf(halo.intrinsicWidth, footprints.intrinsicWidth)
+    val height = maxOf(halo.intrinsicHeight, footprints.intrinsicHeight)
     return android.graphics.Bitmap.createBitmap(
         width,
         height,
@@ -6636,9 +6636,9 @@ private fun Context.currentLocationPersonBitmap(): android.graphics.Bitmap? {
         halo.setTint(Color.White.toArgb())
         halo.setBounds(0, 0, width, height)
         halo.draw(canvas)
-        person.setTint(Ink.toArgb())
-        person.setBounds(0, 0, width, height)
-        person.draw(canvas)
+        footprints.setTint(Ink.toArgb())
+        footprints.setBounds(0, 0, width, height)
+        footprints.draw(canvas)
     }
 }
 
@@ -6724,7 +6724,7 @@ private fun MapLibreMap.showGpsLocationPuck(
 ) {
     if (!context.hasLocationPermission() || !locationComponent.isLocationComponentActivated) return
     locationComponent.isLocationComponentEnabled = show
-    style?.getLayer(CurrentLocationPersonLayer)?.setProperties(
+    style?.getLayer(CurrentLocationFootprintsLayer)?.setProperties(
         visibility(
             if (show) Property.VISIBLE else Property.NONE,
         ),
@@ -8784,21 +8784,21 @@ private fun FollowLocationIcon(
                     .background(Color.White, CircleShape),
             )
         }
-        PersonStandingIcon(
+        FootprintsIcon(
             color = if (selected) Color.White else LocalContentColor.current,
         )
     }
 }
 
 @Composable
-private fun PersonStandingIcon(
+private fun FootprintsIcon(
     color: Color = LocalContentColor.current,
 ) = LucideIcon(
     paths = listOf(
-        "M12 4a1 1 0 1 0 0 2 1 1 0 1 0 0-2",
-        "m9 20 3-6 3 6",
-        "m6 8 6 2 6-2",
-        "M12 10v4",
+        "M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z",
+        "M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z",
+        "M16 17h4",
+        "M4 13h4",
     ),
     color = color,
     strokeWidth = LucideRegularStrokeWidth,
