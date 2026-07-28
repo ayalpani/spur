@@ -1109,7 +1109,7 @@ internal enum class MapRotation(val label: String, val bearing: Double) {
     WEST("Westen", 270.0),
 }
 
-private data class SelectedHomeBuilding(
+private data class SelectedBuilding(
     val coordinate: SpurCoordinate,
     val feature: Feature,
 )
@@ -1694,7 +1694,7 @@ private fun MapPage(
         mutableStateOf<Long?>(null)
     }
     var editorFocusRequest by remember { mutableLongStateOf(0L) }
-    var selectedBuilding by remember { mutableStateOf<SpurCoordinate?>(null) }
+    var selectedBuilding by remember { mutableStateOf<SelectedBuilding?>(null) }
     var homeBuilding by remember {
         mutableStateOf(context.loadHomeAutoStartSettings().homeBuilding)
     }
@@ -1979,6 +1979,7 @@ private fun MapPage(
                 routePoints = routePoints,
                 trailColors = trailColors,
                 homeBuilding = homeBuilding,
+                selectedBuilding = selectedBuilding?.feature,
                 selectedTrackPoint = if (isTourEditing) {
                     selectedEditorLocation?.point
                 } else {
@@ -2432,7 +2433,7 @@ private fun MapPage(
         ) {
             BackHandler(onBack = closeBuildingDetails)
             BuildingDetailsBottomSheet(
-                coordinate = building,
+                coordinate = building.coordinate,
                 onBack = closeBuildingDetails,
             )
         }
@@ -3304,7 +3305,7 @@ private fun HomeAutoStartBottomSheet(
     var settings by remember { mutableStateOf(context.loadHomeAutoStartSettings()) }
     var setupRequested by rememberSaveable { mutableStateOf(false) }
     var homeSearchOrigin by remember { mutableStateOf<SpurCoordinate?>(settings.home) }
-    var candidateHome by remember { mutableStateOf<SelectedHomeBuilding?>(null) }
+    var candidateHome by remember { mutableStateOf<SelectedBuilding?>(null) }
     var candidateStartPoint by remember { mutableStateOf(settings.startPoint) }
     var selectingStartPoint by rememberSaveable { mutableStateOf(false) }
     var locating by remember { mutableStateOf(false) }
@@ -3325,7 +3326,7 @@ private fun HomeAutoStartBottomSheet(
         message = null
     }
 
-    fun activate(home: SelectedHomeBuilding, startPoint: SpurCoordinate) {
+    fun activate(home: SelectedBuilding, startPoint: SpurCoordinate) {
         settings = HomeAutoStartSettings(
             enabled = true,
             home = home.coordinate,
@@ -3574,7 +3575,7 @@ private fun HomeBuildingSelector(
     initialStartPoint: SpurCoordinate?,
     selectionEnabled: Boolean,
     startPointSelection: Boolean,
-    onBuildingSelected: (SelectedHomeBuilding) -> Unit,
+    onBuildingSelected: (SelectedBuilding) -> Unit,
     onStartPointChanged: (SpurCoordinate) -> Unit,
 ) {
     val context = LocalContext.current
@@ -3633,7 +3634,7 @@ private fun HomeBuildingSelector(
             selectedBuilding = feature
             readyMap.style?.showSelectedHomeBuilding(feature)
             currentOnBuildingSelected(
-                SelectedHomeBuilding(
+                SelectedBuilding(
                     coordinate = home,
                     feature = feature,
                 ),
@@ -3786,7 +3787,12 @@ private fun MapLibreMap.homeBuildingAt(
     screenPoint: PointF,
     searchRadiusPixels: Float,
 ): Feature? {
-    queryRenderedFeatures(screenPoint, MapBuildingLayer).firstOrNull()?.let { return it }
+    val coordinate = projection.fromScreenLocation(screenPoint).let {
+        SpurCoordinate(latitude = it.latitude, longitude = it.longitude)
+    }
+    queryRenderedFeatures(screenPoint, MapBuildingLayer)
+        .firstNotNullOfOrNull { buildingFeatureAt(it, coordinate) }
+        ?.let { return it }
     if (searchRadiusPixels <= 0f) return null
     val nearby = queryRenderedFeatures(
         RectF(
@@ -3797,7 +3803,7 @@ private fun MapLibreMap.homeBuildingAt(
         ),
         MapBuildingLayer,
     )
-    return nearby.minByOrNull { feature ->
+    return nearby.mapNotNull { buildingFeatureAt(it, coordinate) }.minByOrNull { feature ->
         val center = homeCoordinate(feature) ?: return@minByOrNull Float.MAX_VALUE
         val renderedCenter = projection.toScreenLocation(
             LatLng(center.latitude, center.longitude),
@@ -3806,6 +3812,59 @@ private fun MapLibreMap.homeBuildingAt(
         val dy = renderedCenter.y - screenPoint.y
         dx * dx + dy * dy
     }
+}
+
+internal fun buildingFeatureAt(
+    feature: Feature,
+    coordinate: SpurCoordinate,
+): Feature? = when (val geometry = feature.geometry()) {
+    is Polygon -> feature
+    is MultiPolygon -> {
+        val polygon = geometry.coordinates().firstOrNull {
+            polygonContainsCoordinate(it, coordinate)
+        } ?: geometry.coordinates().minByOrNull { rings ->
+            val center = homeCoordinate(Feature.fromGeometry(Polygon.fromLngLats(rings)))
+                ?: return@minByOrNull Double.MAX_VALUE
+            val latitude = center.latitude - coordinate.latitude
+            val longitude = center.longitude - coordinate.longitude
+            latitude * latitude + longitude * longitude
+        }
+        polygon?.let { Feature.fromGeometry(Polygon.fromLngLats(it)) }
+    }
+    else -> null
+}
+
+private fun polygonContainsCoordinate(
+    rings: List<List<Point>>,
+    coordinate: SpurCoordinate,
+): Boolean {
+    val outer = rings.firstOrNull() ?: return false
+    return ringContainsCoordinate(outer, coordinate) &&
+        rings.drop(1).none { ringContainsCoordinate(it, coordinate) }
+}
+
+private fun ringContainsCoordinate(
+    ring: List<Point>,
+    coordinate: SpurCoordinate,
+): Boolean {
+    if (ring.size < 3) return false
+    var inside = false
+    var previous = ring.last()
+    ring.forEach { current ->
+        if (
+            (current.latitude() > coordinate.latitude) !=
+            (previous.latitude() > coordinate.latitude)
+        ) {
+            val crossingLongitude =
+                (previous.longitude() - current.longitude()) *
+                    (coordinate.latitude - current.latitude()) /
+                    (previous.latitude() - current.latitude()) +
+                    current.longitude()
+            if (coordinate.longitude < crossingLongitude) inside = !inside
+        }
+        previous = current
+    }
+    return inside
 }
 
 internal fun homeCoordinate(feature: Feature): SpurCoordinate? {
@@ -3838,7 +3897,22 @@ private fun Style.showSelectableHomeBuildings() {
     )
 }
 
+internal fun highlightedBuildingFeatures(
+    home: Feature?,
+    selected: Feature?,
+): List<Feature> = buildList {
+    home?.let(::add)
+    if (selected != null && selected.geometry() != home?.geometry()) add(selected)
+}
+
 private fun Style.showSelectedHomeBuilding(feature: Feature?) {
+    showHighlightedBuildings(home = feature, selected = null)
+}
+
+private fun Style.showHighlightedBuildings(
+    home: Feature?,
+    selected: Feature?,
+) {
     val source = getSourceAs<GeoJsonSource>(HomeBuildingSource)
         ?: GeoJsonSource(HomeBuildingSource).also(::addSource)
     if (getLayer(HomeBuildingFillLayer) == null) {
@@ -3860,10 +3934,11 @@ private fun Style.showSelectedHomeBuilding(feature: Feature?) {
             HomeBuildingFillLayer,
         )
     }
-    if (feature == null) {
+    val features = highlightedBuildingFeatures(home, selected)
+    if (features.isEmpty()) {
         source.setGeoJson("""{"type":"FeatureCollection","features":[]}""")
     } else {
-        source.setGeoJson(feature)
+        source.setGeoJson(FeatureCollection.fromFeatures(features))
     }
 }
 
@@ -4511,6 +4586,7 @@ private fun MapSurface(
     routePoints: List<TrackPoint>,
     trailColors: TrailColors,
     homeBuilding: Feature?,
+    selectedBuilding: Feature?,
     selectedTrackPoint: TrackPoint?,
     selectedTrackPointRequest: Long,
     momentToPlace: PendingMapMoment?,
@@ -4522,7 +4598,7 @@ private fun MapSurface(
     onMomentPlaced: (MapMoment) -> Unit,
     onMomentPlacementFailed: (PendingMapMoment) -> Unit,
     onMomentClick: (MapMoment, Offset) -> Unit,
-    onBuildingClick: (SpurCoordinate) -> Unit,
+    onBuildingClick: (SelectedBuilding) -> Unit,
     onManualLocationChanged: (SpurCoordinate) -> Unit,
     onFollowingInterrupted: () -> Unit,
     onLocationPulseStarted: (Long) -> Unit,
@@ -4552,6 +4628,7 @@ private fun MapSurface(
     val currentRoutePoints by rememberUpdatedState(routePoints)
     val currentTrailColors by rememberUpdatedState(trailColors)
     val currentHomeBuilding by rememberUpdatedState(homeBuilding)
+    val currentSelectedBuilding by rememberUpdatedState(selectedBuilding)
     val currentSelectedTrackPoint by rememberUpdatedState(selectedTrackPoint)
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
@@ -4859,10 +4936,16 @@ private fun MapSurface(
                 MapBuildingLayer,
             ).firstOrNull()
             if (building != null) {
+                val coordinate = SpurCoordinate(
+                    latitude = point.latitude,
+                    longitude = point.longitude,
+                )
+                val selectedFeature = buildingFeatureAt(building, coordinate)
+                    ?: return@OnMapClickListener false
                 currentOnBuildingClick(
-                    SpurCoordinate(
-                        latitude = point.latitude,
-                        longitude = point.longitude,
+                    SelectedBuilding(
+                        coordinate = coordinate,
+                        feature = selectedFeature,
                     ),
                 )
                 return@OnMapClickListener true
@@ -5099,10 +5182,13 @@ private fun MapSurface(
         }
     }
 
-    LaunchedEffect(homeBuilding, mapStyleRevision) {
+    LaunchedEffect(homeBuilding, selectedBuilding, mapStyleRevision) {
         if (mapStyleRevision == 0) return@LaunchedEffect
         mapView.getMapAsync { map ->
-            map.style?.showSelectedHomeBuilding(currentHomeBuilding)
+            map.style?.showHighlightedBuildings(
+                home = currentHomeBuilding,
+                selected = currentSelectedBuilding,
+            )
         }
     }
 
