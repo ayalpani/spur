@@ -149,8 +149,7 @@ class HomeExitReceiver : BroadcastReceiver() {
             try {
                 val store = TourStore(context)
                 if (store.activeTour() != null) return@launch
-                val activity = store.activityUsage().firstOrNull()?.label ?: "Inline-Skaten"
-                val tourId = store.startTour(activity)
+                val tourId = store.startTour()
                 runCatching {
                     ContextCompat.startForegroundService(
                         context,

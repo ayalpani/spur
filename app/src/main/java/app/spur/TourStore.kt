@@ -19,25 +19,6 @@ data class Tour(
     val activity: String? = null,
 )
 
-data class TourActivityUsage(
-    val label: String,
-    val count: Int,
-    val lastUsedAt: Long,
-)
-
-internal fun rankedTourActivities(
-    usage: List<TourActivityUsage>,
-    defaults: List<String>,
-): List<String> =
-    (
-        usage
-            .sortedWith(
-                compareByDescending<TourActivityUsage> { it.count }
-                    .thenByDescending { it.lastUsedAt },
-            )
-            .map(TourActivityUsage::label) + defaults
-        ).distinctBy { it.lowercase() }
-
 data class TrackPoint(
     val id: Long,
     val latitude: Double,
@@ -177,11 +158,8 @@ class TourStore(context: Context) :
 
     @Synchronized
     fun startTour(
-        activity: String,
         now: Long = System.currentTimeMillis(),
     ): Long {
-        val normalizedActivity = activity.trim().take(40)
-        require(normalizedActivity.isNotEmpty())
         gpsStartStabilizers.clear()
         writableDatabase.execSQL(
             "UPDATE tours SET ended_at = ? WHERE ended_at IS NULL",
@@ -192,7 +170,6 @@ class TourStore(context: Context) :
             null,
             ContentValues().apply {
                 put("started_at", now)
-                put("activity", normalizedActivity)
             },
         )
     }
@@ -323,29 +300,6 @@ class TourStore(context: Context) :
 
     @Synchronized
     fun tours(): List<Tour> = queryTours(tail = "ORDER BY t.started_at DESC")
-
-    @Synchronized
-    fun activityUsage(): List<TourActivityUsage> =
-        tours()
-            .mapNotNull { tour ->
-                tour.activity
-                    ?.trim()
-                    ?.takeIf(String::isNotEmpty)
-                    ?.let { activity -> activity to tour.startedAt }
-            }
-            .groupBy { (activity) -> activity.lowercase() }
-            .values
-            .map { uses ->
-                TourActivityUsage(
-                    label = uses.maxBy { (_, startedAt) -> startedAt }.first,
-                    count = uses.size,
-                    lastUsedAt = uses.maxOf { (_, startedAt) -> startedAt },
-                )
-            }
-            .sortedWith(
-                compareByDescending<TourActivityUsage> { it.count }
-                    .thenByDescending { it.lastUsedAt },
-            )
 
     @Synchronized
     fun points(tourId: Long): List<TrackPoint> =

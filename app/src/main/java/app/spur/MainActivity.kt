@@ -67,7 +67,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.snapping.SnapPosition
@@ -113,7 +112,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -356,13 +354,6 @@ private val DefaultProminentEmojis = listOf(
     "🎉",
     "😎",
     "🙏",
-)
-private val DefaultTourActivities = listOf(
-    "Inline-Skaten",
-    "Spazieren",
-    "Laufen",
-    "Radfahren",
-    "Wandern",
 )
 internal const val LucideBoldStrokeWidth = 3f
 private const val LucideRegularStrokeWidth = 2f
@@ -1137,7 +1128,6 @@ private fun SpurApp(splashExitComplete: Boolean) {
     var isTourEditing by rememberSaveable { mutableStateOf(false) }
     var historyRevision by remember { mutableLongStateOf(0L) }
     var photoRevision by remember { mutableLongStateOf(0L) }
-    var tourActivityUsage by remember { mutableStateOf(emptyList<TourActivityUsage>()) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var initialMapLoadingComplete by rememberSaveable { mutableStateOf(false) }
@@ -1160,11 +1150,8 @@ private fun SpurApp(splashExitComplete: Boolean) {
 
     LaunchedEffect(hasLocationPermission) {
         if (!hasLocationPermission) return@LaunchedEffect
-        val (restored, usage) = withContext(Dispatchers.IO) {
-            store.activeTour() to store.activityUsage()
-        }
+        val restored = withContext(Dispatchers.IO) { store.activeTour() }
         activeTour = restored
-        tourActivityUsage = usage
         if (restored != null) {
             displayedTour = restored
             displayedTourId = restored.id
@@ -1217,9 +1204,6 @@ private fun SpurApp(splashExitComplete: Boolean) {
                         .setAction(TrackingService.ACTION_STOP),
                 )
                 activeTour = null
-            }
-            tourActivityUsage = withContext(Dispatchers.IO) {
-                store.activityUsage()
             }
             if (displayedTourId == id) {
                 displayedTour = null
@@ -1297,20 +1281,18 @@ private fun SpurApp(splashExitComplete: Boolean) {
                                 tourDisplayRequest = displayedTourRequest,
                                 routePoints = routePoints,
                                 now = now,
-                                tourActivityUsage = tourActivityUsage,
-                                onStartTour = { activity ->
+                                onStartTour = {
                                     scope.launch {
-                                        val (id, usage) = withContext(Dispatchers.IO) {
-                                            val startedId = store.startTour(activity)
+                                        val id = withContext(Dispatchers.IO) {
+                                            val startedId = store.startTour()
                                             context.loadManualLocation()?.let { coordinate ->
                                                 store.appendSimulatedLocation(
                                                     startedId,
                                                     coordinate,
                                                 )
                                             }
-                                            startedId to store.activityUsage()
+                                            startedId
                                         }
-                                        tourActivityUsage = usage
                                         ContextCompat.startForegroundService(
                                             context,
                                             Intent(context, TrackingService::class.java)
@@ -1408,16 +1390,6 @@ private fun SpurApp(splashExitComplete: Boolean) {
                                 revision = historyRevision,
                                 isVisible = isHistoryVisible,
                                 onBack = { isHistoryVisible = false },
-                                onOpenTour = { id ->
-                                    if (displayedTourId != id) {
-                                        displayedTour = null
-                                        routePoints = emptyList()
-                                    }
-                                    displayedTourId = id
-                                    displayedTourRequest++
-                                    isTourEditing = false
-                                    isHistoryVisible = false
-                                },
                                 onEditTour = { id ->
                                     if (displayedTourId != id) {
                                         displayedTour = null
@@ -1521,8 +1493,7 @@ private fun MapPage(
     tourDisplayRequest: Long,
     routePoints: List<TrackPoint>,
     now: Long,
-    tourActivityUsage: List<TourActivityUsage>,
-    onStartTour: (String) -> Unit,
+    onStartTour: () -> Unit,
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -2160,13 +2131,15 @@ private fun MapPage(
             AnimatedVisibility(
                 visible = isMapReady &&
                     isTourEditing &&
-                    selectedEditorLocation != null,
+                    tour != null,
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
             ) {
-                selectedEditorLocation?.let { location ->
-                    Row(
+                tour?.let { editedTour ->
+                    TourSummaryPlayer(
+                        tour = editedTour,
+                        now = editedTour.endedAt ?: now,
                         modifier = Modifier
                             .navigationBarsPadding()
                             .padding(
@@ -2176,24 +2149,7 @@ private fun MapPage(
                             )
                             .fillMaxWidth()
                             .height(EditorMetricBarHeight - 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        EditorMetricChip(
-                            value = formatClock(location.point.recordedAt),
-                            label = "Uhrzeit",
-                            modifier = Modifier.weight(1f),
-                        )
-                        EditorMetricChip(
-                            value = formatEditorElapsed(location.elapsedMillis),
-                            label = "seit Start",
-                            modifier = Modifier.weight(1f),
-                        )
-                        EditorMetricChip(
-                            value = formatKilometers(location.distanceFromStartMeters),
-                            label = "vom Start",
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
+                    )
                 }
             }
 
@@ -2303,14 +2259,13 @@ private fun MapPage(
             sheetState = startTourBottomSheetState,
         ) {
             StartTourBottomSheet(
-                activityUsage = tourActivityUsage,
-                onStartTour = { activity ->
+                onStartTour = {
                     if (isStartingTour) return@StartTourBottomSheet
                     isStartingTour = true
                     scope.launch {
                         startTourBottomSheetState.hide()
                         showStartTourBottomSheet = false
-                        onStartTour(activity)
+                        onStartTour()
                     }
                 },
             )
@@ -3431,92 +3386,42 @@ private fun HomeLocationPreview(
 
 @Composable
 private fun StartTourBottomSheet(
-    activityUsage: List<TourActivityUsage>,
-    onStartTour: (String) -> Unit,
+    onStartTour: () -> Unit,
 ) {
-    var customActivity by rememberSaveable { mutableStateOf("") }
-    val activities = remember(activityUsage) {
-        rankedTourActivities(activityUsage, DefaultTourActivities)
-    }
     Column(
         modifier = Modifier
             .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
             .padding(bottom = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         BottomSheetHeader(
-            title = "Aktivität wählen",
-            modifier = Modifier.padding(horizontal = 24.dp),
+            title = "Tour starten",
         )
-        LazyColumn(
+        Text(
+            text = "Spur zeichnet deine Strecke weiter auf, " +
+                "auch wenn dein Bildschirm aus ist.",
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 360.dp),
-        ) {
-            items(activities, key = { it.lowercase() }) { activity ->
-                SheetMenuItem(
-                    label = activity,
-                    leading = { TourActivityIcon(activity) },
-                    trailing = false,
-                    onClick = { onStartTour(activity) },
-                )
-            }
-        }
-        OutlinedTextField(
-            value = customActivity,
-            onValueChange = { customActivity = it.take(40) },
-            modifier = Modifier
-                .padding(horizontal = 24.dp)
-                .fillMaxWidth(),
-            label = { Text("Eigene Aktivität") },
-            singleLine = true,
+                .padding(horizontal = 8.dp),
+            color = Ink.copy(alpha = 0.62f),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge,
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(24.dp))
         Button(
-            onClick = { onStartTour(customActivity.trim()) },
-            enabled = customActivity.isNotBlank(),
+            onClick = onStartTour,
             modifier = Modifier
-                .padding(horizontal = 24.dp)
                 .fillMaxWidth()
                 .height(56.dp),
             shape = CircleShape,
         ) {
             Text(
-                text = "Tour starten",
+                text = "Los geht’s",
                 fontWeight = FontWeight.Bold,
             )
         }
     }
-}
-
-@Composable
-private fun TourActivityIcon(activity: String) {
-    val paths = when (activity.lowercase()) {
-        "inline-skaten" -> listOf("M22 12h-4l-3 9L9 3l-3 9H2")
-        "spazieren" -> listOf(
-            "M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z",
-            "M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z",
-            "M16 17h4",
-            "M4 13h4",
-        )
-        "laufen" -> listOf(
-            "M13 5a1 1 0 1 1-2 0 1 1 0 1 1 2 0",
-            "m9 20 3-6 3 6",
-            "m6 8 6 2 6-2",
-            "M12 10v4",
-        )
-        "radfahren" -> listOf(
-            "M22 17.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 1 1 7 0",
-            "M9 17.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 1 1 7 0",
-            "M16 5a1 1 0 1 1-2 0 1 1 0 1 1 2 0",
-            "M12 17.5V14l-3-3 4-3 2 3h2",
-        )
-        "wandern" -> listOf("m8 3 4 8 5-5 5 15H2L8 3z")
-        else -> listOf("M22 12h-4l-3 9L9 3l-3 9H2")
-    }
-    LucideIcon(
-        paths = paths,
-        modifier = Modifier.size(28.dp),
-    )
 }
 
 @Composable
@@ -6897,7 +6802,6 @@ private fun HistoryPage(
     revision: Long,
     isVisible: Boolean = true,
     onBack: () -> Unit,
-    onOpenTour: (Long) -> Unit,
     onEditTour: (Long) -> Unit,
     showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
     photoRevision: Long = 0L,
@@ -6908,7 +6812,6 @@ private fun HistoryPage(
     val tourListState = rememberLazyListState()
     var tours by remember { mutableStateOf(emptyList<Tour>()) }
     var mapMoments by remember { mutableStateOf(emptyList<MapMoment>()) }
-    var selectedTour by remember { mutableStateOf<Tour?>(null) }
     var selectedMoment by remember { mutableStateOf<MapMoment?>(null) }
     var isPhotoDetailVisible by remember { mutableStateOf(false) }
     var isMediaDetailVisible by remember { mutableStateOf(false) }
@@ -7036,10 +6939,7 @@ private fun HistoryPage(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .combinedClickable(
-                                    onClick = { selectedTour = tour },
-                                    onLongClick = { selectedTour = tour },
-                                ),
+                                .clickable { onEditTour(tour.id) },
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             shape = RoundedCornerShape(20.dp),
                         ) {
@@ -7096,41 +6996,6 @@ private fun HistoryPage(
                             }
                         }
                     }
-                }
-            }
-        }
-    }
-
-    selectedTour?.let { tour ->
-        ModalBottomSheet(
-            onDismissRequest = { selectedTour = null },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        ) {
-            Column(
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                BottomSheetHeader(
-                    title = tour.activity ?: formatDate(tour.startedAt),
-                )
-                Text(
-                    text = buildString {
-                        if (tour.activity != null) append("${formatDate(tour.startedAt)} · ")
-                        append("${formatTourTime(tour)} · ${formatMeters(tour.distanceMeters)}")
-                    },
-                    color = Ink.copy(alpha = 0.62f),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                HistoryAction(label = "Öffnen") {
-                    selectedTour = null
-                    onOpenTour(tour.id)
-                }
-                HistoryAction(label = "Bearbeiten") {
-                    selectedTour = null
-                    onEditTour(tour.id)
                 }
             }
         }
@@ -7279,27 +7144,6 @@ private fun TourMomentStrip(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun HistoryAction(
-    label: String,
-    destructive: Boolean = false,
-    onClick: () -> Unit,
-) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        shape = CircleShape,
-    ) {
-        Text(
-            text = label,
-            color = if (destructive) Color(0xFFB3261E) else Ink,
-            style = MaterialTheme.typography.titleMedium,
-        )
     }
 }
 
@@ -7851,39 +7695,6 @@ private fun EditorLocationRail(
     }
 }
 
-@Composable
-private fun EditorMetricChip(
-    value: String,
-    label: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.fillMaxHeight(),
-        color = Color.White,
-        shape = RoundedCornerShape(18.dp),
-        shadowElevation = 2.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = value,
-                maxLines = 1,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = label,
-                maxLines = 1,
-                color = Ink.copy(alpha = 0.54f),
-                style = MaterialTheme.typography.labelSmall,
-            )
-        }
-    }
-}
-
 private fun MomentType.editorLabel(): String = when (this) {
     MomentType.PHOTO -> "Foto"
     MomentType.VIDEO -> "Video"
@@ -8046,6 +7857,54 @@ private fun MapLibreMap.fitTourRoute(
             )
     }
     if (animated) animateCamera(update, 220) else moveCamera(update)
+}
+
+@Composable
+private fun TourSummaryPlayer(
+    tour: Tour,
+    now: Long,
+    modifier: Modifier = Modifier,
+) {
+    val controlColors = LocalMapControlColors.current.inverted
+    var showTrackingTime by rememberSaveable(tour.id) { mutableStateOf(false) }
+
+    Surface(
+        modifier = modifier
+            .mapControlShadow(CircleShape)
+            .clickable(
+                onClickLabel = if (showTrackingTime) {
+                    "Distanz anzeigen"
+                } else {
+                    "Tour-Dauer anzeigen"
+                },
+            ) {
+                showTrackingTime = !showTrackingTime
+            },
+        color = controlColors.background,
+        contentColor = controlColors.foreground,
+        shape = CircleShape,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = activeTourPlayerText(
+                    tour = tour,
+                    now = now,
+                    showTrackingTime = showTrackingTime,
+                ),
+                color = controlColors.foreground,
+                fontSize = if (showTrackingTime) 18.sp else 28.sp,
+                fontWeight = if (showTrackingTime) {
+                    FontWeight.Normal
+                } else {
+                    FontWeight.SemiBold
+                },
+                maxLines = 1,
+            )
+        }
+    }
 }
 
 @Composable
@@ -8572,7 +8431,6 @@ private fun MapPagePreview() {
         tourDisplayRequest = 0,
         routePoints = emptyList(),
         now = System.currentTimeMillis(),
-        tourActivityUsage = emptyList(),
         onStartTour = {},
         onSimulatedLocation = {},
         onEndTour = {},
@@ -8602,7 +8460,6 @@ private fun ActiveTourPagePreview() {
         tourDisplayRequest = 0,
         routePoints = emptyList(),
         now = System.currentTimeMillis(),
-        tourActivityUsage = emptyList(),
         onStartTour = {},
         onSimulatedLocation = {},
         onEndTour = {},
@@ -8622,7 +8479,6 @@ private fun HistoryPagePreview() {
         store = TourStore(LocalContext.current),
         revision = 0,
         onBack = {},
-        onOpenTour = {},
         onEditTour = {},
     )
 }
