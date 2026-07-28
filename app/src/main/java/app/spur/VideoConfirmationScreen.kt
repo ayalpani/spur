@@ -192,8 +192,12 @@ internal fun VideoConfirmationSurface(
                 }
             }
         }
-        MediaConfirmationPanel(
-            onDiscard = onDiscard,
+        AnimatedMediaConfirmationPanel(
+            onDiscard = {
+                runCatching { player?.release() }
+                player = null
+                onDiscard()
+            },
             onAccept = onAccept,
         ) {
             Row(

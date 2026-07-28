@@ -245,7 +245,7 @@ internal fun CameraScreen(
                         )
                     }
                 }
-                MediaConfirmationPanel(
+                AnimatedMediaConfirmationPanel(
                     onDiscard = {
                         photo.delete()
                         capturedPhoto = null

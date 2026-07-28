@@ -61,9 +61,11 @@ releases the current `MediaRecorder`/`MediaPlayer`. CameraX remains isolated in
 owner. `VideoConfirmationScreen` owns preview playback. Video recordings are
 finalized before preview, deleted when discarded, and retained only after the
 user confirms them. Photo and video confirmation share
-`MediaConfirmationPanel`: the complete medium is fitted into the remaining
+`AnimatedMediaConfirmationPanel`: the complete medium is fitted into the remaining
 top-centered preview area, while the fixed, non-draggable action panel occupies
-its own space below instead of covering the medium.
+its own space below instead of covering the medium. On entry the panel expands
+and slides upward while the preview area shrinks in the same 420 ms transition.
+The panel stops above the Android navigation area.
 
 ## Intended file boundaries
 
