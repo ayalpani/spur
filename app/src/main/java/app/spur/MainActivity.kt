@@ -165,12 +165,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -519,7 +521,6 @@ private fun MomentComposer(
     }
     var voiceRecordingStartRequest by remember(target) { mutableLongStateOf(0L) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val emojiPickerSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val placementTarget = target
 
     val accept: (PendingMapMoment) -> Unit = { pending ->
@@ -641,27 +642,29 @@ private fun MomentComposer(
 
     if (showEmojiPicker) {
         val closeEmojiPicker: () -> Unit = {
-            scope.launch {
-                emojiPickerSheetState.hide()
-                showEmojiPicker = false
-                showPicker = true
-            }
+            showEmojiPicker = false
+            showPicker = true
         }
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = emojiPickerSheetState,
+        Dialog(
+            onDismissRequest = closeEmojiPicker,
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false,
+            ),
         ) {
             BackHandler(onBack = closeEmojiPicker)
-            EmojiPickerSheet(
-                onBack = closeEmojiPicker,
-                onEmojiPicked = { emoji ->
-                    scope.launch {
-                        emojiPickerSheetState.hide()
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                EmojiPickerSheet(
+                    onBack = closeEmojiPicker,
+                    onEmojiPicked = { emoji ->
                         showEmojiPicker = false
                         accept(PendingMapMoment.emoji(emoji))
-                    }
-                },
-            )
+                    },
+                )
+            }
         }
     }
 
@@ -812,11 +815,12 @@ private fun EmojiPickerSheet(
         SpurRecentEmojiProvider(context.applicationContext)
     }
     val currentOnEmojiPicked by rememberUpdatedState(onEmojiPicked)
+    val nestedScrollConnection = rememberNestedScrollInteropConnection()
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .fillMaxHeight(0.82f)
+            .fillMaxHeight()
             .navigationBarsPadding()
             .padding(horizontal = 24.dp)
             .padding(bottom = 12.dp),
@@ -850,6 +854,7 @@ private fun EmojiPickerSheet(
             },
             modifier = Modifier
                 .fillMaxWidth()
+                .nestedScroll(nestedScrollConnection)
                 .weight(1f),
         )
     }
