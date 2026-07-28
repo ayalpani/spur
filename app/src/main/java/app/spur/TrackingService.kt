@@ -118,7 +118,7 @@ class TrackingService : Service() {
 
     private fun notification(tour: Tour) =
         NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notification_location)
             .setContentTitle("Spur zeichnet deine Tour auf")
             .setContentText(
                 "${formatKilometers(tour.distanceMeters)} · seit ${
