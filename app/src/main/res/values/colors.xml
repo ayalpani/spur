@@ -3,4 +3,6 @@
     <color name="spur_sand">#F7F5F0</color>
     <color name="spur_ink">#18201C</color>
     <color name="launcher_background">@color/spur_sand</color>
+    <color name="splash_background">#000000</color>
+    <color name="splash_foreground">#FFFFFF</color>
 </resources>

@@ -1107,18 +1107,29 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashStartedAt = SystemClock.uptimeMillis()
         val splashScreen = installSplashScreen()
+        var splashExitComplete by mutableStateOf(false)
         super.onCreate(savedInstanceState)
         splashScreen.setKeepOnScreenCondition {
             SystemClock.uptimeMillis() - splashStartedAt <
                 MinimumSystemSplashDurationMillis
         }
+        splashScreen.setOnExitAnimationListener { provider ->
+            provider.view.animate()
+                .alpha(0f)
+                .setDuration(MotionDurationDefaultMillis.toLong())
+                .withEndAction {
+                    provider.remove()
+                    splashExitComplete = true
+                }
+                .start()
+        }
         enableEdgeToEdge()
-        setContent { SpurApp() }
+        setContent { SpurApp(splashExitComplete = splashExitComplete) }
     }
 }
 
 @Composable
-private fun SpurApp() {
+private fun SpurApp(splashExitComplete: Boolean) {
     val context = LocalContext.current
     val store = remember { TourStore(context) }
     val scope = rememberCoroutineScope()
@@ -1357,6 +1368,7 @@ private fun SpurApp() {
                                 photoRevision = photoRevision,
                                 onPhotoRotated = { photoRevision++ },
                                 initialLoadingComplete = initialMapLoadingComplete,
+                                splashExitComplete = splashExitComplete,
                                 onInitialLoadingComplete = {
                                     initialMapLoadingComplete = true
                                 },
@@ -1527,6 +1539,7 @@ private fun MapPage(
     photoRevision: Long = 0L,
     onPhotoRotated: () -> Unit = {},
     initialLoadingComplete: Boolean = false,
+    splashExitComplete: Boolean = true,
     onInitialLoadingComplete: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -1618,9 +1631,8 @@ private fun MapPage(
         isFollowingLocation = true
         followRequest++
     }
-    LaunchedEffect(initialLoadingComplete) {
-        if (initialLoadingComplete) return@LaunchedEffect
-        delay(MinimumSystemSplashDurationMillis)
+    LaunchedEffect(splashExitComplete, initialLoadingComplete) {
+        if (initialLoadingComplete || !splashExitComplete) return@LaunchedEffect
         systemSplashTimeElapsed = true
         delay(MinimumMapLoadingDurationMillis)
         minimumMapLoadingTimeElapsed = true
