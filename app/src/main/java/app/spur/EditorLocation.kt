@@ -5,7 +5,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-internal data class EditorWaypoint(
+internal data class EditorLocation(
     val point: TrackPoint,
     val routeIndex: Int,
     val distanceFromStartMeters: Double,
@@ -13,45 +13,23 @@ internal data class EditorWaypoint(
     val moments: List<MapMoment>,
 )
 
-internal fun editorWaypoints(
+internal fun editorLocations(
     tour: Tour,
     points: List<TrackPoint>,
     moments: List<MapMoment>,
-    selectedPointId: Long? = null,
-): List<EditorWaypoint> {
+): List<EditorLocation> {
     if (points.isEmpty()) return emptyList()
-    val assignedPointIds = moments.mapNotNullTo(mutableSetOf()) { moment ->
-        moment.trackPointId ?: closestPoint(points, moment)?.id
-    }
-    selectedPointId?.let(assignedPointIds::add)
-
     val cumulativeDistance = DoubleArray(points.size)
     for (index in 1 until points.size) {
         cumulativeDistance[index] = cumulativeDistance[index - 1] +
             editorDistanceMeters(points[index - 1], points[index])
     }
 
-    val included = mutableSetOf(0, points.lastIndex)
-    var lastSampled = 0
-    for (index in 1 until points.lastIndex) {
-        val point = points[index]
-        val isSample = cumulativeDistance[index] - cumulativeDistance[lastSampled] >= 100.0 ||
-            point.recordedAt - points[lastSampled].recordedAt >= 5 * 60_000L
-        if (isSample || point.id in assignedPointIds) {
-            included += index
-        }
-        if (isSample) lastSampled = index
-    }
-    points.indexOfFirst { it.id == selectedPointId }
-        .takeIf { it >= 0 }
-        ?.let(included::add)
-
     val momentsByPoint = moments.groupBy { moment ->
         moment.trackPointId ?: closestPoint(points, moment)?.id
     }
-    return included.sorted().map { index ->
-        val point = points[index]
-        EditorWaypoint(
+    return points.mapIndexed { index, point ->
+        EditorLocation(
             point = point,
             routeIndex = index,
             distanceFromStartMeters = cumulativeDistance[index],

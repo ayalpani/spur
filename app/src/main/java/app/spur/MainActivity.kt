@@ -499,7 +499,7 @@ private data class PendingMapMoment(
 private sealed interface MomentPlacementTarget {
     data object CurrentLocation : MomentPlacementTarget
 
-    data class Waypoint(
+    data class RecordedLocation(
         val tourId: Long,
         val trackPointId: Long,
         val coordinate: SpurCoordinate,
@@ -1193,6 +1193,34 @@ private fun SpurApp() {
         feedbackNotice = null
     }
 
+    val deleteTour: (Long) -> Unit = { id ->
+        scope.launch {
+            if (!context.deleteStoredTour(store, id)) {
+                showFeedbackNotice(
+                    FeedbackNoticeKind.ERROR,
+                    "Tour konnte nicht gelöscht werden.",
+                )
+                return@launch
+            }
+            if (activeTour?.id == id) {
+                context.startService(
+                    Intent(context, TrackingService::class.java)
+                        .setAction(TrackingService.ACTION_STOP),
+                )
+                activeTour = null
+            }
+            tourActivityUsage = withContext(Dispatchers.IO) {
+                store.activityUsage()
+            }
+            if (displayedTourId == id) {
+                displayedTour = null
+                displayedTourId = null
+                routePoints = emptyList()
+            }
+            historyRevision++
+        }
+    }
+
     MaterialTheme(
         colorScheme = lightColorScheme(
             primary = Moss,
@@ -1323,6 +1351,7 @@ private fun SpurApp() {
                                 onEditTour = { id ->
                                     navController.navigate(SpurRoute.editor(id))
                                 },
+                                onDeleteTour = deleteTour,
                                 showFeedbackNotice = showFeedbackNotice,
                                 photoRevision = photoRevision,
                                 onPhotoRotated = { photoRevision++ },
@@ -1346,16 +1375,6 @@ private fun SpurApp() {
                                 onBack = { navController.popBackStack() },
                                 onChanged = {
                                     historyRevision++
-                                },
-                                onDeleted = {
-                                    historyRevision++
-                                    if (activeTour?.id == tourId) activeTour = null
-                                    if (displayedTourId == tourId) {
-                                        displayedTour = null
-                                        displayedTourId = null
-                                        routePoints = emptyList()
-                                    }
-                                    navController.popBackStack()
                                 },
                                 showFeedbackNotice = showFeedbackNotice,
                             )
@@ -1403,22 +1422,6 @@ private fun SpurApp() {
                                 onEditTour = { id ->
                                     isHistoryVisible = false
                                     navController.navigate(SpurRoute.editor(id))
-                                },
-                                onDeleteTour = { id ->
-                                    scope.launch {
-                                        withContext(Dispatchers.IO) {
-                                            store.deleteTour(id)
-                                        }
-                                        tourActivityUsage = withContext(Dispatchers.IO) {
-                                            store.activityUsage()
-                                        }
-                                        if (displayedTourId == id) {
-                                            displayedTour = null
-                                            displayedTourId = null
-                                            routePoints = emptyList()
-                                        }
-                                        historyRevision++
-                                    }
                                 },
                                 showFeedbackNotice = showFeedbackNotice,
                                 photoRevision = photoRevision,
@@ -1518,6 +1521,7 @@ private fun MapPage(
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
     onEditTour: (Long) -> Unit,
+    onDeleteTour: (Long) -> Unit,
     showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
     photoRevision: Long = 0L,
     onPhotoRotated: () -> Unit = {},
@@ -1551,6 +1555,7 @@ private fun MapPage(
     var showTrailColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var tourToDelete by remember { mutableStateOf<Tour?>(null) }
     var selectedBuilding by remember { mutableStateOf<SpurCoordinate?>(null) }
     var pendingMoment by remember { mutableStateOf<PendingMapMoment?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
@@ -2207,8 +2212,29 @@ private fun MapPage(
                         showAboutBottomSheet = true
                     }
                 },
+                onDeleteTour = tour?.let { visibleTour ->
+                    {
+                        scope.launch {
+                            mainMenuState.hide()
+                            showMainMenu = false
+                            tourToDelete = visibleTour
+                        }
+                    }
+                },
             )
         }
+    }
+
+    tourToDelete?.let { selectedTour ->
+        EditorDeleteSheet(
+            title = "Tour löschen?",
+            primaryLabel = "Tour löschen",
+            onDismiss = { tourToDelete = null },
+            onConfirm = {
+                tourToDelete = null
+                onDeleteTour(selectedTour.id)
+            },
+        )
     }
 
     if (showTourMenu) {
@@ -3257,13 +3283,25 @@ private fun MainMenu(
     onOpenTrailColors: () -> Unit,
     onOpenDirection: () -> Unit,
     onOpenAbout: () -> Unit,
+    onDeleteTour: (() -> Unit)?,
 ) {
     Column(
         modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .navigationBarsPadding()
             .padding(bottom = 24.dp),
     ) {
         SheetMenuItem(label = "Tour", onClick = onOpenTour)
+        onDeleteTour?.let {
+            SheetMenuItem(
+                label = "Tour löschen",
+                onClick = it,
+                destructive = true,
+                leading = { PhotoDeleteIcon(color = StopRed) },
+                trailing = false,
+            )
+        }
         SheetMenuItem(label = "Buttonfarben", onClick = onOpenButtonColors)
         SheetMenuItem(label = "Trail", onClick = onOpenTrailColors)
         SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
@@ -6285,6 +6323,20 @@ private suspend fun Context.deleteMapMoment(
     updatedMoments
 }
 
+private suspend fun Context.deleteStoredTour(
+    store: TourStore,
+    tourId: Long,
+): Boolean = withContext(Dispatchers.IO) {
+    val tour = store.tour(tourId) ?: return@withContext true
+    var remainingMoments = loadMapMoments()
+    for (moment in mapMomentsForTour(remainingMoments, tour)) {
+        remainingMoments = deleteMapMoment(moment, remainingMoments)
+            ?: return@withContext false
+    }
+    store.deleteTour(tourId)
+    true
+}
+
 private fun Context.loadPhotoPlace(photoId: String): String? =
     getSharedPreferences(PhotoPlacePreferences, Context.MODE_PRIVATE)
         .getString(photoId, null)
@@ -6577,7 +6629,6 @@ private fun HistoryPage(
     onBack: () -> Unit,
     onOpenTour: (Long) -> Unit,
     onEditTour: (Long) -> Unit,
-    onDeleteTour: (Long) -> Unit,
     showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
     photoRevision: Long = 0L,
     onPhotoRotated: () -> Unit = {},
@@ -6588,8 +6639,6 @@ private fun HistoryPage(
     var tours by remember { mutableStateOf(emptyList<Tour>()) }
     var mapMoments by remember { mutableStateOf(emptyList<MapMoment>()) }
     var selectedTour by remember { mutableStateOf<Tour?>(null) }
-    var tourToDelete by remember { mutableStateOf<Tour?>(null) }
-    var deletingTourId by remember { mutableStateOf<Long?>(null) }
     var selectedMoment by remember { mutableStateOf<MapMoment?>(null) }
     var isPhotoDetailVisible by remember { mutableStateOf(false) }
     var isMediaDetailVisible by remember { mutableStateOf(false) }
@@ -6615,9 +6664,8 @@ private fun HistoryPage(
         enabled = isVisible &&
             !isPhotoDetailVisible &&
             !isMediaDetailVisible,
-    ) {
-        if (deletingTourId == null) onBack()
-    }
+        onBack = onBack,
+    )
     LaunchedEffect(revision) {
         val (loadedTours, loadedMoments) = withContext(Dispatchers.IO) {
             val moments = context.loadMapMoments()
@@ -6628,7 +6676,6 @@ private fun HistoryPage(
         }
         tours = loadedTours
         mapMoments = loadedMoments
-        if (loadedTours.none { it.id == deletingTourId }) deletingTourId = null
     }
     LaunchedEffect(historyPhotos, selectedMoment?.id) {
         val selected = selectedMoment ?: return@LaunchedEffect
@@ -6670,7 +6717,6 @@ private fun HistoryPage(
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = onBack,
-                enabled = deletingTourId == null,
             ) {
                 BackIcon()
             }
@@ -6712,78 +6758,70 @@ private fun HistoryPage(
             ) {
                 items(tours, key = { it.id }) { tour ->
                     val visuals = visualsByTour[tour.id].orEmpty()
-                    AnimatedVisibility(
-                        visible = deletingTourId != tour.id,
-                        exit = shrinkVertically(
-                            shrinkTowards = Alignment.Top,
-                            animationSpec = tween(MotionDurationDefaultMillis),
-                        ) + fadeOut(tween(MotionDurationDefaultMillis)),
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
                     ) {
-                        Box(
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 12.dp),
+                                .combinedClickable(
+                                    onClick = { selectedTour = tour },
+                                    onLongClick = { selectedTour = tour },
+                                ),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            shape = RoundedCornerShape(20.dp),
                         ) {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .combinedClickable(
-                                        onClick = { selectedTour = tour },
-                                        onLongClick = { selectedTour = tour },
-                                    ),
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
-                                shape = RoundedCornerShape(20.dp),
-                            ) {
-                                Column {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(18.dp)
-                                            .padding(
-                                                bottom = if (visuals.isEmpty()) 0.dp else 4.dp,
-                                            ),
-                                        verticalAlignment = Alignment.Top,
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = tour.activity ?: formatDate(tour.startedAt),
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Medium,
-                                            )
-                                            Text(
-                                                text = if (tour.activity == null) {
-                                                    formatTourTime(tour)
-                                                } else {
-                                                    "${formatDate(tour.startedAt)} · " +
-                                                        formatTourTime(tour)
-                                                },
-                                                modifier = Modifier.padding(top = 3.dp),
-                                                color = Ink.copy(alpha = 0.56f),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                            )
-                                        }
+                            Column {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(18.dp)
+                                        .padding(
+                                            bottom = if (visuals.isEmpty()) 0.dp else 4.dp,
+                                        ),
+                                    verticalAlignment = Alignment.Top,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = formatMeters(tour.distanceMeters),
-                                            color = Moss,
+                                            text = tour.activity ?: formatDate(tour.startedAt),
                                             style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.SemiBold,
+                                            fontWeight = FontWeight.Medium,
                                         )
-                                    }
-                                    if (visuals.isNotEmpty()) {
-                                        TourMomentStrip(
-                                            moments = visuals,
-                                            photoRevision = photoRevision,
-                                            selectedMomentId = selectedMoment?.id,
-                                            onOpen = {
-                                                selectedMoment = it
-                                                if (it.type == MomentType.PHOTO) {
-                                                    isPhotoDetailVisible = true
-                                                } else if (it.type == MomentType.VIDEO) {
-                                                    isMediaDetailVisible = true
-                                                }
+                                        Text(
+                                            text = if (tour.activity == null) {
+                                                formatTourTime(tour)
+                                            } else {
+                                                "${formatDate(tour.startedAt)} · " +
+                                                    formatTourTime(tour)
                                             },
+                                            modifier = Modifier.padding(top = 3.dp),
+                                            color = Ink.copy(alpha = 0.56f),
+                                            style = MaterialTheme.typography.bodyMedium,
                                         )
                                     }
+                                    Text(
+                                        text = formatMeters(tour.distanceMeters),
+                                        color = Moss,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                                if (visuals.isNotEmpty()) {
+                                    TourMomentStrip(
+                                        moments = visuals,
+                                        photoRevision = photoRevision,
+                                        selectedMomentId = selectedMoment?.id,
+                                        onOpen = {
+                                            selectedMoment = it
+                                            if (it.type == MomentType.PHOTO) {
+                                                isPhotoDetailVisible = true
+                                            } else if (it.type == MomentType.VIDEO) {
+                                                isMediaDetailVisible = true
+                                            }
+                                        },
+                                    )
                                 }
                             }
                         }
@@ -6824,41 +6862,8 @@ private fun HistoryPage(
                     selectedTour = null
                     onEditTour(tour.id)
                 }
-                if (tour.endedAt != null) {
-                    HistoryAction(label = "Tour löschen", destructive = true) {
-                        selectedTour = null
-                        tourToDelete = tour
-                    }
-                }
             }
         }
-    }
-
-    tourToDelete?.let { tour ->
-        AlertDialog(
-            onDismissRequest = { tourToDelete = null },
-            title = { Text("Tour löschen?") },
-            text = { Text("Die Tour und alle gespeicherten Standortpunkte werden entfernt.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        tourToDelete = null
-                        deletingTourId = tour.id
-                        scope.launch {
-                            delay(MotionDurationDefaultMillis.toLong())
-                            onDeleteTour(tour.id)
-                        }
-                    },
-                ) {
-                    Text("Löschen", color = Color(0xFFB3261E))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { tourToDelete = null }) {
-                    Text("Abbrechen")
-                }
-            },
-        )
     }
 
     if (isPhotoDetailVisible) selectedMoment
@@ -7034,7 +7039,6 @@ private fun TourEditorScreen(
     tourId: Long,
     onBack: () -> Unit,
     onChanged: () -> Unit,
-    onDeleted: () -> Unit,
     showFeedbackNotice: ShowFeedbackNotice,
 ) {
     val context = LocalContext.current
@@ -7067,18 +7071,17 @@ private fun TourEditorScreen(
     }
 
     val currentTour = tour
-    val waypoints = remember(currentTour, points, moments, selectedPointId) {
+    val locations = remember(currentTour, points, moments) {
         currentTour?.let {
-            editorWaypoints(
+            editorLocations(
                 tour = it,
                 points = points,
                 moments = moments,
-                selectedPointId = selectedPointId,
             )
         }.orEmpty()
     }
-    val selectedWaypoint = waypoints.firstOrNull { it.point.id == selectedPointId }
-        ?: waypoints.lastOrNull()
+    val selectedLocation = locations.firstOrNull { it.point.id == selectedPointId }
+        ?: locations.lastOrNull()
 
     suspend fun saveMoments(updated: List<MapMoment>) {
         withContext(Dispatchers.IO) {
@@ -7099,7 +7102,7 @@ private fun TourEditorScreen(
         Box(modifier = Modifier.weight(1f)) {
             TourEditorMap(
                 points = points,
-                selectedPoint = selectedWaypoint?.point,
+                selectedPoint = selectedLocation?.point,
             )
             Surface(
                 modifier = Modifier
@@ -7130,12 +7133,6 @@ private fun TourEditorScreen(
                 ) {
                     BackIcon()
                 }
-                MapIconButton(
-                    contentDescription = "Tour löschen",
-                    onClick = { deleteTarget = EditorDeleteTarget.Tour },
-                ) {
-                    PhotoDeleteIcon(color = Ink)
-                }
             }
         }
 
@@ -7146,7 +7143,7 @@ private fun TourEditorScreen(
                 .navigationBarsPadding()
                 .background(Sand),
         ) {
-            if (selectedWaypoint == null) {
+            if (selectedLocation == null) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -7155,7 +7152,7 @@ private fun TourEditorScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "Keine Wegmarken",
+                        text = "Keine GPS-Punkte",
                         color = Ink.copy(alpha = 0.58f),
                         style = MaterialTheme.typography.titleMedium,
                     )
@@ -7169,43 +7166,116 @@ private fun TourEditorScreen(
                         .padding(horizontal = 22.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Wegmarke ${waypoints.indexOf(selectedWaypoint) + 1} " +
-                                    "von ${waypoints.size}",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = "${formatKilometers(selectedWaypoint.distanceFromStartMeters)} · " +
-                                    "${formatEditorElapsed(selectedWaypoint.elapsedMillis)} · " +
-                                    formatClock(selectedWaypoint.point.recordedAt),
-                                color = Ink.copy(alpha = 0.58f),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                        Button(
-                            onClick = {
-                                placementTarget = MomentPlacementTarget.Waypoint(
-                                    tourId = tourId,
-                                    trackPointId = selectedWaypoint.point.id,
-                                    coordinate = SpurCoordinate(
-                                        selectedWaypoint.point.latitude,
-                                        selectedWaypoint.point.longitude,
-                                    ),
-                                )
-                            },
-                            modifier = Modifier.size(52.dp),
-                            contentPadding = PaddingValues(0.dp),
-                            shape = CircleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = Ink),
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(26.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            PlusIcon()
+                            Row(verticalAlignment = Alignment.Top) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = formatClock(selectedLocation.point.recordedAt),
+                                        style = MaterialTheme.typography.displayMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(
+                                        text = "Uhrzeit",
+                                        color = Ink.copy(alpha = 0.54f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    OutlinedButton(
+                                        enabled = points.size > 1,
+                                        onClick = {
+                                            deleteTarget =
+                                                EditorDeleteTarget.Location(
+                                                    selectedLocation.point,
+                                                )
+                                        },
+                                        modifier = Modifier
+                                            .size(52.dp)
+                                            .semantics {
+                                                contentDescription = "GPS-Punkt löschen"
+                                            },
+                                        contentPadding = PaddingValues(0.dp),
+                                        shape = CircleShape,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            Ink.copy(alpha = 0.18f),
+                                        ),
+                                    ) {
+                                        PhotoDeleteIcon(color = Ink)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            placementTarget =
+                                                MomentPlacementTarget.RecordedLocation(
+                                                    tourId = tourId,
+                                                    trackPointId = selectedLocation.point.id,
+                                                    coordinate = SpurCoordinate(
+                                                        selectedLocation.point.latitude,
+                                                        selectedLocation.point.longitude,
+                                                    ),
+                                                )
+                                        },
+                                        modifier = Modifier
+                                            .size(52.dp)
+                                            .semantics {
+                                                contentDescription =
+                                                    "Moment an diesem GPS-Punkt hinzufügen"
+                                            },
+                                        contentPadding = PaddingValues(0.dp),
+                                        shape = CircleShape,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Ink,
+                                        ),
+                                    ) {
+                                        PlusIcon()
+                                    }
+                                }
+                            }
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(28.dp),
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = formatEditorElapsed(
+                                            selectedLocation.elapsedMillis,
+                                        ),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(
+                                        text = "seit Start",
+                                        color = Ink.copy(alpha = 0.54f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = formatKilometers(
+                                            selectedLocation.distanceFromStartMeters,
+                                        ),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(
+                                        text = "vom Start",
+                                        color = Ink.copy(alpha = 0.54f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
+                            }
                         }
                     }
 
-                    selectedWaypoint.moments.forEach { moment ->
+                    selectedLocation.moments.forEach { moment ->
                         Surface(
                             color = Color.White,
                             shape = CircleShape,
@@ -7232,20 +7302,10 @@ private fun TourEditorScreen(
                             }
                         }
                     }
-
-                    TextButton(
-                        enabled = points.size > 2,
-                        onClick = {
-                            deleteTarget = EditorDeleteTarget.Waypoint(selectedWaypoint.point)
-                        },
-                        modifier = Modifier.align(Alignment.End),
-                    ) {
-                        Text("Wegmarke löschen", color = Ink)
-                    }
                 }
-                EditorWaypointRail(
-                    waypoints = waypoints,
-                    selectedPointId = selectedWaypoint.point.id,
+                EditorLocationRail(
+                    locations = locations,
+                    selectedPointId = selectedLocation.point.id,
                     onSelected = { selectedPointId = it },
                 )
             }
@@ -7257,18 +7317,18 @@ private fun TourEditorScreen(
         showFeedbackNotice = showFeedbackNotice,
         onDismiss = { placementTarget = null },
         onMomentAccepted = { target, pending ->
-            val waypoint = target as? MomentPlacementTarget.Waypoint
-            if (waypoint == null) {
+            val location = target as? MomentPlacementTarget.RecordedLocation
+            if (location == null) {
                 pending.deletePayload()
             } else {
                 val moment = MapMoment(
                     id = pending.id,
                     type = pending.type,
-                    latitude = waypoint.coordinate.latitude,
-                    longitude = waypoint.coordinate.longitude,
+                    latitude = location.coordinate.latitude,
+                    longitude = location.coordinate.longitude,
                     payload = pending.payload,
-                    tourId = waypoint.tourId,
-                    trackPointId = waypoint.trackPointId,
+                    tourId = location.tourId,
+                    trackPointId = location.trackPointId,
                 )
                 scope.launch { saveMoments(moments + moment) }
             }
@@ -7279,42 +7339,17 @@ private fun TourEditorScreen(
     deleteTarget?.let { target ->
         EditorDeleteSheet(
             title = when (target) {
-                EditorDeleteTarget.Tour -> "Tour löschen?"
-                is EditorDeleteTarget.Waypoint -> "Wegmarke löschen?"
+                is EditorDeleteTarget.Location -> "GPS-Punkt löschen?"
                 is EditorDeleteTarget.Moment -> "${target.moment.type.editorLabel()} löschen?"
             },
             primaryLabel = when (target) {
-                EditorDeleteTarget.Tour -> "Tour löschen"
-                is EditorDeleteTarget.Waypoint -> "Wegmarke löschen"
+                is EditorDeleteTarget.Location -> "GPS-Punkt löschen"
                 is EditorDeleteTarget.Moment -> "${target.moment.type.editorLabel()} löschen"
             },
             onDismiss = { deleteTarget = null },
             onConfirm = {
                 deleteTarget = null
                 when (target) {
-                    EditorDeleteTarget.Tour -> scope.launch {
-                        if (currentTour?.endedAt == null) {
-                            context.startService(
-                                Intent(context, TrackingService::class.java)
-                                    .setAction(TrackingService.ACTION_STOP),
-                            )
-                        }
-                        var remainingMoments = context.loadMapMoments()
-                        moments.forEach { moment ->
-                            remainingMoments = context.deleteMapMoment(
-                                moment,
-                                remainingMoments,
-                            ) ?: run {
-                                showFeedbackNotice(
-                                    FeedbackNoticeKind.ERROR,
-                                    "Tour konnte nicht gelöscht werden.",
-                                )
-                                return@launch
-                            }
-                        }
-                        withContext(Dispatchers.IO) { store.deleteTour(tourId) }
-                        onDeleted()
-                    }
                     is EditorDeleteTarget.Moment -> scope.launch {
                         val updated = context.deleteMapMoment(
                             moment = target.moment,
@@ -7330,7 +7365,8 @@ private fun TourEditorScreen(
                             onChanged()
                         }
                     }
-                    is EditorDeleteTarget.Waypoint -> scope.launch {
+                    is EditorDeleteTarget.Location -> scope.launch {
+                        val deletedIndex = points.indexOf(target.point)
                         val retained = points.filterNot { it.id == target.point.id }
                         val retainedIds = retained.mapTo(mutableSetOf(), TrackPoint::id)
                         withContext(Dispatchers.IO) {
@@ -7352,10 +7388,9 @@ private fun TourEditorScreen(
                                 }
                             },
                         )
-                        val deletedIndex = points.indexOf(target.point)
-                        selectedPointId = retained[
-                            deletedIndex.coerceIn(0, retained.lastIndex)
-                        ].id
+                        selectedPointId = retained.getOrNull(
+                            deletedIndex.coerceAtMost(retained.lastIndex),
+                        )?.id
                         tour = withContext(Dispatchers.IO) { store.tour(tourId) }
                     }
                 }
@@ -7365,8 +7400,7 @@ private fun TourEditorScreen(
 }
 
 private sealed interface EditorDeleteTarget {
-    data object Tour : EditorDeleteTarget
-    data class Waypoint(val point: TrackPoint) : EditorDeleteTarget
+    data class Location(val point: TrackPoint) : EditorDeleteTarget
     data class Moment(val moment: MapMoment) : EditorDeleteTarget
 }
 
@@ -7420,23 +7454,21 @@ private fun EditorDeleteSheet(
 }
 
 @Composable
-private fun EditorWaypointRail(
-    waypoints: List<EditorWaypoint>,
+private fun EditorLocationRail(
+    locations: List<EditorLocation>,
     selectedPointId: Long,
     onSelected: (Long) -> Unit,
 ) {
-    val initialIndex = waypoints.indexOfFirst { it.point.id == selectedPointId }
+    val initialIndex = locations.indexOfFirst { it.point.id == selectedPointId }
         .coerceAtLeast(0)
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val scope = rememberCoroutineScope()
-    var isCentering by remember { mutableStateOf(false) }
     val fling = rememberSnapFlingBehavior(
         lazyListState = state,
         snapPosition = SnapPosition.Center,
     )
 
     suspend fun centerVisibleItem(index: Int, animated: Boolean) {
-        isCentering = true
         var item = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
         if (item == null) {
             state.scrollToItem(index)
@@ -7460,25 +7492,25 @@ private fun EditorWaypointRail(
                 }
             }
         }
-        isCentering = false
     }
 
-    LaunchedEffect(state, selectedPointId, waypoints.size) {
+    LaunchedEffect(state, locations.size) {
         centerVisibleItem(initialIndex, animated = false)
     }
 
-    LaunchedEffect(state, waypoints) {
-        snapshotFlow { state.isScrollInProgress to isCentering }
+    LaunchedEffect(state, locations) {
+        snapshotFlow {
+            val layout = state.layoutInfo
+            val center =
+                (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+            layout.visibleItemsInfo.minByOrNull {
+                abs(it.offset + it.size / 2 - center)
+            }?.index
+        }
             .distinctUntilChanged()
-            .filter { (isScrolling, centering) -> !isScrolling && !centering }
-            .collect {
-                val layout = state.layoutInfo
-                val center = (layout.viewportStartOffset + layout.viewportEndOffset) / 2
-                val item = layout.visibleItemsInfo.minByOrNull {
-                    abs(it.offset + it.size / 2 - center)
-                }
-                item?.index?.let { index ->
-                    waypoints.getOrNull(index)?.point?.id?.let(onSelected)
+            .collect { index ->
+                index?.let {
+                    locations.getOrNull(it)?.point?.id?.let(onSelected)
                 }
             }
     }
@@ -7486,60 +7518,78 @@ private fun EditorWaypointRail(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .height(104.dp)
+            .height(96.dp)
             .background(Color.White),
     ) {
-        val itemWidth = 72.dp
+        val selectedIndex = locations.indexOfFirst {
+            it.point.id == selectedPointId
+        }.coerceAtLeast(0)
+        val itemWidth = 10.dp
         val edgePadding = (maxWidth - itemWidth) / 2
+        Text(
+            text = "${selectedIndex + 1} von ${locations.size}",
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 10.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
         LazyRow(
             state = state,
             flingBehavior = fling,
             contentPadding = PaddingValues(horizontal = edgePadding),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(56.dp),
         ) {
             items(
-                count = waypoints.size,
-                key = { waypoints[it].point.id },
+                count = locations.size,
+                key = { locations[it].point.id },
             ) { index ->
-                val waypoint = waypoints[index]
+                val location = locations[index]
                 Box(
                     modifier = Modifier
                         .width(itemWidth)
                         .fillMaxHeight()
-                        .border(0.5.dp, Ink.copy(alpha = 0.16f))
                         .clickable {
                             scope.launch { centerVisibleItem(index, animated = true) }
                         }
                         .semantics {
-                            contentDescription = "Wegmarke ${index + 1} von ${waypoints.size}"
-                            selected = waypoint.point.id == selectedPointId
+                            contentDescription =
+                                "GPS-Punkt ${index + 1} von ${locations.size}"
                         },
-                    contentAlignment = Alignment.Center,
+                    contentAlignment = Alignment.BottomCenter,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${index + 1}",
-                            color = if (waypoint.point.id == selectedPointId) Moss else Ink,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        if (waypoint.moments.isNotEmpty()) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        if (location.moments.isNotEmpty()) {
                             Box(
                                 modifier = Modifier
-                                    .padding(top = 7.dp)
-                                    .size(5.dp)
+                                    .size(4.dp)
                                     .background(Moss, CircleShape),
                             )
                         }
+                        Box(
+                            modifier = Modifier
+                                .padding(bottom = 8.dp)
+                                .width(2.dp)
+                                .height(20.dp)
+                                .background(Ink.copy(alpha = 0.16f), CircleShape),
+                        )
                     }
                 }
             }
         }
         Box(
             modifier = Modifier
-                .align(Alignment.Center)
-                .width(itemWidth)
-                .fillMaxHeight()
-                .border(2.dp, Ink),
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 8.dp)
+                .width(2.dp)
+                .height(32.dp)
+                .background(Ink, CircleShape),
         )
     }
 }
@@ -7553,7 +7603,7 @@ private fun MomentType.editorLabel(): String = when (this) {
 
 private fun formatEditorElapsed(millis: Long): String {
     val minutes = millis.coerceAtLeast(0L) / 60_000
-    return String.format(Locale.getDefault(), "%d:%02d seit Start", minutes / 60, minutes % 60)
+    return String.format(Locale.getDefault(), "%d:%02d", minutes / 60, minutes % 60)
 }
 
 @Composable
@@ -7611,11 +7661,10 @@ private fun TourEditorMap(
         mapView.getMapAsync { map ->
             map.style?.showSelectedTrackPoint(selectedPoint)
             selectedPoint?.let { point ->
-                map.animateCamera(
+                map.moveCamera(
                     CameraUpdateFactory.newLatLng(
                         LatLng(point.latitude, point.longitude),
                     ),
-                    MotionDurationDefaultMillis,
                 )
             }
         }
@@ -8238,6 +8287,7 @@ private fun MapPagePreview() {
         onEndTour = {},
         onOpenHistory = {},
         onEditTour = {},
+        onDeleteTour = {},
     )
 }
 
@@ -8263,6 +8313,7 @@ private fun ActiveTourPagePreview() {
         onEndTour = {},
         onOpenHistory = {},
         onEditTour = {},
+        onDeleteTour = {},
     )
 }
 
@@ -8275,7 +8326,6 @@ private fun HistoryPagePreview() {
         onBack = {},
         onOpenTour = {},
         onEditTour = {},
-        onDeleteTour = {},
     )
 }
 
