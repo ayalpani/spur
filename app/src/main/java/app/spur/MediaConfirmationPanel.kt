@@ -45,7 +45,7 @@ internal fun ColumnScope.AnimatedMediaConfirmationPanel(
         ) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                shape = RoundedCornerShape(28.dp),
                 color = SheetBackground,
                 shadowElevation = 16.dp,
             ) {
