@@ -1982,13 +1982,11 @@ private fun MapPage(
                             PhotoCloseIcon()
                         }
                     } else {
-                        if (isTourActive) {
-                            MapIconButton(
-                                contentDescription = "Tour teilen",
-                                onClick = { shareActiveTour(context) },
-                            ) {
-                                ShareIcon()
-                            }
+                        MapIconButton(
+                            contentDescription = "Hauptmenü öffnen",
+                            onClick = { showMainMenu = true },
+                        ) {
+                            MenuIcon()
                         }
                         tour?.let {
                             MapIconButton(
@@ -2003,12 +2001,6 @@ private fun MapPage(
                                     strokeWidth = LucideBoldStrokeWidth,
                                 )
                             }
-                        }
-                        MapIconButton(
-                            contentDescription = "Hauptmenü öffnen",
-                            onClick = { showMainMenu = true },
-                        ) {
-                            MenuIcon()
                         }
                         MapIconButton(
                             contentDescription = "Tour-History öffnen",
@@ -2342,6 +2334,17 @@ private fun MapPage(
                         showMainMenu = false
                         showAboutBottomSheet = true
                     }
+                },
+                onShareTour = if (isTourActive) {
+                    {
+                        scope.launch {
+                            mainMenuState.hide()
+                            showMainMenu = false
+                            shareActiveTour(context)
+                        }
+                    }
+                } else {
+                    null
                 },
                 onDeleteTour = tour?.let { visibleTour ->
                     {
@@ -3442,6 +3445,7 @@ private fun MainMenu(
     onOpenTrailColors: () -> Unit,
     onOpenDirection: () -> Unit,
     onOpenAbout: () -> Unit,
+    onShareTour: (() -> Unit)?,
     onDeleteTour: (() -> Unit)?,
 ) {
     Column(
@@ -3464,6 +3468,14 @@ private fun MainMenu(
             )
         }
         SheetMenuItem(label = "Tour", onClick = onOpenTour)
+        onShareTour?.let {
+            SheetMenuItem(
+                label = "Tour teilen",
+                onClick = it,
+                leading = { ShareIcon() },
+                trailing = false,
+            )
+        }
         SheetMenuItem(label = "Buttonfarben", onClick = onOpenButtonColors)
         SheetMenuItem(label = "Trail", onClick = onOpenTrailColors)
         SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
