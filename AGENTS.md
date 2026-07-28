@@ -21,6 +21,15 @@ instrumentation tests must run on a disposable emulator or a dedicated test
 profile. Use only `adb install -r`/`spurctl start` for the personal device after
 confirming that the command preserves app data.
 
+## Design system
+
+- Use `SpurPrimaryButton` for the promoted action in sheets and forms.
+- Its background and foreground come from the user's selected
+  `LocalMapControlColors`; the default is black with white text.
+- Primary labels use the component's shared `titleLarge` semibold typography.
+- Keep destructive actions on the established red treatment instead of
+  overloading the primary-action colors.
+
 ## Refactoring rules
 
 - Make one behavior-neutral extraction per commit.

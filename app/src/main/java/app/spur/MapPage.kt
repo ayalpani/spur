@@ -846,17 +846,19 @@ internal fun MapPage(
             onDismissRequest = { showStartTourBottomSheet = false },
             sheetState = startTourBottomSheetState,
         ) {
-            StartTourBottomSheet(
-                onStartTour = {
-                    if (isStartingTour) return@StartTourBottomSheet
-                    isStartingTour = true
-                    scope.launch {
-                        startTourBottomSheetState.hide()
-                        showStartTourBottomSheet = false
-                        onStartTour()
-                    }
-                },
-            )
+            CompositionLocalProvider(LocalMapControlColors provides mapControlColors) {
+                StartTourBottomSheet(
+                    onStartTour = {
+                        if (isStartingTour) return@StartTourBottomSheet
+                        isStartingTour = true
+                        scope.launch {
+                            startTourBottomSheetState.hide()
+                            showStartTourBottomSheet = false
+                            onStartTour()
+                        }
+                    },
+                )
+            }
         }
     }
 
@@ -1328,31 +1330,33 @@ internal fun MapPage(
         }
     }
 
-    MomentComposer(
-        target = momentTarget,
-        showFeedbackNotice = showFeedbackNotice,
-        onDismiss = { momentTarget = null },
-        onMomentAccepted = { target, moment ->
-            when (target) {
-                MomentPlacementTarget.CurrentLocation -> pendingMoment = moment
-                is MomentPlacementTarget.RecordedLocation -> {
-                    val savedMoment = MapMoment(
-                        id = moment.id,
-                        type = moment.type,
-                        latitude = target.coordinate.latitude,
-                        longitude = target.coordinate.longitude,
-                        payload = moment.payload,
-                        tourId = target.tourId,
-                        trackPointId = target.trackPointId,
-                    )
-                    val updatedMoments = mapMoments + savedMoment
-                    context.saveMapMoments(updatedMoments)
-                    mapMoments = updatedMoments
+    CompositionLocalProvider(LocalMapControlColors provides mapControlColors) {
+        MomentComposer(
+            target = momentTarget,
+            showFeedbackNotice = showFeedbackNotice,
+            onDismiss = { momentTarget = null },
+            onMomentAccepted = { target, moment ->
+                when (target) {
+                    MomentPlacementTarget.CurrentLocation -> pendingMoment = moment
+                    is MomentPlacementTarget.RecordedLocation -> {
+                        val savedMoment = MapMoment(
+                            id = moment.id,
+                            type = moment.type,
+                            latitude = target.coordinate.latitude,
+                            longitude = target.coordinate.longitude,
+                            payload = moment.payload,
+                            tourId = target.tourId,
+                            trackPointId = target.trackPointId,
+                        )
+                        val updatedMoments = mapMoments + savedMoment
+                        context.saveMapMoments(updatedMoments)
+                        mapMoments = updatedMoments
+                    }
                 }
-            }
-            momentTarget = null
-        },
-    )
+                momentTarget = null
+            },
+        )
+    }
 
     photoDetail?.let { moment ->
         val photos = remember(visibleMapMoments) {

@@ -1,5 +1,6 @@
 package app.spur
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.platform.LocalContext
@@ -70,4 +71,36 @@ private fun HistoryPagePreview() {
 @Composable
 private fun LocationOnboardingPreview() {
     LocationOnboarding(permissionRequested = false, onRequestLocation = {})
+}
+
+@Preview(showBackground = true, widthDp = 412)
+@Composable
+private fun StartTourBottomSheetPreview() {
+    CompositionLocalProvider(
+        LocalMapControlColors provides MapControlColors(
+            background = MapControlColor.BLACK.color,
+            foreground = MapControlColor.WHITE.color,
+        ),
+    ) {
+        StartTourBottomSheet(onStartTour = {})
+    }
+}
+
+@Preview(showBackground = true, widthDp = 412)
+@Composable
+private fun VoiceRecorderBottomSheetPreview() {
+    CompositionLocalProvider(
+        LocalMapControlColors provides MapControlColors(
+            background = MapControlColor.BLACK.color,
+            foreground = MapControlColor.WHITE.color,
+        ),
+    ) {
+        VoiceRecorderBottomSheet(
+            startRecordingRequest = 0,
+            hasRecordPermission = true,
+            onRequestPermission = {},
+            onRecordingAccepted = {},
+            onDismiss = {},
+        )
+    }
 }

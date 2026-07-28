@@ -178,7 +178,10 @@ internal data class TrailColors(
 )
 
 internal val LocalMapControlColors = staticCompositionLocalOf {
-    MapControlColors(background = Color.White, foreground = Ink)
+    MapControlColors(
+        background = MapControlColor.BLACK.color,
+        foreground = MapControlColor.WHITE.color,
+    )
 }
 internal val LocalTrailColors = staticCompositionLocalOf {
     TrailColors(
