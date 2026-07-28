@@ -1,0 +1,531 @@
+package app.spur
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import org.maplibre.android.style.layers.PropertyFactory.circleRadius
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+
+@Composable
+internal fun StartTourBottomSheet(
+    onStartTour: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        BottomSheetHeader(
+            title = "Tour starten",
+        )
+        Text(
+            text = "Spur zeichnet deine Strecke weiter auf, " +
+                "auch wenn dein Bildschirm aus ist.",
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            color = Ink.copy(alpha = 0.62f),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = onStartTour,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            shape = CircleShape,
+        ) {
+            Text(
+                text = "Los geht’s",
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun MainMenu(
+    onOpenTour: () -> Unit,
+    onOpenButtonColors: () -> Unit,
+    onOpenTrailColors: () -> Unit,
+    onOpenDirection: () -> Unit,
+    onOpenAbout: () -> Unit,
+    onShareTour: (() -> Unit)?,
+    onDeleteTour: (() -> Unit)?,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
+            .padding(bottom = 24.dp),
+    ) {
+        if (onDeleteTour != null || onShareTour != null) {
+            onDeleteTour?.let {
+                SheetMenuItem(
+                    label = "Tour löschen",
+                    onClick = it,
+                    destructive = true,
+                    leading = { PhotoDeleteIcon(color = StopRed) },
+                    trailing = false,
+                )
+            }
+            onShareTour?.let {
+                SheetMenuItem(
+                    label = "Tour teilen",
+                    onClick = it,
+                    leading = { ShareIcon() },
+                    trailing = false,
+                )
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+        }
+        SheetMenuItem(label = "Tour", onClick = onOpenTour)
+        SheetMenuItem(label = "Buttonfarben", onClick = onOpenButtonColors)
+        SheetMenuItem(label = "Trail", onClick = onOpenTrailColors)
+        SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
+        SheetMenuItem(label = "Über Spur", onClick = onOpenAbout)
+    }
+}
+
+@Composable
+internal fun TourMenu(
+    onBack: () -> Unit,
+    onOpenHomeAutoStart: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(bottom = 24.dp),
+    ) {
+        BottomSheetHeader(
+            title = "Tour",
+            modifier = Modifier.padding(horizontal = 24.dp),
+            onBack = onBack,
+        )
+        SheetMenuItem(
+            label = "Startautomatik",
+            leading = { HomeIcon() },
+            onClick = onOpenHomeAutoStart,
+        )
+    }
+}
+
+@Composable
+internal fun BottomSheetHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (onBack != null) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.align(Alignment.CenterStart),
+            ) {
+                BackIcon()
+            }
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+internal fun BuildingDetailsBottomSheet(
+    coordinate: SpurCoordinate,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    var address by remember(coordinate) { mutableStateOf<String?>(null) }
+    var addressResolved by remember(coordinate) { mutableStateOf(false) }
+
+    LaunchedEffect(coordinate) {
+        address = context.reverseGeocode(
+            latitude = coordinate.latitude,
+            longitude = coordinate.longitude,
+        )
+        addressResolved = true
+    }
+
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 24.dp),
+    ) {
+        BottomSheetHeader(
+            title = "Gebäude",
+            onBack = onBack,
+        )
+        Text(
+            text = "Adresse",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = when {
+                !addressResolved -> "Adresse wird ermittelt…"
+                address != null -> address.orEmpty()
+                else -> "Für dieses Gebäude ist keine Adresse verfügbar."
+            },
+            color = Ink.copy(alpha = 0.72f),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+    }
+}
+
+@Composable
+internal fun SheetMenuItem(
+    label: String,
+    onClick: () -> Unit,
+    destructive: Boolean = false,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: Boolean = true,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp),
+        color = Color.Transparent,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            leading?.invoke()
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                color = if (destructive) StopRed else Ink,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = SheetMenuTextSize,
+                ),
+                fontWeight = FontWeight.Medium,
+            )
+            if (trailing) {
+                LucideIcon(
+                    paths = listOf("m9 18 6-6-6-6"),
+                    color = Ink,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MapControlColorPreview(
+    colors: MapControlColors,
+    modifier: Modifier = Modifier,
+) {
+    val playerColors = colors.inverted
+    Surface(
+        modifier = modifier,
+        color = Mist,
+        shape = RoundedCornerShape(24.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(60.dp),
+                color = colors.background,
+                contentColor = colors.foreground,
+                shape = CircleShape,
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CompositionLocalProvider(
+                        LocalLucideStrokeWidth provides LucideBoldStrokeWidth,
+                    ) {
+                        MenuIcon()
+                    }
+                }
+            }
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(60.dp),
+                color = playerColors.background,
+                contentColor = playerColors.foreground,
+                shape = CircleShape,
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Tour starten",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun TrailColorPreview(
+    colors: TrailColors,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.semantics {
+            contentDescription = "Trail-Vorschau"
+        },
+        color = Mist,
+        shape = RoundedCornerShape(24.dp),
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .padding(16.dp),
+        ) {
+            val previewPath = Path().apply {
+                moveTo(0f, size.height * 0.72f)
+                cubicTo(
+                    size.width * 0.28f,
+                    size.height * 0.72f,
+                    size.width * 0.30f,
+                    size.height * 0.22f,
+                    size.width * 0.55f,
+                    size.height * 0.36f,
+                )
+                cubicTo(
+                    size.width * 0.73f,
+                    size.height * 0.46f,
+                    size.width * 0.78f,
+                    size.height * 0.72f,
+                    size.width,
+                    size.height * 0.58f,
+                )
+            }
+            drawPath(
+                path = previewPath,
+                color = colors.stroke,
+                style = Stroke(
+                    width = TourRouteBorderWidthPixels.dp.toPx(),
+                    cap = StrokeCap.Round,
+                    join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                ),
+            )
+            drawPath(
+                path = previewPath,
+                color = colors.fill,
+                style = Stroke(
+                    width = TourRouteWidthPixels.dp.toPx(),
+                    cap = StrokeCap.Round,
+                    join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+internal fun MapControlColorPicker(
+    label: String,
+    selectedColor: MapControlColor,
+    onSelect: (MapControlColor) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        MapControlColor.entries.chunked(4).forEach { options ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                options.forEach { option ->
+                    val selected = option == selectedColor
+                    Surface(
+                        onClick = { onSelect(option) },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .semantics {
+                                contentDescription = "$label ${option.label}"
+                                this.selected = selected
+                            },
+                        shape = CircleShape,
+                        color = option.color,
+                        border = BorderStroke(
+                            width = if (selected) 3.dp else 1.dp,
+                            color = if (selected) {
+                                option.contrastColor
+                            } else {
+                                Ink.copy(alpha = 0.18f)
+                            },
+                        ),
+                    ) {
+                        if (selected) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                LucideIcon(
+                                    paths = listOf("M20 6 9 17l-5-5"),
+                                    color = option.contrastColor,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MapRotationPicker(
+    compassRotation: Float,
+    selectedRotation: MapRotation,
+    onSelect: (MapRotation) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Layout(
+        modifier = modifier,
+        content = {
+            CompassCircle()
+            MapRotation.entries.forEach { rotation ->
+                FilterChip(
+                    selected = selectedRotation == rotation,
+                    onClick = { onSelect(rotation) },
+                    label = { Text(rotation.label) },
+                )
+            }
+        },
+    ) { measurables, constraints ->
+        val childConstraints = constraints.copy(minWidth = 0, minHeight = 0)
+        val circle = measurables.first().measure(childConstraints)
+        val options = measurables.drop(1).map { it.measure(childConstraints) }
+        val gap = MapRotationOptionGap.roundToPx()
+        val visualInset = FilterChipVisualInset.roundToPx()
+        val height = (
+            circle.height + 2 * gap + 2 * (options.maxOf { it.height } - visualInset)
+        ).coerceIn(constraints.minHeight, constraints.maxHeight)
+        val width = constraints.maxWidth
+        val centerX = width / 2f
+        val centerY = height / 2f
+
+        layout(width, height) {
+            circle.placeRelative(
+                x = (centerX - circle.width / 2f).roundToInt(),
+                y = (centerY - circle.height / 2f).roundToInt(),
+            )
+            MapRotation.entries.zip(options).forEach { (rotation, option) ->
+                val angle = (rotation.bearing - 90.0 + compassRotation) * PI / 180.0
+                val radius = mapRotationOptionCenterDistance(
+                    circleRadius = circle.width / 2f,
+                    gap = gap.toFloat(),
+                    halfWidth = option.width / 2f,
+                    halfHeight = (option.height / 2f - visualInset).coerceAtLeast(0f),
+                    angleRadians = angle,
+                )
+                option.placeRelative(
+                    x = (centerX + cos(angle).toFloat() * radius - option.width / 2f)
+                        .roundToInt(),
+                    y = (centerY + sin(angle).toFloat() * radius - option.height / 2f)
+                        .roundToInt(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompassCircle() {
+    Canvas(modifier = Modifier.size(84.dp)) {
+        val strokeWidth = 1.5.dp.toPx()
+        drawCircle(
+            color = Moss.copy(alpha = 0.3f),
+            style = Stroke(width = strokeWidth),
+        )
+        drawLine(
+            color = Moss.copy(alpha = 0.22f),
+            start = Offset(size.width / 2, 0f),
+            end = Offset(size.width / 2, size.height),
+            strokeWidth = strokeWidth,
+        )
+        drawLine(
+            color = Moss.copy(alpha = 0.22f),
+            start = Offset(0f, size.height / 2),
+            end = Offset(size.width, size.height / 2),
+            strokeWidth = strokeWidth,
+        )
+    }
+}

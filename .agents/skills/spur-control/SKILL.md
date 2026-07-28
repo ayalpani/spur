@@ -51,14 +51,14 @@ which device checks passed and which could not be performed.
 - Device: Samsung Galaxy A54, model `SM_A546B`
 - Transport: Wi-Fi ADB
 - Static Wi-Fi IP: `192.168.178.162`
-- Last known ADB port: `33719`
 - Application ID: `app.spur`
 - Launcher: `app.spur/.MainActivity`
 
 Arash has confirmed that the device IP does not change. Prefer an already-online
-transport for the registered model. Otherwise use the static IP with the last
-known port, then ADB mDNS discovery. Only the Wi-Fi debugging port can change;
-treat the port as a hint, not the IP.
+transport for the registered model. Otherwise use ADB mDNS discovery. The
+Wi-Fi debugging port changes and must never be committed to this repository.
+For the exceptional case where automatic discovery fails, accept a temporary
+override such as `SPUR_ADB_ENDPOINT=192.168.178.162:<port> scripts/spurctl status`.
 
 On this Galaxy A54 running Android 16, the system has been observed disabling
 wireless ADB after a Wi-Fi network-change event, even without a reboot or a

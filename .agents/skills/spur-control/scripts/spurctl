@@ -2,7 +2,6 @@
 set -euo pipefail
 
 readonly DEVICE_MODEL="SM_A546B"
-readonly LAST_ENDPOINT="192.168.178.162:33169"
 readonly PACKAGE="app.spur"
 readonly LEGACY_PACKAGE="app.spur.debug"
 readonly ACTIVITY="app.spur/.MainActivity"
@@ -57,11 +56,13 @@ connect_device() {
         return
     fi
 
-    "$ADB" connect "$LAST_ENDPOINT" >/dev/null 2>&1 || true
-    serial="$(online_serial)"
-    if [[ -n "$serial" ]]; then
-        printf '%s\n' "$serial"
-        return
+    if [[ -n "${SPUR_ADB_ENDPOINT:-}" ]]; then
+        "$ADB" connect "$SPUR_ADB_ENDPOINT" >/dev/null 2>&1 || true
+        serial="$(online_serial)"
+        if [[ -n "$serial" ]]; then
+            printf '%s\n' "$serial"
+            return
+        fi
     fi
 
     while read -r service; do
