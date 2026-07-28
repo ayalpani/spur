@@ -2196,7 +2196,6 @@ private fun MapPage(
                             "Satellitenansicht anzeigen"
                         },
                         onClick = {
-                            isMapRendered = false
                             isAlternateMapPreviewLoading = true
                             alternateMapPreview = null
                             isSatelliteView = !isSatelliteView
@@ -4714,7 +4713,6 @@ private fun MapSurface(
     }
 
     LaunchedEffect(isSatelliteView) {
-        currentOnMapReadyChanged(false)
         currentOnAlternateMapPreviewLoadingChanged(true)
         mapView.getMapAsync { map ->
             map.uiSettings.isCompassEnabled = false
