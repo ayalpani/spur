@@ -938,6 +938,11 @@ private val LocationPulseEasing = Easing { fraction ->
 private const val TourRouteSource = "tour-route-source"
 private const val TourRouteBorderLayer = "tour-route-border-layer"
 private const val TourRouteLayer = "tour-route-layer"
+private const val TourEndpointSource = "tour-endpoint-source"
+private const val TourEndpointRingLayer = "tour-endpoint-ring-layer"
+private const val TourEndpointEndLayer = "tour-endpoint-end-layer"
+private const val TourEndpointTypeProperty = "endpoint-type"
+private const val TourEndpointEnd = "end"
 private const val SelectedTrackPointSource = "selected-track-point-source"
 private const val SelectedTrackPointLayer = "selected-track-point-layer"
 private const val MapMomentSource = "map-moment-source"
@@ -4526,7 +4531,16 @@ private fun MapSurface(
         mapStyleRevision,
     ) {
         mapView.getMapAsync { map ->
-            map.style?.showSelectedTrackPoint(currentSelectedTrackPoint)
+            map.style?.let { style ->
+                style.showSelectedTrackPoint(currentSelectedTrackPoint)
+                style.showTourEndpoints(
+                    if (currentSelectedTrackPoint == null) {
+                        emptyList()
+                    } else {
+                        currentRoutePoints
+                    },
+                )
+            }
             if (selectedTrackPointRequest == 0L) return@getMapAsync
             currentSelectedTrackPoint?.let { point ->
                 map.locationComponent.cameraMode = CameraMode.NONE
@@ -4613,7 +4627,12 @@ private fun MapSurface(
         }
         mapView.getMapAsync { map ->
             if (points !== currentRoutePoints) return@getMapAsync
-            map.style?.showTourRoute(routeFeature, currentTrailColors)
+            map.style?.let { style ->
+                style.showTourRoute(routeFeature, currentTrailColors)
+                style.showTourEndpoints(
+                    if (currentSelectedTrackPoint == null) emptyList() else points,
+                )
+            }
         }
     }
 
@@ -6139,14 +6158,18 @@ private fun Style.showSelectedTrackPoint(point: TrackPoint?) {
     val source = getSourceAs<GeoJsonSource>(SelectedTrackPointSource)
         ?: GeoJsonSource(SelectedTrackPointSource).also(::addSource)
     if (getLayer(SelectedTrackPointLayer) == null) {
-        addLayer(
+        val layer =
             CircleLayer(SelectedTrackPointLayer, SelectedTrackPointSource).withProperties(
                 circleColor("#18201C"),
                 circleRadius(7f),
                 circleStrokeColor("#FFFFFF"),
                 circleStrokeWidth(3f),
-            ),
-        )
+            )
+        if (getLayer(TourEndpointRingLayer) == null) {
+            addLayer(layer)
+        } else {
+            addLayerBelow(layer, TourEndpointRingLayer)
+        }
     }
     if (point == null) {
         source.setGeoJson("""{"type":"FeatureCollection","features":[]}""")
@@ -6155,6 +6178,59 @@ private fun Style.showSelectedTrackPoint(point: TrackPoint?) {
             Feature.fromGeometry(Point.fromLngLat(point.longitude, point.latitude)),
         )
     }
+}
+
+private fun Style.showTourEndpoints(points: List<TrackPoint>) {
+    val source = getSourceAs<GeoJsonSource>(TourEndpointSource)
+        ?: GeoJsonSource(TourEndpointSource).also(::addSource)
+    if (getLayer(TourEndpointRingLayer) == null) {
+        addLayer(
+            CircleLayer(TourEndpointRingLayer, TourEndpointSource).withProperties(
+                circleColor(Color.White.toArgb()),
+                circleRadius(7f),
+                circleStrokeColor(Ink.toArgb()),
+                circleStrokeWidth(2.5f),
+            ),
+        )
+    }
+    if (getLayer(TourEndpointEndLayer) == null) {
+        addLayer(
+            CircleLayer(TourEndpointEndLayer, TourEndpointSource)
+                .withFilter(
+                    Expression.eq(
+                        Expression.get(TourEndpointTypeProperty),
+                        Expression.literal(TourEndpointEnd),
+                    ),
+                )
+                .withProperties(
+                    circleColor(Ink.toArgb()),
+                    circleRadius(3f),
+                ),
+        )
+    }
+    source.setGeoJson(tourEndpointFeatures(points))
+}
+
+internal fun tourEndpointFeatures(points: List<TrackPoint>): FeatureCollection {
+    val endpoints = buildList {
+        points.firstOrNull()?.let { point ->
+            add(
+                Feature.fromGeometry(
+                    Point.fromLngLat(point.longitude, point.latitude),
+                ),
+            )
+        }
+        points.lastOrNull()?.let { point ->
+            add(
+                Feature.fromGeometry(
+                    Point.fromLngLat(point.longitude, point.latitude),
+                ).apply {
+                    addStringProperty(TourEndpointTypeProperty, TourEndpointEnd)
+                },
+            )
+        }
+    }
+    return FeatureCollection.fromFeatures(endpoints)
 }
 
 private fun satelliteStyleBuilder(): Style.Builder {
@@ -7778,6 +7854,7 @@ private fun TourEditorMap(
             map.setStyle(StreetMapStyle) { style ->
                 style.showTourRoute(currentPoints, trailColors)
                 style.showSelectedTrackPoint(currentSelectedPoint)
+                style.showTourEndpoints(currentPoints)
                 mapView.post {
                     map.fitTourRoute(currentPoints, cameraPadding, animated = false)
                 }
@@ -7801,6 +7878,7 @@ private fun TourEditorMap(
     LaunchedEffect(points) {
         mapView.getMapAsync { map ->
             map.style?.showTourRoute(points, trailColors)
+            map.style?.showTourEndpoints(points)
             mapView.post { map.fitTourRoute(points, cameraPadding, animated = true) }
         }
     }
