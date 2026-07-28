@@ -205,7 +205,7 @@ internal fun FollowLocationIcon(
 }
 
 @Composable
-internal fun FootprintsIcon(
+private fun FootprintsIcon(
     color: Color = LocalContentColor.current,
 ) = LucideIcon(
     paths = listOf(

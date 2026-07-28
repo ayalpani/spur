@@ -223,7 +223,7 @@ internal fun MomentComposer(
 }
 
 @Composable
-internal fun MomentPickerSheetContent(
+private fun MomentPickerSheetContent(
     onSelect: (MomentType) -> Unit,
 ) {
     Column(

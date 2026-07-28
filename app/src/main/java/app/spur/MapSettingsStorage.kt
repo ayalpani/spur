@@ -3,13 +3,13 @@ package app.spur
 import android.content.Context
 import androidx.compose.foundation.background
 
-internal const val MapSettingsPreferences = "map-settings"
-internal const val DefaultZoomPreference = "default-zoom"
-internal const val DefaultRotationPreference = "default-rotation"
-internal const val MapControlColorPreference = "map-control-color"
-internal const val MapControlForegroundColorPreference = "map-control-foreground-color"
-internal const val TrailFillColorPreference = "trail-fill-color"
-internal const val TrailStrokeColorPreference = "trail-stroke-color"
+private const val MapSettingsPreferences = "map-settings"
+private const val DefaultZoomPreference = "default-zoom"
+private const val DefaultRotationPreference = "default-rotation"
+private const val MapControlColorPreference = "map-control-color"
+private const val MapControlForegroundColorPreference = "map-control-foreground-color"
+private const val TrailFillColorPreference = "trail-fill-color"
+private const val TrailStrokeColorPreference = "trail-stroke-color"
 
 internal fun Context.loadDefaultMapZoom(): Double =
     getSharedPreferences(MapSettingsPreferences, Context.MODE_PRIVATE)

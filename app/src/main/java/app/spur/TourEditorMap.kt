@@ -108,7 +108,7 @@ internal fun TourEditorMap(
     )
 }
 
-internal fun MapLibreMap.fitTourRoute(
+private fun MapLibreMap.fitTourRoute(
     points: List<TrackPoint>,
     paddingPixels: Int,
     animated: Boolean,
@@ -137,7 +137,7 @@ internal fun MapLibreMap.fitMapScreenTourRoute(
     animated = animated,
 )
 
-internal fun MapLibreMap.fitTourRoute(
+private fun MapLibreMap.fitTourRoute(
     points: List<TrackPoint>,
     leftPaddingPixels: Int,
     topPaddingPixels: Int,

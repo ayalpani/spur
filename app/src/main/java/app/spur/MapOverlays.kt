@@ -174,7 +174,7 @@ internal fun PendingMomentMarker(
 }
 
 @Composable
-internal fun RotatingAsterisk(
+private fun RotatingAsterisk(
     color: Color,
     contentDescription: String,
     modifier: Modifier = Modifier,
@@ -240,7 +240,7 @@ internal fun AcceleratingAsterisk(
 internal fun loaderAsteriskAcceleration(fraction: Float): Float = fraction * fraction
 
 @Composable
-internal fun AsteriskIcon(
+private fun AsteriskIcon(
     rotation: Float,
     color: Color,
     contentDescription: String,

@@ -245,7 +245,7 @@ internal fun HomeBuildingSelector(
 }
 
 @Composable
-internal fun HomeStartPointCrosshair(
+private fun HomeStartPointCrosshair(
     modifier: Modifier = Modifier,
 ) {
     Canvas(
@@ -274,7 +274,7 @@ internal fun HomeStartPointCrosshair(
     }
 }
 
-internal fun MapLibreMap.homeBuildingAt(
+private fun MapLibreMap.homeBuildingAt(
     screenPoint: PointF,
     searchRadiusPixels: Float,
 ): Feature? {
@@ -325,7 +325,7 @@ internal fun buildingFeatureAt(
     else -> null
 }
 
-internal fun polygonContainsCoordinate(
+private fun polygonContainsCoordinate(
     rings: List<List<Point>>,
     coordinate: SpurCoordinate,
 ): Boolean {
@@ -334,7 +334,7 @@ internal fun polygonContainsCoordinate(
         rings.drop(1).none { ringContainsCoordinate(it, coordinate) }
 }
 
-internal fun ringContainsCoordinate(
+private fun ringContainsCoordinate(
     ring: List<Point>,
     coordinate: SpurCoordinate,
 ): Boolean {
@@ -371,7 +371,7 @@ internal fun homeCoordinate(feature: Feature): SpurCoordinate? {
     )
 }
 
-internal fun Style.showSelectableHomeBuildings() {
+private fun Style.showSelectableHomeBuildings() {
     val buildings = getLayerAs<FillLayer>(MapBuildingLayer) ?: return
     val sourceLayer = buildings.sourceLayer ?: return
     if (getLayer(SelectableHomeBuildingsLayer) != null) return
@@ -396,7 +396,7 @@ internal fun highlightedBuildingFeatures(
     if (selected != null && selected.geometry() != home?.geometry()) add(selected)
 }
 
-internal fun Style.showSelectedHomeBuilding(feature: Feature?) {
+private fun Style.showSelectedHomeBuilding(feature: Feature?) {
     showHighlightedBuildings(home = feature, selected = null)
 }
 

@@ -508,7 +508,7 @@ internal fun MapRotationPicker(
 }
 
 @Composable
-internal fun CompassCircle() {
+private fun CompassCircle() {
     Canvas(modifier = Modifier.size(84.dp)) {
         val strokeWidth = 1.5.dp.toPx()
         drawCircle(

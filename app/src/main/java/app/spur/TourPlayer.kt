@@ -261,7 +261,7 @@ internal fun TourPlayer(
 }
 
 @Composable
-internal fun SwipeStopPrompt(
+private fun SwipeStopPrompt(
     color: Color,
     stopThresholdReached: Boolean,
     swipePromptAlpha: Float,

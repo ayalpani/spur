@@ -57,7 +57,7 @@ import kotlin.coroutines.resume
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
-internal fun photoCaptureLabel(photo: MapMoment): String {
+private fun photoCaptureLabel(photo: MapMoment): String {
     val capturedAt = photo.captureTimeMillis()
         ?: File(photo.payload).lastModified().takeIf { it > 0L }
         ?: return "Aufnahmezeit unbekannt"
@@ -113,7 +113,7 @@ internal fun PhotoLocationMetadata(
 }
 
 @Composable
-internal fun PhotoMapPreview(
+private fun PhotoMapPreview(
     photo: MapMoment,
     modifier: Modifier = Modifier,
 ) {

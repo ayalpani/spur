@@ -166,7 +166,7 @@ internal fun MapStyleButton(
 }
 
 @Composable
-internal fun MapPreviewLoadingOverlay() {
+private fun MapPreviewLoadingOverlay() {
     val transition = rememberInfiniteTransition(label = "Map preview haze")
     val drift by transition.animateFloat(
         initialValue = 0.2f,

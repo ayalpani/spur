@@ -86,7 +86,7 @@ internal fun setMapStyle(
     map.setStyle(StreetMapStyle, styleLoaded)
 }
 
-internal fun Style.installSatelliteBaseMap() {
+private fun Style.installSatelliteBaseMap() {
     if (getSource(SatelliteSource) == null) {
         val tileSet = TileSet("2.2.0", SatelliteTileUrl)
         addSource(RasterSource(SatelliteSource, tileSet, 256))
@@ -265,7 +265,7 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
     }
 }
 
-internal fun clusterMomentImageExpression(moments: List<MapMoment>): Expression =
+private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression =
     Expression.switchCase(
         Expression.eq(
             Expression.toNumber(Expression.get("point_count")),
@@ -275,7 +275,7 @@ internal fun clusterMomentImageExpression(moments: List<MapMoment>): Expression 
         representativeClusterImageExpression(moments, 3),
     )
 
-internal fun representativeClusterImageExpression(
+private fun representativeClusterImageExpression(
     moments: List<MapMoment>,
     stackSize: Int,
 ): Expression {
@@ -292,10 +292,10 @@ internal fun representativeClusterImageExpression(
     )
 }
 
-internal fun clusterMomentImageId(moment: MapMoment, stackSize: Int): String =
+private fun clusterMomentImageId(moment: MapMoment, stackSize: Int): String =
     "$MapMomentClusterImagePrefix$stackSize-${moment.id}"
 
-internal fun momentOffsetExpression(moments: List<MapMoment>): Expression {
+private fun momentOffsetExpression(moments: List<MapMoment>): Expression {
     val offsets = overlappingMomentOffsets(moments)
     val center = Expression.literal(arrayOf(0f, 0f))
     if (offsets.isEmpty()) return center

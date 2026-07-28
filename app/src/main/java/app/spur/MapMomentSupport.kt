@@ -22,9 +22,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.roundToInt
 
-internal const val MapMomentPreferences = "map-moments"
-internal const val MapMomentEntries = "entries"
-internal const val PhotoPlacePreferences = "photo-places"
+private const val MapMomentPreferences = "map-moments"
+private const val MapMomentEntries = "entries"
+private const val PhotoPlacePreferences = "photo-places"
 
 internal fun Context.loadMapMoments(): List<MapMoment> =
     getSharedPreferences(MapMomentPreferences, Context.MODE_PRIVATE)
@@ -227,7 +227,7 @@ internal fun createMomentClusterBitmap(
     }
 }
 
-internal fun createMomentMarkerEdgeBitmap(
+private fun createMomentMarkerEdgeBitmap(
     marker: android.graphics.Bitmap,
     edgeWidth: Float,
 ): android.graphics.Bitmap =
@@ -284,7 +284,7 @@ internal fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
         }
     }.getOrNull()
 
-internal fun drawMarkerPhoto(
+private fun drawMarkerPhoto(
     canvas: android.graphics.Canvas,
     paint: android.graphics.Paint,
     destination: android.graphics.RectF,
@@ -308,7 +308,7 @@ internal fun drawMarkerPhoto(
     canvas.restore()
 }
 
-internal fun drawVideoPlayOverlay(
+private fun drawVideoPlayOverlay(
     canvas: android.graphics.Canvas,
     paint: android.graphics.Paint,
     destination: android.graphics.RectF,
@@ -331,7 +331,7 @@ internal fun drawVideoPlayOverlay(
     )
 }
 
-internal fun drawMomentGlyph(
+private fun drawMomentGlyph(
     canvas: android.graphics.Canvas,
     paint: android.graphics.Paint,
     destination: android.graphics.RectF,

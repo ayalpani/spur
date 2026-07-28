@@ -308,7 +308,7 @@ internal fun HistoryPage(
 }
 
 @Composable
-internal fun TourMomentStrip(
+private fun TourMomentStrip(
     moments: List<MapMoment>,
     photoRevision: Long,
     selectedMomentId: String?,

@@ -47,7 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 @Composable
-internal fun TourEditorScreen(
+private fun TourEditorScreen(
     store: TourStore,
     tourId: Long,
     onBack: () -> Unit,

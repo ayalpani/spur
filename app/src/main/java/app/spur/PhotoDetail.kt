@@ -634,7 +634,7 @@ internal fun PhotoDetailPage(
 }
 
 @Composable
-internal fun PhotoActionButton(
+private fun PhotoActionButton(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -659,7 +659,7 @@ internal fun PhotoActionButton(
 }
 
 @Composable
-internal fun PhotoDownloadIcon() = LucideIcon(
+private fun PhotoDownloadIcon() = LucideIcon(
     paths = listOf(
         "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4",
         "m7 10 5 5 5-5",
@@ -668,7 +668,7 @@ internal fun PhotoDownloadIcon() = LucideIcon(
 )
 
 @Composable
-internal fun PhotoMoreIcon() = LucideIcon(
+private fun PhotoMoreIcon() = LucideIcon(
     paths = listOf(
         "M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2",
         "M19 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2",
@@ -689,7 +689,7 @@ internal fun PhotoDeleteIcon(color: Color = LocalContentColor.current) = LucideI
 )
 
 @Composable
-internal fun PhotoRotateLeftIcon() = LucideIcon(
+private fun PhotoRotateLeftIcon() = LucideIcon(
     paths = listOf(
         "M3 12a9 9 0 1 0 3-6.7L3 8",
         "M3 3v5h5",

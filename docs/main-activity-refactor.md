@@ -63,11 +63,28 @@ checkpoints. Results and any deliberate file-size exception are recorded here.
 | Checkpoint | Result |
 | --- | --- |
 | TourEditor-v2 baseline on `main` | JVM tests, build, lint, and Galaxy-A54 smoke test passed |
-| Mechanical top-level extraction | `MainActivity.kt` reduced from 9,403 to 35 lines; JVM tests and build passed |
+| Mechanical top-level extraction | `MainActivity.kt` reduced from 9,403 to 37 lines; JVM tests and build passed |
 | Compose characterization | 2 onboarding instrumentation tests passed on Galaxy A54 |
+| Final automated gate | declaration-body comparison, JVM tests, debug build, and lint passed |
+| Final branch device smoke test | map/style/follow, tour start/stop, process restart, new history/editor entry, and moment composer passed |
 
 Four cohesive declarations remain deliberately above the usual 500-line
 guideline: `MapPage` (screen/state coordinator), `MapSurface` (single MapLibre
 bridge), `PhotoDetailPage` (animated viewer), and the existing `TourStore`.
 Splitting inside those functions would mix behavioral redesign into this
 structural pass; they are recorded candidates for later focused refactors.
+
+### Device-test incident
+
+Running `connectedDebugAndroidTest` on the personal Galaxy A54 reset the Spur
+application sandbox. The previously inspected local tours and app-private
+moments were lost and no restorable backup had been created. This was a test
+procedure failure, not an application migration. The repository rule now
+forbids instrumentation tasks on a data-bearing personal device; those tests
+must use a disposable emulator or dedicated test profile. Normal branch
+deployment continues through the data-preserving `spurctl start` path.
+
+The existing-data compatibility check had passed on the TourEditor-v2 baseline
+before the reset. It could not be repeated at final branch acceptance because
+that original device state no longer existed. A fresh tour did persist across a
+forced process restart and reopened through history/editor after the refactor.

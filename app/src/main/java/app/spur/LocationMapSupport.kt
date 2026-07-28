@@ -100,7 +100,7 @@ internal fun MapLibreMap.restartLocationPulse(color: Color) {
     )
 }
 
-internal fun LocationComponentOptions.Builder.spurLocationAppearance(
+private fun LocationComponentOptions.Builder.spurLocationAppearance(
     color: Color,
 ): LocationComponentOptions.Builder =
     foregroundTintColor(color.toArgb())
@@ -117,7 +117,7 @@ internal fun LocationComponentOptions.Builder.spurLocationAppearance(
         .pulseAlpha(LocationPulseAlpha)
         .pulseInterpolator(AccelerateDecelerateInterpolator())
 
-internal fun Style.showCurrentLocationFootprints(
+private fun Style.showCurrentLocationFootprints(
     context: Context,
     visible: Boolean,
 ) {
@@ -154,7 +154,7 @@ internal fun Style.showCurrentLocationFootprints(
     }
 }
 
-internal fun Context.currentLocationFootprintsBitmap(): android.graphics.Bitmap? {
+private fun Context.currentLocationFootprintsBitmap(): android.graphics.Bitmap? {
     val halo = ContextCompat.getDrawable(
         this,
         R.drawable.ic_footprints_location_halo,
@@ -235,7 +235,7 @@ internal fun Context.createMomentFile(type: MomentType): File {
 internal fun Context.momentContentUri(file: File): Uri =
     FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
 
-internal fun Location.toSpurCoordinate() =
+private fun Location.toSpurCoordinate() =
     SpurCoordinate(latitude = latitude, longitude = longitude)
 
 @SuppressLint("MissingPermission")
@@ -270,7 +270,7 @@ internal fun MapLibreMap.showGpsLocationPuck(
 }
 
 @SuppressLint("MissingPermission")
-internal fun Context.bestLastKnownLocation(): Location? {
+private fun Context.bestLastKnownLocation(): Location? {
     val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
     return locationManager.getProviders(true)
         .mapNotNull { provider ->
@@ -279,9 +279,9 @@ internal fun Context.bestLastKnownLocation(): Location? {
         .maxByOrNull(Location::getTime)
 }
 
-internal const val ManualLocationPreferences = "manual-location"
-internal const val ManualLatitude = "latitude"
-internal const val ManualLongitude = "longitude"
+private const val ManualLocationPreferences = "manual-location"
+private const val ManualLatitude = "latitude"
+private const val ManualLongitude = "longitude"
 
 internal fun Context.loadManualLocation(): SpurCoordinate? {
     val preferences = getSharedPreferences(ManualLocationPreferences, Context.MODE_PRIVATE)

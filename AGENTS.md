@@ -15,6 +15,12 @@ persistence, also install the exact branch build on the registered Galaxy A54
 and exercise the affected flow. Do not replace device checks with screenshots
 of unrelated screens or with an emulator-only result.
 
+Never run `connectedDebugAndroidTest` or another uninstalling/clearing test task
+on the personal Galaxy A54 while it contains local Spur data. Android
+instrumentation tests must run on a disposable emulator or a dedicated test
+profile. Use only `adb install -r`/`spurctl start` for the personal device after
+confirming that the command preserves app data.
+
 ## Refactoring rules
 
 - Make one behavior-neutral extraction per commit.

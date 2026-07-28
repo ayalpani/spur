@@ -66,7 +66,7 @@ import kotlin.math.abs
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
-internal class SpurRecentEmojiProvider(context: Context) : RecentEmojiProvider {
+private class SpurRecentEmojiProvider(context: Context) : RecentEmojiProvider {
     private val preferences = context.getSharedPreferences(
         EmojiPreferences,
         Context.MODE_PRIVATE,
@@ -219,7 +219,7 @@ internal fun SpurModalBottomSheet(
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-internal fun EmojiPickerSheet(
+private fun EmojiPickerSheet(
     headerModifier: Modifier,
     onBack: () -> Unit,
     onEmojiPicked: (String) -> Unit,

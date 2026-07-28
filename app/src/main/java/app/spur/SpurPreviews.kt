@@ -6,7 +6,7 @@ import androidx.compose.ui.platform.LocalContext
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
-internal fun MapPagePreview() {
+private fun MapPagePreview() {
     MapPage(
         store = TourStore(LocalContext.current),
         tour = null,
@@ -28,7 +28,7 @@ internal fun MapPagePreview() {
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
-internal fun ActiveTourPagePreview() {
+private fun ActiveTourPagePreview() {
     val tour = Tour(
         id = 1,
         startedAt = System.currentTimeMillis() - 754_000,
@@ -57,7 +57,7 @@ internal fun ActiveTourPagePreview() {
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
-internal fun HistoryPagePreview() {
+private fun HistoryPagePreview() {
     HistoryPage(
         store = TourStore(LocalContext.current),
         revision = 0,
@@ -68,6 +68,6 @@ internal fun HistoryPagePreview() {
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
-internal fun LocationOnboardingPreview() {
+private fun LocationOnboardingPreview() {
     LocationOnboarding(permissionRequested = false, onRequestLocation = {})
 }
