@@ -23,7 +23,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -193,15 +192,13 @@ internal fun VoiceRecorderBottomSheet(
                 leadingIcon = { MicrophoneIcon() },
             )
         }
-        TextButton(
+        SpurSecondaryButton(
+            label = "Abbrechen",
             onClick = {
                 stopRecording(keep = false)
                 onDismiss()
             },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Abbrechen", color = Ink)
-        }
+        )
     }
 }
 

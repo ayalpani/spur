@@ -64,4 +64,26 @@ class MapControlColorTest {
         assertEquals(Color.White, selected.inverted.background)
         assertEquals(Color(0xFF2563EB), selected.inverted.foreground)
     }
+
+    @Test
+    fun secondaryButtonUsesASelectedColorThatStaysVisibleOnWhite() {
+        assertEquals(
+            Color.Black,
+            secondaryButtonContentColor(
+                MapControlColors(background = Color.Black, foreground = Color.White),
+            ),
+        )
+        assertEquals(
+            Color.Black,
+            secondaryButtonContentColor(
+                MapControlColors(background = Color.White, foreground = Color.Black),
+            ),
+        )
+        assertEquals(
+            Ink,
+            secondaryButtonContentColor(
+                MapControlColors(background = Color.White, foreground = Color.Yellow),
+            ),
+        )
+    }
 }

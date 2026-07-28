@@ -27,6 +27,10 @@ confirming that the command preserves app data.
 - Its background and foreground come from the user's selected
   `LocalMapControlColors`; the default is black with white text.
 - Primary labels use the component's shared `titleLarge` semibold typography.
+- Use `SpurSecondaryButton` for secondary actions. It matches the primary
+  button's 60 dp height and typography, with a transparent background and a
+  3 dp outline derived from the selected colors while preserving contrast on
+  white sheets.
 - Keep destructive actions on the established red treatment instead of
   overloading the primary-action colors.
 
