@@ -31,10 +31,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -215,8 +217,6 @@ internal fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val directionBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val buildingDetailsBottomSheetState =
-        rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val followOwnLocation: () -> Unit = {
         isTourOverview = false
         isFollowingLocation = true
@@ -838,6 +838,30 @@ internal fun MapPage(
                     }
                 }
             }
+
+            selectedBuilding?.let { building ->
+                val closeBuildingDetails: () -> Unit = {
+                    selectedBuilding = null
+                }
+                BackHandler(onBack = closeBuildingDetails)
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .zIndex(3f),
+                    shape = RoundedCornerShape(
+                        topStart = 28.dp,
+                        topEnd = 28.dp,
+                    ),
+                    color = SheetBackground,
+                    shadowElevation = 16.dp,
+                ) {
+                    BuildingDetailsBottomSheet(
+                        coordinate = building.coordinate,
+                        onBack = closeBuildingDetails,
+                    )
+                }
+            }
         }
     }
 
@@ -859,25 +883,6 @@ internal fun MapPage(
                     },
                 )
             }
-        }
-    }
-
-    selectedBuilding?.let { building ->
-        val closeBuildingDetails: () -> Unit = {
-            scope.launch {
-                buildingDetailsBottomSheetState.hide()
-                selectedBuilding = null
-            }
-        }
-        SpurModalBottomSheet(
-            onDismissRequest = { selectedBuilding = null },
-            sheetState = buildingDetailsBottomSheetState,
-        ) {
-            BackHandler(onBack = closeBuildingDetails)
-            BuildingDetailsBottomSheet(
-                coordinate = building.coordinate,
-                onBack = closeBuildingDetails,
-            )
         }
     }
 
