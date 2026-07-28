@@ -6555,10 +6555,14 @@ private fun MapLibreMap.restartLocationPulse(color: Color) {
 private fun LocationComponentOptions.Builder.spurLocationAppearance(
     color: Color,
 ): LocationComponentOptions.Builder =
-    foregroundTintColor(color.toArgb())
-        .backgroundTintColor(color.toArgb())
+    foregroundDrawable(R.drawable.ic_person_standing_location)
+        .backgroundDrawable(R.drawable.ic_person_standing_location_halo)
+        .foregroundDrawableStale(R.drawable.ic_person_standing_location)
+        .backgroundDrawableStale(R.drawable.ic_person_standing_location_halo)
+        .foregroundTintColor(color.toArgb())
+        .backgroundTintColor(Color.White.toArgb())
         .foregroundStaleTintColor(color.toArgb())
-        .backgroundStaleTintColor(color.toArgb())
+        .backgroundStaleTintColor(Color.White.toArgb())
         .bearingTintColor(color.toArgb())
         .accuracyColor(color.toArgb())
         .pulseEnabled(true)
@@ -8706,20 +8710,25 @@ private fun FollowLocationIcon(
                     .background(Color.White, CircleShape),
             )
         }
-        if (!selected) {
-            LucideIcon(
-                paths = listOf(
-                    "M4 10a7.31 7.31 0 0 0 10 10Z",
-                    "m9 15 3-3",
-                    "M17 13a6 6 0 0 0-6-6",
-                    "M21 13A10 10 0 0 0 11 3",
-                ),
-                color = LocalContentColor.current,
-                strokeWidth = LucideRegularStrokeWidth,
-            )
-        }
+        PersonStandingIcon(
+            color = if (selected) Color.White else LocalContentColor.current,
+        )
     }
 }
+
+@Composable
+private fun PersonStandingIcon(
+    color: Color = LocalContentColor.current,
+) = LucideIcon(
+    paths = listOf(
+        "M12 4a1 1 0 1 0 0 2 1 1 0 1 0 0-2",
+        "m9 20 3-6 3 6",
+        "m6 8 6 2 6-2",
+        "M12 10v4",
+    ),
+    color = color,
+    strokeWidth = LucideRegularStrokeWidth,
+)
 
 @Composable
 private fun HistoryIcon() = LucideIcon(
