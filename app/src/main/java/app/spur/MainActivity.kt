@@ -821,6 +821,7 @@ private fun EmojiPickerSheet(
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
+            .statusBarsPadding()
             .navigationBarsPadding()
             .padding(horizontal = 24.dp)
             .padding(bottom = 12.dp),
