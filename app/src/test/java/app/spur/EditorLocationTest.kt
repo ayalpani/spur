@@ -108,6 +108,31 @@ class EditorLocationTest {
         )
     }
 
+    @Test
+    fun renderedMomentFromCollapsedPointUsesNearestSurvivingGpsPoint() {
+        val points = listOf(
+            point(1, 52.0, 1_000L),
+            point(3, 52.00045, 3_000L),
+        )
+        val moment = MapMoment(
+            id = "emoji",
+            type = MomentType.EMOJI,
+            latitude = 52.00044,
+            longitude = 13.0,
+            payload = "🥳",
+            tourId = 1,
+            trackPointId = 2,
+        )
+
+        assertEquals(
+            moment.copy(
+                latitude = points[1].latitude,
+                longitude = points[1].longitude,
+            ),
+            momentsAttachedToTrackPoints(listOf(moment), points).single(),
+        )
+    }
+
     private fun point(id: Long, latitude: Double, recordedAt: Long) =
         TrackPoint(id, latitude, 13.0, recordedAt)
 }

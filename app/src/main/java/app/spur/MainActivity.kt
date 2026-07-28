@@ -1053,7 +1053,7 @@ private const val MapPreviewPixels = 180
 private const val LocationPulseWatchdogMillis = LocationPulseDurationMillis * 10L
 private const val CurrentLocationPersonImage = "current-location-person-image"
 private const val CurrentLocationPersonLayer = "current-location-person-layer"
-private const val CurrentLocationPersonLiftPixels = 8f
+private const val CurrentLocationPersonLiftPixels = 16f
 private val LocationPulseEasing = Easing { fraction ->
     (cos((fraction + 1f) * PI) / 2f + 0.5f).toFloat()
 }
@@ -1691,9 +1691,9 @@ private fun MapPage(
     val renderedMapMoments = remember(
         visibleMapMoments,
         routePoints,
-        isTourEditing,
+        tour,
     ) {
-        if (isTourEditing) {
+        if (tour != null) {
             momentsAttachedToTrackPoints(visibleMapMoments, routePoints)
         } else {
             visibleMapMoments
