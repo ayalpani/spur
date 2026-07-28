@@ -29,8 +29,7 @@ confirming that the command preserves app data.
 - Primary labels use the component's shared `titleLarge` semibold typography.
 - Use `SpurSecondaryButton` for secondary actions. It matches the primary
   button's 60 dp height and typography, with a transparent background and a
-  3 dp outline derived from the selected colors while preserving contrast on
-  white sheets.
+  1 dp black outline at 50% opacity.
 - Keep destructive actions on the established red treatment instead of
   overloading the primary-action colors.
 

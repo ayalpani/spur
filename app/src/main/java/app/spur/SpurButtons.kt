@@ -63,7 +63,7 @@ internal fun SpurSecondaryButton(
             .fillMaxWidth()
             .height(60.dp),
         shape = CircleShape,
-        border = BorderStroke(3.dp, contentColor),
+        border = BorderStroke(1.dp, Ink.copy(alpha = 0.5f)),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = Color.Transparent,
             contentColor = contentColor,
