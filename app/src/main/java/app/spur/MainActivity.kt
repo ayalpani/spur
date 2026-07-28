@@ -2254,19 +2254,22 @@ private fun MapPage(
                 exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
             ) {
                 tour?.let { editedTour ->
-                    TourSummaryPlayer(
-                        tour = editedTour,
-                        now = editedTour.endedAt ?: now,
-                        modifier = Modifier
-                            .navigationBarsPadding()
-                            .padding(
-                                start = MapControlHorizontalPadding,
-                                end = MapControlHorizontalPadding,
-                                bottom = EditorLocationRailHeight + 8.dp,
-                            )
-                            .fillMaxWidth()
-                            .height(EditorMetricBarHeight - 8.dp),
-                    )
+                    selectedEditorLocation?.let { location ->
+                        TourSummaryPlayer(
+                            tourId = editedTour.id,
+                            distanceMeters = location.distanceFromStartMeters,
+                            elapsedMillis = location.elapsedMillis,
+                            modifier = Modifier
+                                .navigationBarsPadding()
+                                .padding(
+                                    start = MapControlHorizontalPadding,
+                                    end = MapControlHorizontalPadding,
+                                    bottom = EditorLocationRailHeight + 8.dp,
+                                )
+                                .fillMaxWidth()
+                                .height(EditorMetricBarHeight - 8.dp),
+                        )
+                    }
                 }
             }
 
@@ -4207,6 +4210,9 @@ private fun MapSurface(
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
     val currentDefaultMapBearing by rememberUpdatedState(defaultMapBearing)
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
+    var selectedTrackPointPosition by remember {
+        mutableStateOf<android.graphics.PointF?>(null)
+    }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
     }
@@ -4428,9 +4434,19 @@ private fun MapSurface(
             }
         }
 
+        fun publishSelectedTrackPointPosition() {
+            val readyMap = map ?: return
+            selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
+                readyMap.projection.toScreenLocation(
+                    LatLng(point.latitude, point.longitude),
+                )
+            }
+        }
+
         val moveListener = MapLibreMap.OnCameraMoveListener {
             if (currentManualLocation != null) publishManualLocationPosition()
             if (pendingMapMoment != null) publishPendingMomentPosition()
+            if (currentSelectedTrackPoint != null) publishSelectedTrackPointPosition()
         }
         var cameraMoveReason =
             MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
@@ -4451,6 +4467,7 @@ private fun MapSurface(
             if (!isMapTouchActive) currentOnMapGestureActiveChanged(false)
             publishManualLocationPosition()
             publishPendingMomentPosition()
+            publishSelectedTrackPointPosition()
             previewCameraPosition = map?.cameraPosition
             if (shouldStopFollowing(cameraMoveReason)) {
                 map?.cameraPosition?.zoom?.let(context::saveDefaultMapZoom)
@@ -4556,6 +4573,7 @@ private fun MapSurface(
             readyMap.addOnMapClickListener(clickListener)
             publishManualLocationPosition()
             publishPendingMomentPosition()
+            publishSelectedTrackPointPosition()
         }
         onDispose {
             cancelManualLocationHold()
@@ -4665,7 +4683,7 @@ private fun MapSurface(
     ) {
         mapView.getMapAsync { map ->
             map.style?.let { style ->
-                style.showSelectedTrackPoint(currentSelectedTrackPoint)
+                style.showSelectedTrackPoint(null)
                 style.showTourEndpoints(
                     if (currentSelectedTrackPoint == null) {
                         emptyList()
@@ -4673,6 +4691,11 @@ private fun MapSurface(
                         currentRoutePoints
                     },
                     currentTrailColors,
+                )
+            }
+            selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
+                map.projection.toScreenLocation(
+                    LatLng(point.latitude, point.longitude),
                 )
             }
             if (selectedTrackPointRequest == 0L) return@getMapAsync
@@ -4684,14 +4707,19 @@ private fun MapSurface(
                     ),
                 )
             }
+            selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
+                map.projection.toScreenLocation(
+                    LatLng(point.latitude, point.longitude),
+                )
+            }
         }
     }
 
-    LaunchedEffect(manualLocation) {
+    LaunchedEffect(manualLocation, selectedTrackPoint == null) {
         mapView.getMapAsync { map ->
             map.showGpsLocationPuck(
                 context = context,
-                show = manualLocation == null,
+                show = manualLocation == null && currentSelectedTrackPoint == null,
             )
             manualLocationPosition = manualLocation?.let { location ->
                 map.projection.toScreenLocation(
@@ -4826,6 +4854,18 @@ private fun MapSurface(
         )
 
         val density = LocalDensity.current
+        val selectedPointSizePx = with(density) { 20.dp.roundToPx() }
+        selectedTrackPointPosition?.let { position ->
+            SelectedTrackPointPuck(
+                modifier = Modifier.offset {
+                    IntOffset(
+                        x = position.x.roundToInt() - selectedPointSizePx / 2,
+                        y = position.y.roundToInt() - selectedPointSizePx / 2,
+                    )
+                },
+            )
+        }
+
         val manualPuckSizePx = with(density) { 52.dp.roundToPx() }
         manualLocationPosition?.let { position ->
             SimulatedLocationPuck(
@@ -4853,6 +4893,14 @@ private fun MapSurface(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SelectedTrackPointPuck(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(20.dp)) {
+        drawCircle(Color.White)
+        drawCircle(Ink, radius = 7.dp.toPx())
     }
 }
 
@@ -8155,12 +8203,13 @@ private fun MapLibreMap.fitTourRoute(
 
 @Composable
 private fun TourSummaryPlayer(
-    tour: Tour,
-    now: Long,
+    tourId: Long,
+    distanceMeters: Double,
+    elapsedMillis: Long,
     modifier: Modifier = Modifier,
 ) {
     val controlColors = LocalMapControlColors.current.inverted
-    var showTrackingTime by rememberSaveable(tour.id) { mutableStateOf(false) }
+    var showTrackingTime by rememberSaveable(tourId) { mutableStateOf(false) }
 
     Surface(
         modifier = modifier
@@ -8183,9 +8232,9 @@ private fun TourSummaryPlayer(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = activeTourPlayerText(
-                    tour = tour,
-                    now = now,
+                text = tourProgressPlayerText(
+                    distanceMeters = distanceMeters,
+                    elapsedMillis = elapsedMillis,
                     showTrackingTime = showTrackingTime,
                 ),
                 color = controlColors.foreground,
@@ -8418,11 +8467,19 @@ internal fun activeTourPlayerText(
     now: Long,
     showTrackingTime: Boolean,
 ): String =
-    if (showTrackingTime) {
-        formatPlayerDuration(now - tour.startedAt)
-    } else {
-        formatMeters(tour.distanceMeters)
-    }
+    tourProgressPlayerText(
+        distanceMeters = tour.distanceMeters,
+        elapsedMillis = now - tour.startedAt,
+        showTrackingTime = showTrackingTime,
+    )
+
+internal fun tourProgressPlayerText(
+    distanceMeters: Double,
+    elapsedMillis: Long,
+    showTrackingTime: Boolean,
+): String =
+    if (showTrackingTime) formatPlayerDuration(elapsedMillis)
+    else formatMeters(distanceMeters)
 
 internal fun formatPlayerDuration(durationMillis: Long): String {
     val totalSeconds = durationMillis.coerceAtLeast(0L) / 1_000

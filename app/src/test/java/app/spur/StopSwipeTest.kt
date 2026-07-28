@@ -61,6 +61,26 @@ class StopSwipeTest {
     }
 
     @Test
+    fun editorPlayerUsesSelectedPointProgress() {
+        assertEquals(
+            "420 m",
+            tourProgressPlayerText(
+                distanceMeters = 420.0,
+                elapsedMillis = 125_000L,
+                showTrackingTime = false,
+            ),
+        )
+        assertEquals(
+            "2m 5s",
+            tourProgressPlayerText(
+                distanceMeters = 420.0,
+                elapsedMillis = 125_000L,
+                showTrackingTime = true,
+            ),
+        )
+    }
+
+    @Test
     fun playerDurationUsesCompactUnitNotation() {
         assertEquals("2h 45m 34s", formatPlayerDuration(9_934_000L))
         assertEquals("45m 34s", formatPlayerDuration(2_734_000L))
