@@ -19,7 +19,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -229,17 +232,28 @@ internal fun CameraScreen(
             Column(
                 modifier = Modifier.fillMaxSize(),
             ) {
-                Box(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
                     contentAlignment = Alignment.TopCenter,
                 ) {
                     if (bitmap != null) {
+                        val photoAspectRatio =
+                            bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)
+                        val mediaModifier = if (maxWidth / maxHeight > photoAspectRatio) {
+                            Modifier
+                                .fillMaxHeight()
+                                .aspectRatio(photoAspectRatio)
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(photoAspectRatio)
+                        }
                         Image(
                             bitmap = bitmap.asImageBitmap(),
                             contentDescription = "Aufgenommenes Foto",
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = mediaModifier,
                             alignment = Alignment.TopCenter,
                             contentScale = ContentScale.Fit,
                         )
