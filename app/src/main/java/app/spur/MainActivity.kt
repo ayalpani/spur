@@ -204,11 +204,9 @@ import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -326,6 +324,8 @@ private const val LoaderAsteriskAccelerationDegrees =
 private val PhotoMapPreviewSize = 96.dp
 private val LoaderAsteriskSize = 128.dp
 private val LoaderTextGap = 20.dp
+private val EditorLocationRailHeight = 96.dp
+private val EditorMetricBarHeight = 68.dp
 private const val PhotoMapPreviewZoom = 17.5
 private const val TourRouteWidthPixels = 6f
 private const val TourRouteBorderPerSidePixels = 4f
@@ -930,10 +930,6 @@ private fun Modifier.mapControlShadow(shape: Shape): Modifier {
 
 private object SpurRoute {
     const val MAP = "map"
-    const val TOUR_ID = "tourId"
-    const val EDITOR = "tour/{$TOUR_ID}"
-
-    fun editor(tourId: Long): String = "tour/$tourId"
 }
 private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
 private const val SatelliteMapStyleJson =
@@ -1138,6 +1134,7 @@ private fun SpurApp(splashExitComplete: Boolean) {
     var displayedTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var displayedTourRequest by rememberSaveable { mutableLongStateOf(0L) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
+    var isTourEditing by rememberSaveable { mutableStateOf(false) }
     var historyRevision by remember { mutableLongStateOf(0L) }
     var photoRevision by remember { mutableLongStateOf(0L) }
     var tourActivityUsage by remember { mutableStateOf(emptyList<TourActivityUsage>()) }
@@ -1228,6 +1225,7 @@ private fun SpurApp(splashExitComplete: Boolean) {
                 displayedTour = null
                 displayedTourId = null
                 routePoints = emptyList()
+                isTourEditing = false
             }
             historyRevision++
         }
@@ -1293,6 +1291,7 @@ private fun SpurApp(splashExitComplete: Boolean) {
                     ) {
                         composable(SpurRoute.MAP) {
                             MapPage(
+                                store = store,
                                 tour = displayedTour,
                                 activeTour = activeTour,
                                 tourDisplayRequest = displayedTourRequest,
@@ -1360,8 +1359,12 @@ private fun SpurApp(splashExitComplete: Boolean) {
                                 onOpenHistory = {
                                     isHistoryVisible = true
                                 },
-                                onEditTour = { id ->
-                                    navController.navigate(SpurRoute.editor(id))
+                                isTourEditing = isTourEditing,
+                                onEditTour = { isTourEditing = true },
+                                onCloseTourEditor = { isTourEditing = false },
+                                onRoutePointsChanged = {
+                                    routePoints = it
+                                    historyRevision++
                                 },
                                 onDeleteTour = deleteTour,
                                 showFeedbackNotice = showFeedbackNotice,
@@ -1372,24 +1375,6 @@ private fun SpurApp(splashExitComplete: Boolean) {
                                 onInitialLoadingComplete = {
                                     initialMapLoadingComplete = true
                                 },
-                            )
-                        }
-                        composable(
-                            route = SpurRoute.EDITOR,
-                            arguments = listOf(
-                                navArgument(SpurRoute.TOUR_ID) { type = NavType.LongType },
-                            ),
-                        ) { entry ->
-                            val tourId = entry.arguments?.getLong(SpurRoute.TOUR_ID)
-                                ?: return@composable
-                            TourEditorScreen(
-                                store = store,
-                                tourId = tourId,
-                                onBack = { navController.popBackStack() },
-                                onChanged = {
-                                    historyRevision++
-                                },
-                                showFeedbackNotice = showFeedbackNotice,
                             )
                         }
                     }
@@ -1430,11 +1415,18 @@ private fun SpurApp(splashExitComplete: Boolean) {
                                     }
                                     displayedTourId = id
                                     displayedTourRequest++
+                                    isTourEditing = false
                                     isHistoryVisible = false
                                 },
                                 onEditTour = { id ->
+                                    if (displayedTourId != id) {
+                                        displayedTour = null
+                                        routePoints = emptyList()
+                                    }
+                                    displayedTourId = id
+                                    displayedTourRequest++
+                                    isTourEditing = true
                                     isHistoryVisible = false
-                                    navController.navigate(SpurRoute.editor(id))
                                 },
                                 showFeedbackNotice = showFeedbackNotice,
                                 photoRevision = photoRevision,
@@ -1523,6 +1515,7 @@ private fun LocationOnboarding(
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 private fun MapPage(
+    store: TourStore,
     tour: Tour?,
     activeTour: Tour?,
     tourDisplayRequest: Long,
@@ -1533,7 +1526,10 @@ private fun MapPage(
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
-    onEditTour: (Long) -> Unit,
+    isTourEditing: Boolean,
+    onEditTour: () -> Unit,
+    onCloseTourEditor: () -> Unit,
+    onRoutePointsChanged: (List<TrackPoint>) -> Unit,
     onDeleteTour: (Long) -> Unit,
     showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
     photoRevision: Long = 0L,
@@ -1547,8 +1543,12 @@ private fun MapPage(
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
     )
-    val mapActionsBottomPadding = MapControlVerticalPadding +
-        if (usesStackedMapPlayer) MapControlSize + MapControlGap else 0.dp
+    val mapActionsBottomPadding = if (isTourEditing) {
+        EditorLocationRailHeight + EditorMetricBarHeight + MapControlVerticalPadding
+    } else {
+        MapControlVerticalPadding +
+            if (usesStackedMapPlayer) MapControlSize + MapControlGap else 0.dp
+    }
     val scope = rememberCoroutineScope()
     var followRequest by rememberSaveable { mutableStateOf(0) }
     var tourOverviewRequest by rememberSaveable { mutableStateOf(0) }
@@ -1570,6 +1570,11 @@ private fun MapPage(
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
     var tourToDelete by remember { mutableStateOf<Tour?>(null) }
+    var editorDeleteTarget by remember { mutableStateOf<EditorDeleteTarget?>(null) }
+    var selectedEditorPointId by rememberSaveable(tour?.id) {
+        mutableStateOf<Long?>(null)
+    }
+    var editorFocusRequest by remember { mutableLongStateOf(0L) }
     var selectedBuilding by remember { mutableStateOf<SpurCoordinate?>(null) }
     var pendingMoment by remember { mutableStateOf<PendingMapMoment?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
@@ -1580,6 +1585,18 @@ private fun MapPage(
     val visibleMapMoments = remember(mapMoments, tour) {
         tour?.let { mapMomentsForTour(mapMoments, it) } ?: mapMoments
     }
+    val editorLocations = remember(tour, routePoints, visibleMapMoments) {
+        tour?.let {
+            editorLocations(
+                tour = it,
+                points = routePoints,
+                moments = visibleMapMoments,
+            )
+        }.orEmpty()
+    }
+    val selectedEditorLocation = editorLocations.firstOrNull {
+        it.point.id == selectedEditorPointId
+    } ?: editorLocations.lastOrNull()
     var activeVoiceMoment by remember { mutableStateOf<MapMoment?>(null) }
     var voicePlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isVoicePlaying by remember { mutableStateOf(false) }
@@ -1630,6 +1647,19 @@ private fun MapPage(
         isTourOverview = false
         isFollowingLocation = true
         followRequest++
+    }
+    LaunchedEffect(isTourEditing, tour?.id, editorLocations.size) {
+        if (!isTourEditing) {
+            editorDeleteTarget = null
+            return@LaunchedEffect
+        }
+        showStartTourBottomSheet = false
+        showMainMenu = false
+        isFollowingLocation = false
+        isTourOverview = false
+        if (editorLocations.none { it.point.id == selectedEditorPointId }) {
+            selectedEditorPointId = editorLocations.lastOrNull()?.point?.id
+        }
     }
     LaunchedEffect(splashExitComplete, initialLoadingComplete) {
         if (initialLoadingComplete || !splashExitComplete) return@LaunchedEffect
@@ -1778,6 +1808,12 @@ private fun MapPage(
             mediaDetail == null,
         onBack = followOwnLocation,
     )
+    BackHandler(
+        enabled = isTourEditing &&
+            momentTarget == null &&
+            editorDeleteTarget == null,
+        onBack = onCloseTourEditor,
+    )
     val mapControlColors = MapControlColors(
         background = mapControlBackground.color,
         foreground = mapControlForeground.color,
@@ -1809,6 +1845,12 @@ private fun MapPage(
                 momentImageRevision = photoRevision,
                 routePoints = routePoints,
                 trailColors = trailColors,
+                selectedTrackPoint = if (isTourEditing) {
+                    selectedEditorLocation?.point
+                } else {
+                    null
+                },
+                selectedTrackPointRequest = editorFocusRequest,
                 momentToPlace = pendingMoment,
                 focusedMoment = focusedPhoto,
                 activeVoiceMoment = activeVoiceMoment,
@@ -1922,94 +1964,131 @@ private fun MapPage(
                     verticalArrangement = Arrangement.spacedBy(MapControlGap),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    if (isTourActive) {
-                        MapIconButton(
-                            contentDescription = "Tour teilen",
-                            onClick = { shareActiveTour(context) },
-                        ) {
-                            ShareIcon()
+                    if (isTourEditing) {
+                        selectedEditorLocation?.let { location ->
+                            MapIconButton(
+                                contentDescription = "GPS-Punkt löschen",
+                                onClick = {
+                                    editorDeleteTarget =
+                                        EditorDeleteTarget.Location(location.point)
+                                },
+                                enabled = routePoints.size > 1,
+                            ) {
+                                PhotoDeleteIcon()
+                            }
+                            MapIconButton(
+                                contentDescription = "Moment hinzufügen",
+                                onClick = {
+                                    momentTarget =
+                                        MomentPlacementTarget.RecordedLocation(
+                                            tourId = tour?.id ?: return@MapIconButton,
+                                            trackPointId = location.point.id,
+                                            coordinate = SpurCoordinate(
+                                                location.point.latitude,
+                                                location.point.longitude,
+                                            ),
+                                        )
+                                },
+                            ) {
+                                PlusIcon()
+                            }
                         }
-                    }
-                    tour?.let { visibleTour ->
                         MapIconButton(
-                            contentDescription = "Tour bearbeiten",
-                            onClick = { onEditTour(visibleTour.id) },
+                            contentDescription = "Editor schließen",
+                            onClick = onCloseTourEditor,
                         ) {
-                            LucideIcon(
-                                paths = listOf(
-                                    "M12 20h9",
-                                    "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z",
-                                ),
-                                strokeWidth = LucideBoldStrokeWidth,
-                            )
+                            PhotoCloseIcon()
                         }
-                    }
-                    MapIconButton(
-                        contentDescription = "Hauptmenü öffnen",
-                        onClick = { showMainMenu = true },
-                    ) {
-                        MenuIcon()
-                    }
-                    MapIconButton(
-                        contentDescription = "Tour-History öffnen",
-                        onClick = {
-                            activeVoiceMoment = null
-                            onOpenHistory()
-                        },
-                    ) {
-                        HistoryIcon()
-                    }
-                    MapIconButton(
-                        contentDescription = "Moment hinzufügen",
-                        onClick = {
-                            momentTarget = MomentPlacementTarget.CurrentLocation
-                        },
-                    ) {
-                        PlusIcon()
-                    }
-                    if (manualLocation != null) {
+                    } else {
+                        if (isTourActive) {
+                            MapIconButton(
+                                contentDescription = "Tour teilen",
+                                onClick = { shareActiveTour(context) },
+                            ) {
+                                ShareIcon()
+                            }
+                        }
+                        tour?.let {
+                            MapIconButton(
+                                contentDescription = "Tour bearbeiten",
+                                onClick = onEditTour,
+                            ) {
+                                LucideIcon(
+                                    paths = listOf(
+                                        "M12 20h9",
+                                        "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z",
+                                    ),
+                                    strokeWidth = LucideBoldStrokeWidth,
+                                )
+                            }
+                        }
                         MapIconButton(
-                            contentDescription = "Simulierten Standort zurücksetzen",
+                            contentDescription = "Hauptmenü öffnen",
+                            onClick = { showMainMenu = true },
+                        ) {
+                            MenuIcon()
+                        }
+                        MapIconButton(
+                            contentDescription = "Tour-History öffnen",
                             onClick = {
-                                context.saveManualLocation(null)
-                                manualLocation = null
+                                activeVoiceMoment = null
+                                onOpenHistory()
                             },
                         ) {
-                            LucideLocateOffIcon()
+                            HistoryIcon()
                         }
-                    }
-                    MapIconButton(
-                        contentDescription = when {
-                            isTourOverview -> "Zur Standortverfolgung zurückkehren"
-                            isFollowingLocation -> "Gesamte Tour anzeigen"
-                            else -> "Eigenem Standort folgen"
-                        },
-                        onClick = {
-                            if (
-                                shouldShowTourOverview(
-                                    isFollowingLocation = isFollowingLocation,
-                                    isTourActive = isTourActive,
-                                    routePointCount = routePoints.size,
-                                )
+                        MapIconButton(
+                            contentDescription = "Moment hinzufügen",
+                            onClick = {
+                                momentTarget = MomentPlacementTarget.CurrentLocation
+                            },
+                        ) {
+                            PlusIcon()
+                        }
+                        if (manualLocation != null) {
+                            MapIconButton(
+                                contentDescription = "Simulierten Standort zurücksetzen",
+                                onClick = {
+                                    context.saveManualLocation(null)
+                                    manualLocation = null
+                                },
                             ) {
-                                isFollowingLocation = false
-                                isTourOverview = true
-                                tourOverviewRequest++
-                            } else {
-                                followOwnLocation()
+                                LucideLocateOffIcon()
                             }
-                        },
-                    ) {
-                        FollowLocationIcon(
-                            selected = isFollowingLocation,
-                            pulseGeneration = activeLocationPulseGeneration,
-                        )
+                        }
+                        MapIconButton(
+                            contentDescription = when {
+                                isTourOverview -> "Zur Standortverfolgung zurückkehren"
+                                isFollowingLocation -> "Gesamte Tour anzeigen"
+                                else -> "Eigenem Standort folgen"
+                            },
+                            onClick = {
+                                if (
+                                    shouldShowTourOverview(
+                                        isFollowingLocation = isFollowingLocation,
+                                        isTourActive = isTourActive,
+                                        routePointCount = routePoints.size,
+                                    )
+                                ) {
+                                    isFollowingLocation = false
+                                    isTourOverview = true
+                                    tourOverviewRequest++
+                                } else {
+                                    followOwnLocation()
+                                }
+                            },
+                        ) {
+                            FollowLocationIcon(
+                                selected = isFollowingLocation,
+                                pulseGeneration = activeLocationPulseGeneration,
+                            )
+                        }
                     }
                 }
             }
 
             AnimatedVisibility(
-                visible = isMapReady,
+                visible = isMapReady && !isTourEditing,
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
@@ -2074,6 +2153,79 @@ private fun MapPage(
                             playerControl(Modifier.weight(1f))
                             Spacer(modifier = Modifier.size(MapControlSize))
                         }
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isMapReady &&
+                    isTourEditing &&
+                    selectedEditorLocation != null,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
+            ) {
+                selectedEditorLocation?.let { location ->
+                    Row(
+                        modifier = Modifier
+                            .navigationBarsPadding()
+                            .padding(
+                                start = MapControlHorizontalPadding,
+                                end = MapControlHorizontalPadding,
+                                bottom = EditorLocationRailHeight + 8.dp,
+                            )
+                            .fillMaxWidth()
+                            .height(EditorMetricBarHeight - 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        EditorMetricChip(
+                            value = formatClock(location.point.recordedAt),
+                            label = "Uhrzeit",
+                            modifier = Modifier.weight(1f),
+                        )
+                        EditorMetricChip(
+                            value = formatEditorElapsed(location.elapsedMillis),
+                            label = "seit Start",
+                            modifier = Modifier.weight(1f),
+                        )
+                        EditorMetricChip(
+                            value = formatKilometers(location.distanceFromStartMeters),
+                            label = "vom Start",
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isMapReady && isTourEditing && editorLocations.isNotEmpty(),
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = slideInVertically(
+                    animationSpec = tween(MotionDurationDefaultMillis),
+                    initialOffsetY = { it },
+                ) + fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = slideOutVertically(
+                    animationSpec = tween(MotionDurationDefaultMillis),
+                    targetOffsetY = { it },
+                ) + fadeOut(tween(MotionDurationDefaultMillis)),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .navigationBarsPadding(),
+                ) {
+                    selectedEditorLocation?.let { location ->
+                        EditorLocationRail(
+                            locations = editorLocations,
+                            selectedPointId = location.point.id,
+                            onSelected = { pointId ->
+                                if (pointId != selectedEditorPointId) {
+                                    selectedEditorPointId = pointId
+                                    editorFocusRequest++
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -2246,6 +2398,72 @@ private fun MapPage(
             onConfirm = {
                 tourToDelete = null
                 onDeleteTour(selectedTour.id)
+            },
+        )
+    }
+
+    editorDeleteTarget?.let { target ->
+        EditorDeleteSheet(
+            title = when (target) {
+                is EditorDeleteTarget.Location -> "GPS-Punkt löschen?"
+                is EditorDeleteTarget.Moment -> "${target.moment.type.editorLabel()} löschen?"
+            },
+            primaryLabel = when (target) {
+                is EditorDeleteTarget.Location -> "GPS-Punkt löschen"
+                is EditorDeleteTarget.Moment -> "${target.moment.type.editorLabel()} löschen"
+            },
+            onDismiss = { editorDeleteTarget = null },
+            onConfirm = {
+                editorDeleteTarget = null
+                when (target) {
+                    is EditorDeleteTarget.Moment -> scope.launch {
+                        val updated = context.deleteMapMoment(
+                            moment = target.moment,
+                            moments = mapMoments,
+                        )
+                        if (updated == null) {
+                            showFeedbackNotice(
+                                FeedbackNoticeKind.ERROR,
+                                "${target.moment.type.editorLabel()} konnte nicht gelöscht werden.",
+                            )
+                        } else {
+                            mapMoments = updated
+                        }
+                    }
+                    is EditorDeleteTarget.Location -> scope.launch {
+                        val visibleTour = tour ?: return@launch
+                        val deletedIndex = routePoints.indexOf(target.point)
+                        val retained = routePoints.filterNot {
+                            it.id == target.point.id
+                        }
+                        if (retained.isEmpty()) return@launch
+                        withContext(Dispatchers.IO) {
+                            store.updateTourPoints(
+                                visibleTour.id,
+                                retained.mapTo(mutableSetOf(), TrackPoint::id),
+                            )
+                        }
+                        val updatedMoments = mapMoments.map { moment ->
+                            if (moment.trackPointId != target.point.id) {
+                                moment
+                            } else {
+                                moment.copy(
+                                    trackPointId = nearestTrackPoint(
+                                        retained,
+                                        moment.latitude,
+                                        moment.longitude,
+                                    )?.id,
+                                )
+                            }
+                        }
+                        context.saveMapMoments(updatedMoments)
+                        mapMoments = updatedMoments
+                        selectedEditorPointId = retained.getOrNull(
+                            deletedIndex.coerceAtMost(retained.lastIndex),
+                        )?.id
+                        onRoutePointsChanged(retained)
+                    }
+                }
             },
         )
     }
@@ -2560,10 +2778,22 @@ private fun MapPage(
         showFeedbackNotice = showFeedbackNotice,
         onDismiss = { momentTarget = null },
         onMomentAccepted = { target, moment ->
-            if (target == MomentPlacementTarget.CurrentLocation) {
-                pendingMoment = moment
-            } else {
-                moment.deletePayload()
+            when (target) {
+                MomentPlacementTarget.CurrentLocation -> pendingMoment = moment
+                is MomentPlacementTarget.RecordedLocation -> {
+                    val savedMoment = MapMoment(
+                        id = moment.id,
+                        type = moment.type,
+                        latitude = target.coordinate.latitude,
+                        longitude = target.coordinate.longitude,
+                        payload = moment.payload,
+                        tourId = target.tourId,
+                        trackPointId = target.trackPointId,
+                    )
+                    val updatedMoments = mapMoments + savedMoment
+                    context.saveMapMoments(updatedMoments)
+                    mapMoments = updatedMoments
+                }
             }
             momentTarget = null
         },
@@ -3305,7 +3535,6 @@ private fun MainMenu(
             .navigationBarsPadding()
             .padding(bottom = 24.dp),
     ) {
-        SheetMenuItem(label = "Tour", onClick = onOpenTour)
         onDeleteTour?.let {
             SheetMenuItem(
                 label = "Tour löschen",
@@ -3314,10 +3543,11 @@ private fun MainMenu(
                 leading = { PhotoDeleteIcon(color = StopRed) },
                 trailing = false,
             )
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
         }
-        HorizontalDivider(
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-        )
+        SheetMenuItem(label = "Tour", onClick = onOpenTour)
         SheetMenuItem(label = "Buttonfarben", onClick = onOpenButtonColors)
         SheetMenuItem(label = "Trail", onClick = onOpenTrailColors)
         SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
@@ -3752,11 +3982,13 @@ private fun MapIconButton(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val controlColors = LocalMapControlColors.current
     IconButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier
             .size(MapControlSize)
             .mapControlShadow(CircleShape)
@@ -3883,6 +4115,8 @@ private fun MapSurface(
     momentImageRevision: Long,
     routePoints: List<TrackPoint>,
     trailColors: TrailColors,
+    selectedTrackPoint: TrackPoint?,
+    selectedTrackPointRequest: Long,
     momentToPlace: PendingMapMoment?,
     focusedMoment: MapMoment?,
     activeVoiceMoment: MapMoment?,
@@ -3921,6 +4155,7 @@ private fun MapSurface(
     val currentMapMoments by rememberUpdatedState(mapMoments)
     val currentRoutePoints by rememberUpdatedState(routePoints)
     val currentTrailColors by rememberUpdatedState(trailColors)
+    val currentSelectedTrackPoint by rememberUpdatedState(selectedTrackPoint)
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
@@ -4376,6 +4611,25 @@ private fun MapSurface(
                     LatLng(moment.latitude, moment.longitude),
                 ),
             )
+        }
+    }
+
+    LaunchedEffect(
+        selectedTrackPoint?.id,
+        selectedTrackPointRequest,
+        mapStyleRevision,
+    ) {
+        mapView.getMapAsync { map ->
+            map.style?.showSelectedTrackPoint(currentSelectedTrackPoint)
+            if (selectedTrackPointRequest == 0L) return@getMapAsync
+            currentSelectedTrackPoint?.let { point ->
+                map.locationComponent.cameraMode = CameraMode.NONE
+                map.moveCamera(
+                    CameraUpdateFactory.newLatLng(
+                        LatLng(point.latitude, point.longitude),
+                    ),
+                )
+            }
         }
     }
 
@@ -7521,7 +7775,7 @@ private fun EditorLocationRail(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .height(96.dp)
+            .height(EditorLocationRailHeight)
             .background(Color.White),
     ) {
         val selectedIndex = locations.indexOfFirst {
@@ -7594,6 +7848,39 @@ private fun EditorLocationRail(
                 .height(32.dp)
                 .background(Ink, CircleShape),
         )
+    }
+}
+
+@Composable
+private fun EditorMetricChip(
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxHeight(),
+        color = Color.White,
+        shape = RoundedCornerShape(18.dp),
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = value,
+                maxLines = 1,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = label,
+                maxLines = 1,
+                color = Ink.copy(alpha = 0.54f),
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
     }
 }
 
@@ -8279,6 +8566,7 @@ private fun BackIcon() = LucideIcon(
 @Composable
 private fun MapPagePreview() {
     MapPage(
+        store = TourStore(LocalContext.current),
         tour = null,
         activeTour = null,
         tourDisplayRequest = 0,
@@ -8289,7 +8577,10 @@ private fun MapPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
+        isTourEditing = false,
         onEditTour = {},
+        onCloseTourEditor = {},
+        onRoutePointsChanged = {},
         onDeleteTour = {},
     )
 }
@@ -8305,6 +8596,7 @@ private fun ActiveTourPagePreview() {
         pointCount = 42,
     )
     MapPage(
+        store = TourStore(LocalContext.current),
         tour = tour,
         activeTour = tour,
         tourDisplayRequest = 0,
@@ -8315,7 +8607,10 @@ private fun ActiveTourPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
+        isTourEditing = false,
         onEditTour = {},
+        onCloseTourEditor = {},
+        onRoutePointsChanged = {},
         onDeleteTour = {},
     )
 }
