@@ -1112,7 +1112,7 @@ class MainActivity : ComponentActivity() {
         splashScreen.setOnExitAnimationListener { provider ->
             provider.view.animate()
                 .alpha(0f)
-                .setDuration(MotionDurationDefaultMillis.toLong())
+                .setDuration(LoaderAsteriskAccelerationDurationMillis.toLong())
                 .withEndAction {
                     provider.remove()
                     splashExitComplete = true
