@@ -427,11 +427,6 @@ private val MomentVideoIconPaths = listOf(
     "m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5",
     "M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2",
 )
-private val MomentSpeechIconPaths = listOf(
-    "M8.8 20v-4.1l1.9.2a2.3 2.3 0 0 0 2.164-2.1V8.3A5.37 5.37 0 0 0 2 8.25c0 2.8.656 3.054 1 4.55a5.77 5.77 0 0 1 .029 2.758L2 20",
-    "M19.8 17.8a7.5 7.5 0 0 0 .003-10.603",
-    "M17 15a3.5 3.5 0 0 0-.025-4.975",
-)
 private val MomentVoicePlaybackIconPaths = listOf(
     "M11 5 6 9H2v6h4l5 4z",
     "M15.54 8.46a5 5 0 0 1 0 7.07",
@@ -755,7 +750,7 @@ private fun MomentPickerSheetContent(
             MomentOption(
                 label = "Sprache",
                 accentColor = momentMarkerColor(MomentType.VOICE),
-                icon = { MomentSpeechIcon() },
+                icon = { MomentVoiceIcon() },
                 modifier = Modifier.weight(1f),
                 onClick = { onSelect(MomentType.VOICE) },
             )
@@ -3456,27 +3451,29 @@ private fun MainMenu(
             .navigationBarsPadding()
             .padding(bottom = 24.dp),
     ) {
-        onDeleteTour?.let {
-            SheetMenuItem(
-                label = "Tour löschen",
-                onClick = it,
-                destructive = true,
-                leading = { PhotoDeleteIcon(color = StopRed) },
-                trailing = false,
-            )
+        if (onDeleteTour != null || onShareTour != null) {
+            onDeleteTour?.let {
+                SheetMenuItem(
+                    label = "Tour löschen",
+                    onClick = it,
+                    destructive = true,
+                    leading = { PhotoDeleteIcon(color = StopRed) },
+                    trailing = false,
+                )
+            }
+            onShareTour?.let {
+                SheetMenuItem(
+                    label = "Tour teilen",
+                    onClick = it,
+                    leading = { ShareIcon() },
+                    trailing = false,
+                )
+            }
             HorizontalDivider(
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
         }
         SheetMenuItem(label = "Tour", onClick = onOpenTour)
-        onShareTour?.let {
-            SheetMenuItem(
-                label = "Tour teilen",
-                onClick = it,
-                leading = { ShareIcon() },
-                trailing = false,
-            )
-        }
         SheetMenuItem(label = "Buttonfarben", onClick = onOpenButtonColors)
         SheetMenuItem(label = "Trail", onClick = onOpenTrailColors)
         SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
@@ -3882,25 +3879,25 @@ private fun MomentOption(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.height(88.dp),
+        modifier = modifier.height(64.dp),
         shape = RoundedCornerShape(20.dp),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = Color.Transparent,
             contentColor = accentColor,
         ),
-        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.55f)),
+        border = BorderStroke(2.dp, Ink.copy(alpha = 0.18f)),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             icon()
             Text(
                 text = label,
                 style = MaterialTheme.typography.titleMedium,
-                fontSize = 24.sp,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
             )
         }
     }
@@ -8369,8 +8366,8 @@ private fun MomentVideoIcon() = LucideIcon(
 )
 
 @Composable
-private fun MomentSpeechIcon() = LucideIcon(
-    paths = MomentSpeechIconPaths,
+private fun MomentVoiceIcon() = LucideIcon(
+    paths = MomentVoicePlaybackIconPaths,
     strokeWidth = LucideBoldStrokeWidth,
     modifier = Modifier.size(30.dp),
 )
