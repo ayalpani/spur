@@ -45,6 +45,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -68,6 +69,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
@@ -102,6 +104,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -165,14 +168,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -640,27 +641,14 @@ private fun MomentComposer(
             showEmojiPicker = false
             showPicker = true
         }
-        Dialog(
-            onDismissRequest = closeEmojiPicker,
-            properties = DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false,
-            ),
-        ) {
-            BackHandler(onBack = closeEmojiPicker)
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.surface,
-            ) {
-                EmojiPickerSheet(
-                    onBack = closeEmojiPicker,
-                    onEmojiPicked = { emoji ->
-                        showEmojiPicker = false
-                        accept(PendingMapMoment.emoji(emoji))
-                    },
-                )
-            }
-        }
+        EmojiPickerBottomSheet(
+            onDismiss = onDismiss,
+            onBack = closeEmojiPicker,
+            onEmojiPicked = { emoji ->
+                showEmojiPicker = false
+                accept(PendingMapMoment.emoji(emoji))
+            },
+        )
     }
 
     if (showCamera) {
@@ -801,7 +789,99 @@ private class SpurRecentEmojiProvider(context: Context) : RecentEmojiProvider {
 }
 
 @Composable
+private fun EmojiPickerBottomSheet(
+    onDismiss: () -> Unit,
+    onBack: () -> Unit,
+    onEmojiPicked: (String) -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onBack,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        val scope = rememberCoroutineScope()
+        val density = LocalDensity.current
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val sheetHeight = constraints.maxHeight.toFloat()
+            val partialOffset = sheetHeight / 2f
+            var sheetOffset by remember(sheetHeight) {
+                mutableFloatStateOf(partialOffset)
+            }
+            var animationJob by remember {
+                mutableStateOf<kotlinx.coroutines.Job?>(null)
+            }
+
+            val animateTo: (Float, () -> Unit) -> Unit = { target, onFinished ->
+                animationJob?.cancel()
+                animationJob = scope.launch {
+                    animate(
+                        initialValue = sheetOffset,
+                        targetValue = target,
+                        animationSpec = tween(MotionDurationDefaultMillis),
+                    ) { value, _ ->
+                        sheetOffset = value
+                    }
+                    onFinished()
+                }
+            }
+            val settleSheet: () -> Unit = {
+                val target = listOf(0f, partialOffset, sheetHeight)
+                    .minBy { abs(it - sheetOffset) }
+                animateTo(target) {
+                    if (target == sheetHeight) onDismiss()
+                }
+            }
+            val hideTo: (() -> Unit) -> Unit = { onHidden ->
+                animateTo(sheetHeight, onHidden)
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(with(density) { sheetOffset.toDp() })
+                    .semantics {
+                        contentDescription = "Emoji-Auswahl schließen"
+                    }
+                    .clickable { hideTo(onDismiss) },
+            )
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(
+                        with(density) {
+                            (sheetHeight - sheetOffset).coerceAtLeast(0f).toDp()
+                        },
+                    ),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            ) {
+                EmojiPickerSheet(
+                    headerModifier = Modifier.pointerInput(sheetHeight) {
+                        detectVerticalDragGestures(
+                            onDragStart = { animationJob?.cancel() },
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                sheetOffset =
+                                    (sheetOffset + dragAmount).coerceIn(0f, sheetHeight)
+                            },
+                            onDragEnd = settleSheet,
+                            onDragCancel = settleSheet,
+                        )
+                    },
+                    onBack = { hideTo(onBack) },
+                    onEmojiPicked = { emoji ->
+                        hideTo { onEmojiPicked(emoji) }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun EmojiPickerSheet(
+    headerModifier: Modifier,
     onBack: () -> Unit,
     onEmojiPicked: (String) -> Unit,
 ) {
@@ -810,21 +890,27 @@ private fun EmojiPickerSheet(
         SpurRecentEmojiProvider(context.applicationContext)
     }
     val currentOnEmojiPicked by rememberUpdatedState(onEmojiPicked)
-    val nestedScrollConnection = rememberNestedScrollInteropConnection()
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .statusBarsPadding()
             .navigationBarsPadding()
             .padding(horizontal = 24.dp)
             .padding(bottom = 12.dp),
     ) {
-        BottomSheetHeader(
-            title = "Emoji wählen",
-            onBack = onBack,
-        )
+        Column(modifier = headerModifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                BottomSheetDefaults.DragHandle()
+            }
+            BottomSheetHeader(
+                title = "Emoji wählen",
+                onBack = onBack,
+            )
+        }
         AndroidView(
             factory = { viewContext ->
                 val configuration = Configuration(viewContext.resources.configuration)
@@ -850,7 +936,6 @@ private fun EmojiPickerSheet(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .nestedScroll(nestedScrollConnection)
                 .weight(1f),
         )
     }
