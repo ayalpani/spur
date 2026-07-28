@@ -18,17 +18,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import org.maplibre.geojson.Feature
 import kotlin.coroutines.resume
 
 internal data class HomeAutoStartSettings(
     val enabled: Boolean,
     val home: SpurCoordinate?,
+    val homeBuilding: Feature? = null,
 )
 
 private const val Preferences = "home-auto-start"
 private const val Enabled = "enabled"
 private const val Latitude = "latitude"
 private const val Longitude = "longitude"
+private const val HomeBuilding = "home-building"
 private const val HomeGeofenceId = "spur-home"
 private const val HomeRadiusMeters = 150f
 
@@ -45,6 +48,7 @@ internal fun Context.loadHomeAutoStartSettings(): HomeAutoStartSettings {
     return HomeAutoStartSettings(
         enabled = preferences.getBoolean(Enabled, false),
         home = home,
+        homeBuilding = decodeHomeBuilding(preferences.getString(HomeBuilding, null)),
     )
 }
 
@@ -58,9 +62,15 @@ internal fun Context.saveHomeAutoStartSettings(settings: HomeAutoStartSettings) 
                 putLong(Latitude, it.latitude.toBits())
                 putLong(Longitude, it.longitude.toBits())
             }
+            settings.homeBuilding?.let { putString(HomeBuilding, encodeHomeBuilding(it)) }
         }
         .apply()
 }
+
+internal fun encodeHomeBuilding(feature: Feature): String = feature.toJson()
+
+internal fun decodeHomeBuilding(value: String?): Feature? =
+    value?.let { runCatching { Feature.fromJson(it) }.getOrNull() }
 
 internal fun Context.hasBackgroundLocationPermission(): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||

@@ -1091,6 +1091,7 @@ private const val MapBuildingMaxZoom = 24f
 private const val HomeBuildingSource = "home-building-source"
 private const val HomeBuildingFillLayer = "home-building-fill-layer"
 private const val HomeBuildingOutlineLayer = "home-building-outline-layer"
+private const val SelectableHomeBuildingsLayer = "selectable-home-buildings-layer"
 private const val HomeBuildingSelectionZoom = 18.5
 private const val HomeBuildingSelectionSearchRadiusDp = 64
 private const val MapMomentIdProperty = "moment-id"
@@ -1107,6 +1108,11 @@ internal enum class MapRotation(val label: String, val bearing: Double) {
     SOUTH("Süden", 180.0),
     WEST("Westen", 270.0),
 }
+
+private data class SelectedHomeBuilding(
+    val coordinate: SpurCoordinate,
+    val feature: Feature,
+)
 
 internal fun mapRotationFromStored(value: String?): MapRotation =
     MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH
@@ -1689,6 +1695,9 @@ private fun MapPage(
     }
     var editorFocusRequest by remember { mutableLongStateOf(0L) }
     var selectedBuilding by remember { mutableStateOf<SpurCoordinate?>(null) }
+    var homeBuilding by remember {
+        mutableStateOf(context.loadHomeAutoStartSettings().homeBuilding)
+    }
     var pendingMoment by remember { mutableStateOf<PendingMapMoment?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var mediaDetail by remember { mutableStateOf<MapMoment?>(null) }
@@ -1969,6 +1978,7 @@ private fun MapPage(
                 momentImageRevision = photoRevision,
                 routePoints = routePoints,
                 trailColors = trailColors,
+                homeBuilding = homeBuilding,
                 selectedTrackPoint = if (isTourEditing) {
                     selectedEditorLocation?.point
                 } else {
@@ -2620,6 +2630,7 @@ private fun MapPage(
             sheetState = homeAutoStartBottomSheetState,
         ) {
             HomeAutoStartBottomSheet(
+                onSettingsChanged = { homeBuilding = it.homeBuilding },
                 onBack = {
                     scope.launch {
                         homeAutoStartBottomSheetState.hide()
@@ -3295,6 +3306,7 @@ private fun MediaMomentDetailPage(
 
 @Composable
 private fun HomeAutoStartBottomSheet(
+    onSettingsChanged: (HomeAutoStartSettings) -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -3303,7 +3315,7 @@ private fun HomeAutoStartBottomSheet(
     var settings by remember { mutableStateOf(context.loadHomeAutoStartSettings()) }
     var setupRequested by rememberSaveable { mutableStateOf(false) }
     var homeSearchOrigin by remember { mutableStateOf<SpurCoordinate?>(settings.home) }
-    var candidateHome by remember { mutableStateOf<SpurCoordinate?>(null) }
+    var candidateHome by remember { mutableStateOf<SelectedHomeBuilding?>(null) }
     var locating by remember { mutableStateOf(false) }
     var needsBackgroundPermission by remember { mutableStateOf(false) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
@@ -3312,6 +3324,7 @@ private fun HomeAutoStartBottomSheet(
         context.removeHomeExitGeofence()
         settings = HomeAutoStartSettings(enabled = false, home = null)
         context.saveHomeAutoStartSettings(settings)
+        onSettingsChanged(settings)
         setupRequested = false
         homeSearchOrigin = null
         candidateHome = null
@@ -3319,9 +3332,14 @@ private fun HomeAutoStartBottomSheet(
         message = null
     }
 
-    fun activate(home: SpurCoordinate) {
-        settings = HomeAutoStartSettings(enabled = true, home = home)
+    fun activate(home: SelectedHomeBuilding) {
+        settings = HomeAutoStartSettings(
+            enabled = true,
+            home = home.coordinate,
+            homeBuilding = home.feature,
+        )
         context.saveHomeAutoStartSettings(settings)
+        onSettingsChanged(settings)
         context.registerHomeExitGeofence()
         setupRequested = false
         needsBackgroundPermission = false
@@ -3433,8 +3451,20 @@ private fun HomeAutoStartBottomSheet(
         if (shownHomeOrigin != null) {
             HomeBuildingSelector(
                 origin = shownHomeOrigin,
+                initialBuilding = settings.homeBuilding,
                 selectionEnabled = !settings.enabled,
-                onBuildingSelected = { candidateHome = it },
+                onBuildingSelected = { selected ->
+                    candidateHome = selected
+                    if (settings.enabled && settings.homeBuilding == null) {
+                        settings = settings.copy(
+                            home = selected.coordinate,
+                            homeBuilding = selected.feature,
+                        )
+                        context.saveHomeAutoStartSettings(settings)
+                        context.registerHomeExitGeofence()
+                        onSettingsChanged(settings)
+                    }
+                },
             )
         }
 
@@ -3500,8 +3530,9 @@ private fun HomeAutoStartBottomSheet(
 @Composable
 private fun HomeBuildingSelector(
     origin: SpurCoordinate,
+    initialBuilding: Feature?,
     selectionEnabled: Boolean,
-    onBuildingSelected: (SpurCoordinate) -> Unit,
+    onBuildingSelected: (SelectedHomeBuilding) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -3538,14 +3569,19 @@ private fun HomeBuildingSelector(
 
     DisposableEffect(mapView, origin, searchRadiusPixels) {
         var map: MapLibreMap? = null
-        var selectedBuilding: Feature? = null
+        var selectedBuilding = initialBuilding
 
         fun selectBuilding(feature: Feature) {
             val readyMap = map ?: return
             val home = homeCoordinate(feature) ?: return
             selectedBuilding = feature
             readyMap.style?.showSelectedHomeBuilding(feature)
-            currentOnBuildingSelected(home)
+            currentOnBuildingSelected(
+                SelectedHomeBuilding(
+                    coordinate = home,
+                    feature = feature,
+                ),
+            )
         }
 
         fun selectBuildingAt(screenPoint: PointF, searchNearby: Boolean): Boolean {
@@ -3596,6 +3632,8 @@ private fun HomeBuildingSelector(
             readyMap.setStyle(StreetMapStyle) { style ->
                 style.hideDistractingPoiLayers()
                 style.showOutlinedBuildings()
+                style.showSelectableHomeBuildings()
+                style.showSelectedHomeBuilding(selectedBuilding)
                 mapView.postInvalidate()
             }
         }
@@ -3620,7 +3658,7 @@ private fun HomeBuildingSelector(
         )
         if (selectionEnabled) {
             Text(
-                text = "Gebäude antippen, um die Auswahl zu ändern.",
+                text = "Alle sichtbaren Gebäude können ausgewählt werden.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -3666,17 +3704,33 @@ internal fun homeCoordinate(feature: Feature): SpurCoordinate? {
     )
 }
 
-private fun Style.showSelectedHomeBuilding(feature: Feature) {
+private fun Style.showSelectableHomeBuildings() {
+    val buildings = getLayerAs<FillLayer>(MapBuildingLayer) ?: return
+    val sourceLayer = buildings.sourceLayer ?: return
+    if (getLayer(SelectableHomeBuildingsLayer) != null) return
+    addLayerAbove(
+        LineLayer(SelectableHomeBuildingsLayer, buildings.sourceId)
+            .withSourceLayer(sourceLayer)
+            .withProperties(
+                lineColor(Ink.copy(alpha = 0.28f).toArgb()),
+                lineWidth(1.25f),
+                lineCap(Property.LINE_CAP_ROUND),
+                lineJoin(Property.LINE_JOIN_ROUND),
+            ),
+        MapBuildingLayer,
+    )
+}
+
+private fun Style.showSelectedHomeBuilding(feature: Feature?) {
     val source = getSourceAs<GeoJsonSource>(HomeBuildingSource)
         ?: GeoJsonSource(HomeBuildingSource).also(::addSource)
     if (getLayer(HomeBuildingFillLayer) == null) {
-        addLayerAbove(
-            FillLayer(HomeBuildingFillLayer, HomeBuildingSource).withProperties(
-                fillColor(Ink.toArgb()),
-                fillOpacity(0.18f),
-            ),
-            MapBuildingLayer,
+        val layer = FillLayer(HomeBuildingFillLayer, HomeBuildingSource).withProperties(
+            fillColor(Ink.toArgb()),
+            fillOpacity(0.18f),
         )
+        if (getLayer(MapBuildingLayer) == null) addLayer(layer)
+        else addLayerAbove(layer, MapBuildingLayer)
     }
     if (getLayer(HomeBuildingOutlineLayer) == null) {
         addLayerAbove(
@@ -3689,7 +3743,11 @@ private fun Style.showSelectedHomeBuilding(feature: Feature) {
             HomeBuildingFillLayer,
         )
     }
-    source.setGeoJson(feature)
+    if (feature == null) {
+        source.setGeoJson("""{"type":"FeatureCollection","features":[]}""")
+    } else {
+        source.setGeoJson(feature)
+    }
 }
 
 @Composable
@@ -4339,6 +4397,7 @@ private fun MapSurface(
     momentImageRevision: Long,
     routePoints: List<TrackPoint>,
     trailColors: TrailColors,
+    homeBuilding: Feature?,
     selectedTrackPoint: TrackPoint?,
     selectedTrackPointRequest: Long,
     momentToPlace: PendingMapMoment?,
@@ -4379,6 +4438,7 @@ private fun MapSurface(
     val currentMapMoments by rememberUpdatedState(mapMoments)
     val currentRoutePoints by rememberUpdatedState(routePoints)
     val currentTrailColors by rememberUpdatedState(trailColors)
+    val currentHomeBuilding by rememberUpdatedState(homeBuilding)
     val currentSelectedTrackPoint by rememberUpdatedState(selectedTrackPoint)
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
@@ -4923,6 +4983,13 @@ private fun MapSurface(
                 pendingMapMoment = null
                 pendingMomentPosition = null
             }
+        }
+    }
+
+    LaunchedEffect(homeBuilding, mapStyleRevision) {
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.style?.showSelectedHomeBuilding(currentHomeBuilding)
         }
     }
 
