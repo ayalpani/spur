@@ -217,6 +217,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.location.LocationComponentActivationOptions
+import org.maplibre.android.location.LocationComponentConstants
 import org.maplibre.android.location.LocationComponentOptions
 import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
@@ -1048,6 +1049,8 @@ private const val MomentMarkerStroke = 3f
 private const val MomentMarkerEdgeWidth = 1f
 private const val MapPreviewPixels = 180
 private const val LocationPulseWatchdogMillis = LocationPulseDurationMillis * 10L
+private const val CurrentLocationPersonImage = "current-location-person-image"
+private const val CurrentLocationPersonLayer = "current-location-person-layer"
 private val LocationPulseEasing = Easing { fraction ->
     (cos((fraction + 1f) * PI) / 2f + 0.5f).toFloat()
 }
@@ -4824,7 +4827,7 @@ private fun MapSurface(
         ) return@LaunchedEffect
         mapView.getMapAsync { map ->
             if (generation != currentLocationPulseGeneration) return@getMapAsync
-            map.restartLocationPulse(currentTrailColors.fill)
+            map.restartLocationPulse(context, currentTrailColors.fill)
             currentOnLocationPulseStarted(generation)
         }
     }
@@ -6523,6 +6526,11 @@ private fun enableLocationTracking(
     locationComponent.isLocationComponentEnabled = manualLocation == null
     locationComponent.renderMode = RenderMode.NORMAL
     locationComponent.cameraMode = CameraMode.NONE
+    style.showCurrentLocationPerson(
+        context = context,
+        color = pulseColor,
+        visible = manualLocation == null,
+    )
 
     val location = map.currentSpurCoordinate(
         context = context,
@@ -6541,7 +6549,10 @@ private fun enableLocationTracking(
     }
 }
 
-private fun MapLibreMap.restartLocationPulse(color: Color) {
+private fun MapLibreMap.restartLocationPulse(
+    context: Context,
+    color: Color,
+) {
     val component = locationComponent
     if (!component.isLocationComponentActivated || !component.isLocationComponentEnabled) return
     component.applyStyle(
@@ -6550,19 +6561,16 @@ private fun MapLibreMap.restartLocationPulse(color: Color) {
             .spurLocationAppearance(color)
             .build(),
     )
+    style?.showCurrentLocationPerson(context, color, visible = true)
 }
 
 private fun LocationComponentOptions.Builder.spurLocationAppearance(
     color: Color,
 ): LocationComponentOptions.Builder =
-    foregroundDrawable(R.drawable.ic_person_standing_location)
-        .backgroundDrawable(R.drawable.ic_person_standing_location_halo)
-        .foregroundDrawableStale(R.drawable.ic_person_standing_location)
-        .backgroundDrawableStale(R.drawable.ic_person_standing_location_halo)
-        .foregroundTintColor(color.toArgb())
-        .backgroundTintColor(Color.White.toArgb())
+    foregroundTintColor(color.toArgb())
+        .backgroundTintColor(color.toArgb())
         .foregroundStaleTintColor(color.toArgb())
-        .backgroundStaleTintColor(Color.White.toArgb())
+        .backgroundStaleTintColor(color.toArgb())
         .bearingTintColor(color.toArgb())
         .accuracyColor(color.toArgb())
         .pulseEnabled(true)
@@ -6572,6 +6580,70 @@ private fun LocationComponentOptions.Builder.spurLocationAppearance(
         .pulseMaxRadius(LocationPulseMaxRadius)
         .pulseAlpha(LocationPulseAlpha)
         .pulseInterpolator(AccelerateDecelerateInterpolator())
+
+private fun Style.showCurrentLocationPerson(
+    context: Context,
+    color: Color,
+    visible: Boolean,
+) {
+    context.currentLocationPersonBitmap(color)?.let {
+        addImage(CurrentLocationPersonImage, it)
+    }
+    val layer = getLayerAs<SymbolLayer>(CurrentLocationPersonLayer)
+    if (layer == null) {
+        addLayerAbove(
+            SymbolLayer(
+                CurrentLocationPersonLayer,
+                LocationComponentConstants.LOCATION_SOURCE,
+            ).withProperties(
+                iconImage(CurrentLocationPersonImage),
+                iconAnchor(Property.ICON_ANCHOR_CENTER),
+                iconAllowOverlap(true),
+                iconIgnorePlacement(true),
+                iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                visibility(
+                    if (visible) Property.VISIBLE else Property.NONE,
+                ),
+            ),
+            LocationComponentConstants.FOREGROUND_LAYER,
+        )
+    } else {
+        layer.setProperties(
+            visibility(
+                if (visible) Property.VISIBLE else Property.NONE,
+            ),
+        )
+    }
+}
+
+private fun Context.currentLocationPersonBitmap(
+    color: Color,
+): android.graphics.Bitmap? {
+    val halo = ContextCompat.getDrawable(
+        this,
+        R.drawable.ic_person_standing_location_halo,
+    )?.mutate() ?: return null
+    val person = ContextCompat.getDrawable(
+        this,
+        R.drawable.ic_person_standing_location,
+    )?.mutate() ?: return null
+    val width = maxOf(halo.intrinsicWidth, person.intrinsicWidth)
+    val height = maxOf(halo.intrinsicHeight, person.intrinsicHeight)
+    return android.graphics.Bitmap.createBitmap(
+        width,
+        height,
+        android.graphics.Bitmap.Config.ARGB_8888,
+    ).also { bitmap ->
+        val canvas = android.graphics.Canvas(bitmap)
+        halo.setTint(Color.White.toArgb())
+        halo.setBounds(0, 0, width, height)
+        halo.draw(canvas)
+        person.setTint(color.toArgb())
+        person.setBounds(0, 0, width, height)
+        person.draw(canvas)
+    }
+}
 
 private fun MapLibreMap.followLocation(
     context: Context,
@@ -6655,6 +6727,11 @@ private fun MapLibreMap.showGpsLocationPuck(
 ) {
     if (!context.hasLocationPermission() || !locationComponent.isLocationComponentActivated) return
     locationComponent.isLocationComponentEnabled = show
+    style?.getLayer(CurrentLocationPersonLayer)?.setProperties(
+        visibility(
+            if (show) Property.VISIBLE else Property.NONE,
+        ),
+    )
 }
 
 @SuppressLint("MissingPermission")
