@@ -2050,40 +2050,6 @@ private fun MapPage(
 
             AnimatedVisibility(
                 visible = isMapReady,
-                modifier = Modifier.align(Alignment.TopEnd),
-                enter = fadeIn(tween(MotionDurationDefaultMillis)),
-                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .statusBarsPadding()
-                        .padding(horizontal = 18.dp, vertical = 14.dp),
-                ) {
-                    MapStyleButton(
-                        contentDescription = if (isSatelliteView) {
-                            "Schematische Kartenansicht anzeigen"
-                        } else {
-                            "Satellitenansicht anzeigen"
-                        },
-                        onClick = {
-                            isMapRendered = false
-                            isAlternateMapPreviewLoading = true
-                            alternateMapPreview = null
-                            isSatelliteView = !isSatelliteView
-                        },
-                        preview = alternateMapPreview,
-                        isLoading = isAlternateMapPreviewLoading,
-                        fallbackPreview = if (isSatelliteView) {
-                            R.drawable.map_preview_street
-                        } else {
-                            R.drawable.map_preview_satellite
-                        },
-                    )
-                }
-            }
-
-            AnimatedVisibility(
-                visible = isMapReady,
                 modifier = Modifier.align(Alignment.BottomEnd),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
@@ -2140,7 +2106,9 @@ private fun MapPage(
                         ) {
                             MenuIcon()
                         }
-                        tour?.let {
+                        tour?.takeIf {
+                            it.endedAt != null || activeTour?.id == it.id
+                        }?.let {
                             MapIconButton(
                                 contentDescription = "Tour bearbeiten",
                                 onClick = onEditTour,
@@ -2219,6 +2187,28 @@ private fun MapPage(
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
             ) {
+                val mapStyleControl: @Composable () -> Unit = {
+                    MapStyleButton(
+                        contentDescription = if (isSatelliteView) {
+                            "Schematische Kartenansicht anzeigen"
+                        } else {
+                            "Satellitenansicht anzeigen"
+                        },
+                        onClick = {
+                            isMapRendered = false
+                            isAlternateMapPreviewLoading = true
+                            alternateMapPreview = null
+                            isSatelliteView = !isSatelliteView
+                        },
+                        preview = alternateMapPreview,
+                        isLoading = isAlternateMapPreviewLoading,
+                        fallbackPreview = if (isSatelliteView) {
+                            R.drawable.map_preview_street
+                        } else {
+                            R.drawable.map_preview_satellite
+                        },
+                    )
+                }
                 val playerControl: @Composable (Modifier) -> Unit = { modifier ->
                     if (activeTour != null) {
                         TourPlayer(
@@ -2268,15 +2258,14 @@ private fun MapPage(
                         .widthIn(max = 560.dp),
                     verticalArrangement = Arrangement.spacedBy(MapControlGap),
                 ) {
-                    if (usesStackedMapPlayer) {
-                        playerControl(Modifier.fillMaxWidth())
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(MapControlGap),
-                            verticalAlignment = Alignment.Bottom,
-                        ) {
-                            playerControl(Modifier.weight(1f))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(MapControlGap),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        mapStyleControl()
+                        playerControl(Modifier.weight(1f))
+                        if (!usesStackedMapPlayer) {
                             Spacer(modifier = Modifier.size(MapControlSize))
                         }
                     }
@@ -4296,9 +4285,6 @@ private fun MapStyleButton(
     onClick: () -> Unit,
 ) {
     val tourControlColors = LocalMapControlColors.current.inverted
-    val screen = LocalConfiguration.current
-    val aspectRatio = preview?.let { it.width.toFloat() / it.height }
-        ?: screen.screenWidthDp.toFloat() / screen.screenHeightDp
     val previewShape = RoundedCornerShape(18.dp)
     val blurRadius by animateDpAsState(
         targetValue = if (isLoading) 7.dp else 0.dp,
@@ -4308,8 +4294,7 @@ private fun MapStyleButton(
     Surface(
         onClick = onClick,
         modifier = Modifier
-            .width(60.dp)
-            .aspectRatio(aspectRatio)
+            .size(MapControlSize)
             .mapControlShadow(previewShape)
             .semantics { this.contentDescription = contentDescription },
         shape = previewShape,
