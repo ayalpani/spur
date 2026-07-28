@@ -49,4 +49,34 @@ class HomeBuildingSelectionTest {
 
         assertEquals(building.geometry(), restored.geometry())
     }
+
+    @Test
+    fun automaticTourStartsAtTheChosenPointInsteadOfTheBuildingCenter() {
+        val home = SpurCoordinate(latitude = 52.0, longitude = 13.0)
+        val startPoint = SpurCoordinate(latitude = 52.0002, longitude = 13.0003)
+
+        val result = automaticTourStartPoint(
+            HomeAutoStartSettings(
+                enabled = true,
+                home = home,
+                startPoint = startPoint,
+            ),
+        )
+
+        assertEquals(startPoint, result)
+    }
+
+    @Test
+    fun existingSettingsFallBackToTheBuildingCenter() {
+        val home = SpurCoordinate(latitude = 52.0, longitude = 13.0)
+
+        val result = automaticTourStartPoint(
+            HomeAutoStartSettings(
+                enabled = true,
+                home = home,
+            ),
+        )
+
+        assertEquals(home, result)
+    }
 }

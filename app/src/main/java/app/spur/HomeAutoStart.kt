@@ -25,6 +25,7 @@ internal data class HomeAutoStartSettings(
     val enabled: Boolean,
     val home: SpurCoordinate?,
     val homeBuilding: Feature? = null,
+    val startPoint: SpurCoordinate? = null,
 )
 
 private const val Preferences = "home-auto-start"
@@ -32,6 +33,8 @@ private const val Enabled = "enabled"
 private const val Latitude = "latitude"
 private const val Longitude = "longitude"
 private const val HomeBuilding = "home-building"
+private const val StartLatitude = "start-latitude"
+private const val StartLongitude = "start-longitude"
 private const val HomeGeofenceId = "spur-home"
 private const val HomeRadiusMeters = 150f
 
@@ -45,10 +48,22 @@ internal fun Context.loadHomeAutoStartSettings(): HomeAutoStartSettings {
     } else {
         null
     }
+    val startPoint = if (
+        preferences.contains(StartLatitude) &&
+        preferences.contains(StartLongitude)
+    ) {
+        SpurCoordinate(
+            latitude = Double.fromBits(preferences.getLong(StartLatitude, 0)),
+            longitude = Double.fromBits(preferences.getLong(StartLongitude, 0)),
+        )
+    } else {
+        null
+    }
     return HomeAutoStartSettings(
         enabled = preferences.getBoolean(Enabled, false),
         home = home,
         homeBuilding = decodeHomeBuilding(preferences.getString(HomeBuilding, null)),
+        startPoint = startPoint,
     )
 }
 
@@ -63,6 +78,10 @@ internal fun Context.saveHomeAutoStartSettings(settings: HomeAutoStartSettings) 
                 putLong(Longitude, it.longitude.toBits())
             }
             settings.homeBuilding?.let { putString(HomeBuilding, encodeHomeBuilding(it)) }
+            settings.startPoint?.let {
+                putLong(StartLatitude, it.latitude.toBits())
+                putLong(StartLongitude, it.longitude.toBits())
+            }
         }
         .apply()
 }
@@ -71,6 +90,9 @@ internal fun encodeHomeBuilding(feature: Feature): String = feature.toJson()
 
 internal fun decodeHomeBuilding(value: String?): Feature? =
     value?.let { runCatching { Feature.fromJson(it) }.getOrNull() }
+
+internal fun automaticTourStartPoint(settings: HomeAutoStartSettings): SpurCoordinate? =
+    settings.startPoint ?: settings.home
 
 internal fun Context.hasBackgroundLocationPermission(): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
@@ -148,10 +170,11 @@ class HomeExitReceiver : BroadcastReceiver() {
             return
         }
         val event = GeofencingEvent.fromIntent(intent) ?: return
+        val settings = context.loadHomeAutoStartSettings()
         if (
             event.hasError() ||
             event.geofenceTransition != Geofence.GEOFENCE_TRANSITION_EXIT ||
-            !context.loadHomeAutoStartSettings().enabled
+            !settings.enabled
         ) return
 
         val pendingResult = goAsync()
@@ -160,6 +183,9 @@ class HomeExitReceiver : BroadcastReceiver() {
                 val store = TourStore(context)
                 if (store.activeTour() != null) return@launch
                 val tourId = store.startTour()
+                automaticTourStartPoint(settings)?.let {
+                    store.appendSimulatedLocation(tourId, it)
+                }
                 runCatching {
                     ContextCompat.startForegroundService(
                         context,

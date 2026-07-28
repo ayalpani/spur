@@ -3305,6 +3305,8 @@ private fun HomeAutoStartBottomSheet(
     var setupRequested by rememberSaveable { mutableStateOf(false) }
     var homeSearchOrigin by remember { mutableStateOf<SpurCoordinate?>(settings.home) }
     var candidateHome by remember { mutableStateOf<SelectedHomeBuilding?>(null) }
+    var candidateStartPoint by remember { mutableStateOf(settings.startPoint) }
+    var selectingStartPoint by rememberSaveable { mutableStateOf(false) }
     var locating by remember { mutableStateOf(false) }
     var needsBackgroundPermission by remember { mutableStateOf(false) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
@@ -3317,20 +3319,24 @@ private fun HomeAutoStartBottomSheet(
         setupRequested = false
         homeSearchOrigin = null
         candidateHome = null
+        candidateStartPoint = null
+        selectingStartPoint = false
         needsBackgroundPermission = false
         message = null
     }
 
-    fun activate(home: SelectedHomeBuilding) {
+    fun activate(home: SelectedHomeBuilding, startPoint: SpurCoordinate) {
         settings = HomeAutoStartSettings(
             enabled = true,
             home = home.coordinate,
             homeBuilding = home.feature,
+            startPoint = startPoint,
         )
         context.saveHomeAutoStartSettings(settings)
         onSettingsChanged(settings)
         context.registerHomeExitGeofence()
         setupRequested = false
+        selectingStartPoint = false
         needsBackgroundPermission = false
         message = "Startautomatik ist aktiv."
     }
@@ -3339,11 +3345,16 @@ private fun HomeAutoStartBottomSheet(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         if (granted) {
-            candidateHome?.let(::activate)
+            val home = candidateHome
+            val startPoint = candidateStartPoint
+            if (home != null && startPoint != null) activate(home, startPoint)
         } else {
             locating = false
             setupRequested = false
+            homeSearchOrigin = null
             candidateHome = null
+            candidateStartPoint = null
+            selectingStartPoint = false
             needsBackgroundPermission = false
             message = "Ohne Hintergrundstandort bleibt die Einstellung aus."
         }
@@ -3371,15 +3382,21 @@ private fun HomeAutoStartBottomSheet(
 
     val currentNeedsBackgroundPermission by rememberUpdatedState(needsBackgroundPermission)
     val currentCandidateHome by rememberUpdatedState(candidateHome)
+    val currentCandidateStartPoint by rememberUpdatedState(candidateStartPoint)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && currentNeedsBackgroundPermission) {
                 if (context.hasBackgroundLocationPermission()) {
-                    currentCandidateHome?.let(::activate)
+                    val home = currentCandidateHome
+                    val startPoint = currentCandidateStartPoint
+                    if (home != null && startPoint != null) activate(home, startPoint)
                 } else {
                     locating = false
                     setupRequested = false
+                    homeSearchOrigin = null
                     candidateHome = null
+                    candidateStartPoint = null
+                    selectingStartPoint = false
                     needsBackgroundPermission = false
                     message = "Ohne Hintergrundstandort bleibt die Einstellung aus."
                 }
@@ -3425,6 +3442,8 @@ private fun HomeAutoStartBottomSheet(
                             val currentLocation = context.currentSpurLocation()
                             homeSearchOrigin = currentLocation
                             candidateHome = null
+                            candidateStartPoint = null
+                            selectingStartPoint = false
                             locating = false
                             if (currentLocation == null) {
                                 setupRequested = false
@@ -3441,45 +3460,75 @@ private fun HomeAutoStartBottomSheet(
             HomeBuildingSelector(
                 origin = shownHomeOrigin,
                 initialBuilding = settings.homeBuilding,
-                selectionEnabled = !settings.enabled,
+                initialStartPoint = candidateStartPoint,
+                selectionEnabled = !settings.enabled && !selectingStartPoint,
+                startPointSelection = selectingStartPoint,
                 onBuildingSelected = { selected ->
                     candidateHome = selected
-                    if (settings.enabled && settings.homeBuilding == null) {
-                        settings = settings.copy(
-                            home = selected.coordinate,
-                            homeBuilding = selected.feature,
-                        )
-                        context.saveHomeAutoStartSettings(settings)
-                        context.registerHomeExitGeofence()
-                        onSettingsChanged(settings)
-                    }
+                    candidateStartPoint = selected.coordinate
                 },
+                onStartPointChanged = { candidateStartPoint = it },
             )
         }
 
         when {
             locating -> Text("Aktueller Standort wird bestimmt.")
             settings.enabled -> Text("Spur startet eine Tour, wenn du diesen Bereich verlässt.")
-            candidateHome != null -> {
+            selectingStartPoint && candidateHome != null -> {
                 Text(
-                    text = "Bist du gerade zu Hause?",
+                    text = "Startpunkt vor dem Haus festlegen",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
+                Text("Verschiebe die Karte, bis das Fadenkreuz auf dem Startpunkt liegt.")
                 if (!context.hasBackgroundLocationPermission()) {
                     Text(
-                        text = "Nach deiner Bestätigung öffnen sich die Android-Einstellungen. " +
+                        text = "Danach öffnen sich die Android-Einstellungen. " +
                             "Wähle dort Berechtigungen → Standort → Immer zulassen.",
                     )
                 }
                 Button(
                     onClick = {
                         val home = candidateHome ?: return@Button
+                        val startPoint = candidateStartPoint ?: return@Button
                         if (context.hasBackgroundLocationPermission()) {
-                            activate(home)
+                            activate(home, startPoint)
                         } else {
                             requestBackgroundLocation()
                         }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = CircleShape,
+                    enabled = candidateStartPoint != null,
+                ) {
+                    Text("Startpunkt übernehmen", fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = {
+                        selectingStartPoint = false
+                        candidateStartPoint = candidateHome?.coordinate
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = CircleShape,
+                ) {
+                    Text("Gebäude ändern")
+                }
+            }
+            candidateHome != null -> {
+                Text(
+                    text = "Bist du gerade zu Hause?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Button(
+                    onClick = {
+                        val home = candidateHome ?: return@Button
+                        candidateStartPoint = home.coordinate
+                        selectingStartPoint = true
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -3493,6 +3542,8 @@ private fun HomeAutoStartBottomSheet(
                         setupRequested = false
                         homeSearchOrigin = null
                         candidateHome = null
+                        candidateStartPoint = null
+                        selectingStartPoint = false
                         message = "Komm später wieder, wenn du zu Hause bist."
                     },
                     modifier = Modifier
@@ -3520,13 +3571,18 @@ private fun HomeAutoStartBottomSheet(
 private fun HomeBuildingSelector(
     origin: SpurCoordinate,
     initialBuilding: Feature?,
+    initialStartPoint: SpurCoordinate?,
     selectionEnabled: Boolean,
+    startPointSelection: Boolean,
     onBuildingSelected: (SelectedHomeBuilding) -> Unit,
+    onStartPointChanged: (SpurCoordinate) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentSelectionEnabled by rememberUpdatedState(selectionEnabled)
+    val currentStartPointSelection by rememberUpdatedState(startPointSelection)
     val currentOnBuildingSelected by rememberUpdatedState(onBuildingSelected)
+    val currentOnStartPointChanged by rememberUpdatedState(onStartPointChanged)
     val searchRadiusPixels = with(LocalDensity.current) {
         HomeBuildingSelectionSearchRadiusDp.dp.toPx()
     }
@@ -3560,6 +3616,17 @@ private fun HomeBuildingSelector(
         var map: MapLibreMap? = null
         var selectedBuilding = initialBuilding
 
+        fun publishStartPoint() {
+            if (!currentStartPointSelection) return
+            val target = map?.cameraPosition?.target ?: return
+            currentOnStartPointChanged(
+                SpurCoordinate(
+                    latitude = target.latitude,
+                    longitude = target.longitude,
+                ),
+            )
+        }
+
         fun selectBuilding(feature: Feature) {
             val readyMap = map ?: return
             val home = homeCoordinate(feature) ?: return
@@ -3584,13 +3651,16 @@ private fun HomeBuildingSelector(
         }
 
         val clickListener = MapLibreMap.OnMapClickListener { point ->
-            if (!currentSelectionEnabled) return@OnMapClickListener false
+            if (!currentSelectionEnabled || currentStartPointSelection) {
+                return@OnMapClickListener false
+            }
             val readyMap = map ?: return@OnMapClickListener false
             selectBuildingAt(
                 screenPoint = readyMap.projection.toScreenLocation(point),
                 searchNearby = false,
             )
         }
+        val cameraIdleListener = MapLibreMap.OnCameraIdleListener(::publishStartPoint)
         val renderListener = MapView.OnDidFinishRenderingMapListener { fully ->
             if (!fully || selectedBuilding != null) return@OnDidFinishRenderingMapListener
             val readyMap = map ?: return@OnDidFinishRenderingMapListener
@@ -3612,6 +3682,7 @@ private fun HomeBuildingSelector(
                 isTiltGesturesEnabled = false
             }
             readyMap.addOnMapClickListener(clickListener)
+            readyMap.addOnCameraIdleListener(cameraIdleListener)
             readyMap.moveCamera(
                 CameraUpdateFactory.newLatLngZoom(
                     LatLng(origin.latitude, origin.longitude),
@@ -3629,28 +3700,85 @@ private fun HomeBuildingSelector(
 
         onDispose {
             map?.removeOnMapClickListener(clickListener)
+            map?.removeOnCameraIdleListener(cameraIdleListener)
             mapView.removeOnDidFinishRenderingMapListener(renderListener)
         }
     }
 
+    LaunchedEffect(mapView, startPointSelection) {
+        if (!startPointSelection) return@LaunchedEffect
+        val startPoint = initialStartPoint ?: return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.moveCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    LatLng(startPoint.latitude, startPoint.longitude),
+                    map.cameraPosition.zoom,
+                ),
+            )
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        AndroidView(
-            factory = { mapView },
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(220.dp)
                 .clip(RoundedCornerShape(20.dp))
                 .background(Mist)
                 .semantics {
-                    contentDescription = "Gebäudeauswahl für dein Zuhause"
+                    contentDescription = if (startPointSelection) {
+                        "Startpunkt vor deinem Zuhause auswählen"
+                    } else {
+                        "Gebäudeauswahl für dein Zuhause"
+                    }
                 },
-        )
+        ) {
+            AndroidView(
+                factory = { mapView },
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (startPointSelection) {
+                HomeStartPointCrosshair(
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+        }
         if (selectionEnabled) {
             Text(
                 text = "Alle sichtbaren Gebäude können ausgewählt werden.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
+    }
+}
+
+@Composable
+private fun HomeStartPointCrosshair(
+    modifier: Modifier = Modifier,
+) {
+    Canvas(
+        modifier = modifier
+            .size(40.dp)
+            .semantics { contentDescription = "Fadenkreuz für den Tourstartpunkt" },
+    ) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val gap = 5.dp.toPx()
+        val radius = 16.dp.toPx()
+        val stroke = 3.dp.toPx()
+        drawCircle(
+            color = SheetBackground,
+            radius = 7.dp.toPx(),
+            center = center,
+        )
+        drawCircle(
+            color = Ink,
+            radius = 4.dp.toPx(),
+            center = center,
+        )
+        drawLine(Ink, Offset(center.x, center.y - radius), Offset(center.x, center.y - gap), stroke)
+        drawLine(Ink, Offset(center.x, center.y + gap), Offset(center.x, center.y + radius), stroke)
+        drawLine(Ink, Offset(center.x - radius, center.y), Offset(center.x - gap, center.y), stroke)
+        drawLine(Ink, Offset(center.x + gap, center.y), Offset(center.x + radius, center.y), stroke)
     }
 }
 
