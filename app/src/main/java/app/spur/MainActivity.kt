@@ -77,6 +77,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -117,6 +118,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -292,6 +294,7 @@ private val MapPinRed = Color(0xFFEA4335)
 private val MomentMarkerGreen = Color(0xFF43A047)
 private val TourMomentSelectionYellow = Color(0xFFCCCC00)
 private val Mist = Color(0xFFE8EEE9)
+private val SheetBackground = Color.White
 private val ImageDetailControlBackground = Color.White.copy(alpha = 0.1f)
 private val ImageDetailControlForeground = Color.White
 private const val DefaultMapZoom = 17.5
@@ -595,7 +598,7 @@ private fun MomentComposer(
     }
 
     if (placementTarget != null && showPicker) {
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = onDismiss,
             sheetState = momentSheetState,
         ) {
@@ -663,7 +666,7 @@ private fun MomentComposer(
     }
 
     if (showVoiceRecorder) {
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = onDismiss,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {
@@ -796,11 +799,19 @@ private fun EmojiPickerBottomSheet(
 ) {
     Dialog(
         onDismissRequest = onBack,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
     ) {
+        LightSheetNavigationBar()
         val scope = rememberCoroutineScope()
         val density = LocalDensity.current
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding(),
+        ) {
             val sheetHeight = constraints.maxHeight.toFloat()
             val partialOffset = sheetHeight / 2f
             var sheetOffset by remember(sheetHeight) {
@@ -852,7 +863,7 @@ private fun EmojiPickerBottomSheet(
                             (sheetHeight - sheetOffset).coerceAtLeast(0f).toDp()
                         },
                     ),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                color = SheetBackground,
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             ) {
                 EmojiPickerSheet(
@@ -875,6 +886,24 @@ private fun EmojiPickerBottomSheet(
                 )
             }
         }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun SpurModalBottomSheet(
+    onDismissRequest: () -> Unit,
+    sheetState: SheetState,
+    containerColor: Color = SheetBackground,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        sheetState = sheetState,
+        containerColor = containerColor,
+    ) {
+        LightSheetNavigationBar(containerColor)
+        content()
     }
 }
 
@@ -2342,7 +2371,7 @@ private fun MapPage(
     }
 
     if (showStartTourBottomSheet) {
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = { showStartTourBottomSheet = false },
             sheetState = startTourBottomSheetState,
         ) {
@@ -2367,7 +2396,7 @@ private fun MapPage(
                 selectedBuilding = null
             }
         }
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = { selectedBuilding = null },
             sheetState = buildingDetailsBottomSheetState,
         ) {
@@ -2380,7 +2409,7 @@ private fun MapPage(
     }
 
     if (showMainMenu) {
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = { showMainMenu = false },
             sheetState = mainMenuState,
         ) {
@@ -2530,7 +2559,7 @@ private fun MapPage(
                 showMainMenu = true
             }
         }
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = {
                 showTourMenu = false
                 showMainMenu = true
@@ -2552,7 +2581,7 @@ private fun MapPage(
     }
 
     if (showHomeAutoStartBottomSheet) {
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = {
                 showHomeAutoStartBottomSheet = false
                 showTourMenu = true
@@ -2587,7 +2616,7 @@ private fun MapPage(
             mapControlForeground = it
             context.saveMapControlForegroundColor(it)
         }
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = {
                 showButtonColorsBottomSheet = false
                 showMainMenu = true
@@ -2656,7 +2685,7 @@ private fun MapPage(
             trailStrokeColor = it
             context.saveTrailStrokeColor(it)
         }
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = {
                 showTrailColorsBottomSheet = false
                 showMainMenu = true
@@ -2726,7 +2755,7 @@ private fun MapPage(
             defaultMapRotation = it
             context.saveDefaultMapRotation(it)
         }
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = {
                 showDirectionBottomSheet = false
                 showMainMenu = true
@@ -2761,7 +2790,7 @@ private fun MapPage(
 
     if (showAboutBottomSheet) {
         val uriHandler = LocalUriHandler.current
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = {
                 showAboutBottomSheet = false
                 showMainMenu = true
@@ -5062,6 +5091,48 @@ private fun SimulatedLocationPuck(modifier: Modifier = Modifier) {
 
 @Composable
 @Suppress("DEPRECATION")
+private fun LightSheetNavigationBar(backgroundColor: Color = SheetBackground) {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.parent as? DialogWindowProvider)?.window
+        val previousColor = window?.navigationBarColor
+        val previousContrastEnforced =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window?.isNavigationBarContrastEnforced
+            } else {
+                null
+            }
+        val insetsController = window?.let {
+            WindowCompat.getInsetsController(it, it.decorView)
+        }
+        val previousLightIcons = insetsController?.isAppearanceLightNavigationBars
+
+        window?.navigationBarColor = backgroundColor.toArgb()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window?.isNavigationBarContrastEnforced = false
+        }
+        insetsController?.isAppearanceLightNavigationBars =
+            backgroundColor.luminance() > 0.5f
+
+        onDispose {
+            if (previousColor != null) {
+                window.navigationBarColor = previousColor
+            }
+            if (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                previousContrastEnforced != null
+            ) {
+                window?.isNavigationBarContrastEnforced = previousContrastEnforced
+            }
+            if (previousLightIcons != null) {
+                insetsController?.isAppearanceLightNavigationBars = previousLightIcons
+            }
+        }
+    }
+}
+
+@Composable
+@Suppress("DEPRECATION")
 private fun DarkMediaSystemBars() {
     val view = LocalView.current
     DisposableEffect(view) {
@@ -5450,7 +5521,7 @@ private fun PhotoDetailPage(
     }
 
     if (showPhotoActionsSheet) {
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = { showPhotoActionsSheet = false },
             sheetState = photoActionsSheetState,
         ) {
@@ -5505,7 +5576,7 @@ private fun PhotoDetailPage(
     }
 
     if (showDeletePhotoSheet) {
-        ModalBottomSheet(
+        SpurModalBottomSheet(
             onDismissRequest = { showDeletePhotoSheet = false },
             sheetState = deletePhotoSheetState,
         ) {
@@ -7708,7 +7779,7 @@ private fun EditorDeleteSheet(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    ModalBottomSheet(
+    SpurModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
