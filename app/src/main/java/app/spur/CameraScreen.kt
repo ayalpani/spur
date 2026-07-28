@@ -18,7 +18,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -227,34 +226,31 @@ internal fun CameraScreen(
             )
         } else {
             val bitmap = remember(photo) { decodePreviewBitmap(photo) }
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Aufgenommenes Foto",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            }
-
             Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(SheetBackground)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxSize(),
             ) {
-                SpurSecondaryButton(
-                    label = "Verwerfen",
-                    onClick = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "Aufgenommenes Foto",
+                            modifier = Modifier.fillMaxSize(),
+                            alignment = Alignment.TopCenter,
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                }
+                MediaConfirmationPanel(
+                    onDiscard = {
                         photo.delete()
                         capturedPhoto = null
                     },
-                )
-                SpurPrimaryButton(
-                    label = "Bestätigen",
-                    onClick = { onPhotoAccepted(photo) },
+                    onAccept = { onPhotoAccepted(photo) },
                 )
             }
         }

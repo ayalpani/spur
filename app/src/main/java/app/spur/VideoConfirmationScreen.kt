@@ -7,13 +7,13 @@ import android.view.TextureView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -131,57 +131,70 @@ internal fun VideoConfirmationSurface(
         }
     }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        AndroidView(
-            factory = {
-                TextureView(context).also { textureView = it }
-            },
+        BoxWithConstraints(
             modifier = Modifier
-                .align(Alignment.Center)
                 .fillMaxWidth()
-                .aspectRatio(videoAspectRatio)
-                .semantics { contentDescription = "Aufgenommenes Video" },
-        )
-        IconButton(
-            onClick = {
-                val current = player ?: return@IconButton
-                if (current.isPlaying) {
-                    current.pause()
-                    isPlaying = false
-                } else {
-                    current.start()
-                    isPlaying = true
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(72.dp)
-                .semantics {
-                    contentDescription = if (isPlaying) {
-                        "Videowiedergabe pausieren"
-                    } else {
-                        "Video abspielen"
-                    }
-                },
-            colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = SheetBackground.copy(alpha = 0.88f),
-                contentColor = Ink,
-            ),
+                .weight(1f),
+            contentAlignment = Alignment.TopCenter,
         ) {
-            if (isPlaying) PauseIcon() else PlayIcon(modifier = Modifier.size(30.dp))
+            val mediaModifier = if (maxWidth / maxHeight > videoAspectRatio) {
+                Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(videoAspectRatio)
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(videoAspectRatio)
+            }
+            Box(
+                modifier = mediaModifier,
+                contentAlignment = Alignment.Center,
+            ) {
+                AndroidView(
+                    factory = {
+                        TextureView(context).also { textureView = it }
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .semantics { contentDescription = "Aufgenommenes Video" },
+                )
+                IconButton(
+                    onClick = {
+                        val current = player ?: return@IconButton
+                        if (current.isPlaying) {
+                            current.pause()
+                            isPlaying = false
+                        } else {
+                            current.start()
+                            isPlaying = true
+                        }
+                    },
+                    modifier = Modifier
+                        .size(72.dp)
+                        .semantics {
+                            contentDescription = if (isPlaying) {
+                                "Videowiedergabe pausieren"
+                            } else {
+                                "Video abspielen"
+                            }
+                        },
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = SheetBackground.copy(alpha = 0.88f),
+                        contentColor = Ink,
+                    ),
+                ) {
+                    if (isPlaying) PauseIcon() else PlayIcon(modifier = Modifier.size(30.dp))
+                }
+            }
         }
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(SheetBackground)
-                .navigationBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        MediaConfirmationPanel(
+            onDiscard = onDiscard,
+            onAccept = onAccept,
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -207,14 +220,6 @@ internal fun VideoConfirmationSurface(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            SpurSecondaryButton(
-                label = "Verwerfen",
-                onClick = onDiscard,
-            )
-            SpurPrimaryButton(
-                label = "Bestätigen",
-                onClick = onAccept,
-            )
         }
     }
 }
