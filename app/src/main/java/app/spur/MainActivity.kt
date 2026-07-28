@@ -3727,7 +3727,7 @@ private fun MapStyleButton(
     fallbackPreview: Int,
     onClick: () -> Unit,
 ) {
-    val controlColors = LocalMapControlColors.current
+    val tourControlColors = LocalMapControlColors.current.inverted
     val screen = LocalConfiguration.current
     val aspectRatio = preview?.let { it.width.toFloat() / it.height }
         ?: screen.screenWidthDp.toFloat() / screen.screenHeightDp
@@ -3746,7 +3746,7 @@ private fun MapStyleButton(
             .semantics { this.contentDescription = contentDescription },
         shape = previewShape,
         color = Color.Transparent,
-        border = BorderStroke(3.dp, controlColors.background),
+        border = BorderStroke(3.dp, tourControlColors.background),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val previewModifier = Modifier
@@ -6805,10 +6805,8 @@ private fun HistoryPage(
                     .padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    text = tour.activity ?: formatDate(tour.startedAt),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
+                BottomSheetHeader(
+                    title = tour.activity ?: formatDate(tour.startedAt),
                 )
                 Text(
                     text = buildString {
@@ -7391,11 +7389,9 @@ private fun EditorDeleteSheet(
                 .padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                text = title,
+            BottomSheetHeader(
+                title = title,
                 modifier = Modifier.padding(bottom = 10.dp),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
             )
             OutlinedButton(
                 onClick = onDismiss,
