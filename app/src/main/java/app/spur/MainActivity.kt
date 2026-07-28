@@ -7138,7 +7138,6 @@ private fun TourEditorScreen(
 
         Column(
             modifier = Modifier
-                .weight(1f)
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .background(Sand),
@@ -7146,7 +7145,6 @@ private fun TourEditorScreen(
             if (selectedLocation == null) {
                 Box(
                     modifier = Modifier
-                        .weight(1f)
                         .fillMaxWidth()
                         .padding(24.dp),
                     contentAlignment = Alignment.Center,
@@ -7160,119 +7158,108 @@ private fun TourEditorScreen(
             } else {
                 Column(
                     modifier = Modifier
-                        .weight(1f)
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 22.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    Surface(
-                        color = Color.White,
-                        shape = RoundedCornerShape(26.dp),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.Top) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = formatClock(selectedLocation.point.recordedAt),
-                                        style = MaterialTheme.typography.displayMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                    Text(
-                                        text = "Uhrzeit",
-                                        color = Ink.copy(alpha = 0.54f),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                }
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    OutlinedButton(
-                                        enabled = points.size > 1,
-                                        onClick = {
-                                            deleteTarget =
-                                                EditorDeleteTarget.Location(
-                                                    selectedLocation.point,
-                                                )
-                                        },
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .semantics {
-                                                contentDescription = "GPS-Punkt löschen"
-                                            },
-                                        contentPadding = PaddingValues(0.dp),
-                                        shape = CircleShape,
-                                        border = BorderStroke(
-                                            1.dp,
-                                            Ink.copy(alpha = 0.18f),
-                                        ),
-                                    ) {
-                                        PhotoDeleteIcon(color = Ink)
-                                    }
-                                    Button(
-                                        onClick = {
-                                            placementTarget =
-                                                MomentPlacementTarget.RecordedLocation(
-                                                    tourId = tourId,
-                                                    trackPointId = selectedLocation.point.id,
-                                                    coordinate = SpurCoordinate(
-                                                        selectedLocation.point.latitude,
-                                                        selectedLocation.point.longitude,
-                                                    ),
-                                                )
-                                        },
-                                        modifier = Modifier
-                                            .size(52.dp)
-                                            .semantics {
-                                                contentDescription =
-                                                    "Moment an diesem GPS-Punkt hinzufügen"
-                                            },
-                                        contentPadding = PaddingValues(0.dp),
-                                        shape = CircleShape,
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = Ink,
-                                        ),
-                                    ) {
-                                        PlusIcon()
-                                    }
-                                }
+                        Row(verticalAlignment = Alignment.Top) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = formatClock(selectedLocation.point.recordedAt),
+                                    style = MaterialTheme.typography.displayMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = "Uhrzeit",
+                                    color = Ink.copy(alpha = 0.54f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
                             }
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(28.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = formatEditorElapsed(
-                                            selectedLocation.elapsedMillis,
-                                        ),
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                    Text(
-                                        text = "seit Start",
-                                        color = Ink.copy(alpha = 0.54f),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
+                                OutlinedButton(
+                                    enabled = points.size > 1,
+                                    onClick = {
+                                        deleteTarget =
+                                            EditorDeleteTarget.Location(
+                                                selectedLocation.point,
+                                            )
+                                    },
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .semantics {
+                                            contentDescription = "GPS-Punkt löschen"
+                                        },
+                                    contentPadding = PaddingValues(0.dp),
+                                    shape = CircleShape,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        Ink.copy(alpha = 0.18f),
+                                    ),
+                                ) {
+                                    PhotoDeleteIcon(color = Ink)
                                 }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = formatKilometers(
-                                            selectedLocation.distanceFromStartMeters,
-                                        ),
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                    Text(
-                                        text = "vom Start",
-                                        color = Ink.copy(alpha = 0.54f),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
+                                Button(
+                                    onClick = {
+                                        placementTarget =
+                                            MomentPlacementTarget.RecordedLocation(
+                                                tourId = tourId,
+                                                trackPointId = selectedLocation.point.id,
+                                                coordinate = SpurCoordinate(
+                                                    selectedLocation.point.latitude,
+                                                    selectedLocation.point.longitude,
+                                                ),
+                                            )
+                                    },
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .semantics {
+                                            contentDescription =
+                                                "Moment an diesem GPS-Punkt hinzufügen"
+                                        },
+                                    contentPadding = PaddingValues(0.dp),
+                                    shape = CircleShape,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Ink,
+                                    ),
+                                ) {
+                                    PlusIcon()
                                 }
                             }
                         }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(28.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = formatEditorElapsed(
+                                        selectedLocation.elapsedMillis,
+                                    ),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = "seit Start",
+                                    color = Ink.copy(alpha = 0.54f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = formatKilometers(
+                                        selectedLocation.distanceFromStartMeters,
+                                    ),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = "vom Start",
+                                    color = Ink.copy(alpha = 0.54f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
                     }
 
                     selectedLocation.moments.forEach { moment ->
