@@ -244,6 +244,8 @@ import org.maplibre.android.style.layers.PropertyFactory.iconImage
 import org.maplibre.android.style.layers.PropertyFactory.iconOffset
 import org.maplibre.android.style.layers.PropertyFactory.iconPitchAlignment
 import org.maplibre.android.style.layers.PropertyFactory.iconRotationAlignment
+import org.maplibre.android.style.layers.PropertyFactory.iconTranslate
+import org.maplibre.android.style.layers.PropertyFactory.iconTranslateAnchor
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
@@ -1051,6 +1053,7 @@ private const val MapPreviewPixels = 180
 private const val LocationPulseWatchdogMillis = LocationPulseDurationMillis * 10L
 private const val CurrentLocationPersonImage = "current-location-person-image"
 private const val CurrentLocationPersonLayer = "current-location-person-layer"
+private const val CurrentLocationPersonLiftPixels = 8f
 private val LocationPulseEasing = Easing { fraction ->
     (cos((fraction + 1f) * PI) / 2f + 0.5f).toFloat()
 }
@@ -4827,7 +4830,7 @@ private fun MapSurface(
         ) return@LaunchedEffect
         mapView.getMapAsync { map ->
             if (generation != currentLocationPulseGeneration) return@getMapAsync
-            map.restartLocationPulse(context, currentTrailColors.fill)
+            map.restartLocationPulse(currentTrailColors.fill)
             currentOnLocationPulseStarted(generation)
         }
     }
@@ -6528,7 +6531,6 @@ private fun enableLocationTracking(
     locationComponent.cameraMode = CameraMode.NONE
     style.showCurrentLocationPerson(
         context = context,
-        color = pulseColor,
         visible = manualLocation == null,
     )
 
@@ -6549,10 +6551,7 @@ private fun enableLocationTracking(
     }
 }
 
-private fun MapLibreMap.restartLocationPulse(
-    context: Context,
-    color: Color,
-) {
+private fun MapLibreMap.restartLocationPulse(color: Color) {
     val component = locationComponent
     if (!component.isLocationComponentActivated || !component.isLocationComponentEnabled) return
     component.applyStyle(
@@ -6561,7 +6560,6 @@ private fun MapLibreMap.restartLocationPulse(
             .spurLocationAppearance(color)
             .build(),
     )
-    style?.showCurrentLocationPerson(context, color, visible = true)
 }
 
 private fun LocationComponentOptions.Builder.spurLocationAppearance(
@@ -6583,10 +6581,9 @@ private fun LocationComponentOptions.Builder.spurLocationAppearance(
 
 private fun Style.showCurrentLocationPerson(
     context: Context,
-    color: Color,
     visible: Boolean,
 ) {
-    context.currentLocationPersonBitmap(color)?.let {
+    context.currentLocationPersonBitmap()?.let {
         addImage(CurrentLocationPersonImage, it)
     }
     val layer = getLayerAs<SymbolLayer>(CurrentLocationPersonLayer)
@@ -6602,6 +6599,8 @@ private fun Style.showCurrentLocationPerson(
                 iconIgnorePlacement(true),
                 iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
                 iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                iconTranslate(arrayOf(0f, -CurrentLocationPersonLiftPixels)),
+                iconTranslateAnchor(Property.ICON_TRANSLATE_ANCHOR_VIEWPORT),
                 visibility(
                     if (visible) Property.VISIBLE else Property.NONE,
                 ),
@@ -6617,9 +6616,7 @@ private fun Style.showCurrentLocationPerson(
     }
 }
 
-private fun Context.currentLocationPersonBitmap(
-    color: Color,
-): android.graphics.Bitmap? {
+private fun Context.currentLocationPersonBitmap(): android.graphics.Bitmap? {
     val halo = ContextCompat.getDrawable(
         this,
         R.drawable.ic_person_standing_location_halo,
@@ -6639,7 +6636,7 @@ private fun Context.currentLocationPersonBitmap(
         halo.setTint(Color.White.toArgb())
         halo.setBounds(0, 0, width, height)
         halo.draw(canvas)
-        person.setTint(color.toArgb())
+        person.setTint(Ink.toArgb())
         person.setBounds(0, 0, width, height)
         person.draw(canvas)
     }
