@@ -264,9 +264,12 @@ import org.maplibre.android.style.layers.PropertyFactory.textSize
 import org.maplibre.android.style.layers.PropertyFactory.textTranslate
 import org.maplibre.android.style.layers.PropertyFactory.textTranslateAnchor
 import org.maplibre.android.style.layers.PropertyFactory.visibility
+import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonOptions
 import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.android.style.sources.RasterSource
+import org.maplibre.android.style.sources.TileSet
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
@@ -1048,6 +1051,11 @@ private object SpurRoute {
     const val MAP = "map"
 }
 private const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
+private const val SatelliteSource = "satellite-source"
+private const val SatelliteLayer = "satellite-layer"
+private const val SatelliteTileUrl =
+    "https://services.arcgisonline.com/ArcGIS/rest/services/" +
+        "World_Imagery/MapServer/tile/{z}/{y}/{x}"
 private const val SatelliteMapStyleJson =
     """{"version":8,"glyphs":"https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf","sources":{"satellite-source":{"type":"raster","tiles":["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],"tileSize":256,"attribution":"Esri, Maxar, Earthstar Geographics, and the GIS User Community"}},"layers":[{"id":"satellite-layer","type":"raster","source":"satellite-source"}]}"""
 internal const val MomentMarkerWidth = 62
@@ -3919,8 +3927,11 @@ private fun Style.showHighlightedBuildings(
             fillColor(Ink.toArgb()),
             fillOpacity(0.18f),
         )
-        if (getLayer(MapBuildingLayer) == null) addLayer(layer)
-        else addLayerAbove(layer, MapBuildingLayer)
+        when {
+            getLayer(SatelliteLayer) != null -> addLayerAbove(layer, SatelliteLayer)
+            getLayer(MapBuildingLayer) != null -> addLayerAbove(layer, MapBuildingLayer)
+            else -> addLayer(layer)
+        }
     }
     if (getLayer(HomeBuildingOutlineLayer) == null) {
         addLayerAbove(
@@ -4716,6 +4727,13 @@ private fun MapSurface(
         currentOnAlternateMapPreviewLoadingChanged(true)
         mapView.getMapAsync { map ->
             map.uiSettings.isCompassEnabled = false
+            if (hasLoadedMapStyle) {
+                map.style?.showSatelliteBaseMap(
+                    satellite = isSatelliteView,
+                )
+                previewCameraPosition = map.cameraPosition
+                return@getMapAsync
+            }
             setMapStyle(
                 context = context,
                 map = map,
@@ -6532,6 +6550,10 @@ private fun setMapStyle(
 ) {
     val cameraPosition = map.cameraPosition
     val styleLoaded: (Style) -> Unit = { style ->
+        style.installSatelliteBaseMap()
+        style.showSatelliteBaseMap(
+            satellite = satellite,
+        )
         style.hideDistractingPoiLayers()
         style.showOutlinedBuildings()
         enableLocationTracking(
@@ -6551,14 +6573,25 @@ private fun setMapStyle(
         onLoaded()
     }
 
-    if (satellite) {
-        map.setStyle(
-            satelliteStyleBuilder(),
-            styleLoaded,
-        )
-    } else {
-        map.setStyle(StreetMapStyle, styleLoaded)
+    map.setStyle(StreetMapStyle, styleLoaded)
+}
+
+private fun Style.installSatelliteBaseMap() {
+    if (getSource(SatelliteSource) == null) {
+        val tileSet = TileSet("2.2.0", SatelliteTileUrl)
+        addSource(RasterSource(SatelliteSource, tileSet, 256))
     }
+    if (getLayer(SatelliteLayer) == null) {
+        addLayer(RasterLayer(SatelliteLayer, SatelliteSource))
+    }
+}
+
+private fun Style.showSatelliteBaseMap(
+    satellite: Boolean,
+) {
+    getLayer(SatelliteLayer)?.setProperties(
+        visibility(if (satellite) Property.VISIBLE else Property.NONE),
+    )
 }
 
 private fun Style.hideDistractingPoiLayers() {
