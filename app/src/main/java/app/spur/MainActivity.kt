@@ -155,7 +155,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
@@ -4286,7 +4285,7 @@ private fun MapStyleButton(
     onClick: () -> Unit,
 ) {
     val tourControlColors = LocalMapControlColors.current.inverted
-    val previewShape = RectangleShape
+    val previewShape = CircleShape
     val blurRadius by animateDpAsState(
         targetValue = if (isLoading) 7.dp else 0.dp,
         animationSpec = tween(180),
