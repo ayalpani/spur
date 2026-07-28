@@ -64,6 +64,7 @@ checkpoints. Results and any deliberate file-size exception are recorded here.
 | --- | --- |
 | TourEditor-v2 baseline on `main` | JVM tests, build, lint, and Galaxy-A54 smoke test passed |
 | Mechanical top-level extraction | `MainActivity.kt` reduced from 9,403 to 35 lines; JVM tests and build passed |
+| Compose characterization | 2 onboarding instrumentation tests passed on Galaxy A54 |
 
 Four cohesive declarations remain deliberately above the usual 500-line
 guideline: `MapPage` (screen/state coordinator), `MapSurface` (single MapLibre
