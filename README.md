@@ -33,3 +33,9 @@ und als Route auf der Karte dargestellt. Fotomomente nutzt CameraX.
 3. `app` auf einem Emulator oder Android-Gerät starten.
 
 Die ausführliche Produktskizze liegt in [PRODUCT.md](PRODUCT.md).
+
+## Architektur und Wartung
+
+- [Architektur und Zustandsbesitz](docs/architecture.md)
+- [Protokoll der MainActivity-Zerlegung](docs/main-activity-refactor.md)
+- [Verbindliche Änderungs- und Prüfregeln](AGENTS.md)
