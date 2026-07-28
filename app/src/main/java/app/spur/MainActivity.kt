@@ -8621,7 +8621,7 @@ private fun formatTourTime(tour: Tour): String {
 
 @Composable
 private fun MenuIcon() = LucideIcon(
-    paths = listOf("M4 5h16", "M4 12h16", "M4 19h16"),
+    paths = listOf("M4 12h.01", "M12 12h.01", "M20 12h.01"),
 )
 
 @Composable
