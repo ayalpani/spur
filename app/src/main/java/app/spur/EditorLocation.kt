@@ -57,6 +57,23 @@ internal fun nearestTrackPoint(
         )
     }
 
+internal fun momentsAttachedToTrackPoints(
+    moments: List<MapMoment>,
+    points: List<TrackPoint>,
+): List<MapMoment> {
+    if (points.isEmpty()) return moments
+    val pointsById = points.associateBy(TrackPoint::id)
+    return moments.map { moment ->
+        val point = moment.trackPointId?.let(pointsById::get)
+            ?: nearestTrackPoint(points, moment.latitude, moment.longitude)
+            ?: return@map moment
+        moment.copy(
+            latitude = point.latitude,
+            longitude = point.longitude,
+        )
+    }
+}
+
 private fun closestPoint(points: List<TrackPoint>, moment: MapMoment): TrackPoint? =
     nearestTrackPoint(points, moment.latitude, moment.longitude)
 

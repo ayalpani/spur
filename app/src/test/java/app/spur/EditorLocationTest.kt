@@ -59,6 +59,55 @@ class EditorLocationTest {
         )
     }
 
+    @Test
+    fun renderedMomentUsesItsLinkedGpsPointCoordinates() {
+        val points = listOf(
+            point(1, 52.0, 1_000L),
+            point(2, 52.00045, 2_000L),
+        )
+        val moment = MapMoment(
+            id = "emoji",
+            type = MomentType.EMOJI,
+            latitude = 51.0,
+            longitude = 12.0,
+            payload = "🥳",
+            tourId = 1,
+            trackPointId = 2,
+        )
+
+        assertEquals(
+            moment.copy(
+                latitude = points[1].latitude,
+                longitude = points[1].longitude,
+            ),
+            momentsAttachedToTrackPoints(listOf(moment), points).single(),
+        )
+    }
+
+    @Test
+    fun renderedLegacyMomentUsesItsNearestGpsPointCoordinates() {
+        val points = listOf(
+            point(1, 52.0, 1_000L),
+            point(2, 52.00045, 2_000L),
+        )
+        val moment = MapMoment(
+            id = "emoji",
+            type = MomentType.EMOJI,
+            latitude = 52.00044,
+            longitude = 13.0,
+            payload = "🥳",
+            tourId = 1,
+        )
+
+        assertEquals(
+            moment.copy(
+                latitude = points[1].latitude,
+                longitude = points[1].longitude,
+            ),
+            momentsAttachedToTrackPoints(listOf(moment), points).single(),
+        )
+    }
+
     private fun point(id: Long, latitude: Double, recordedAt: Long) =
         TrackPoint(id, latitude, 13.0, recordedAt)
 }

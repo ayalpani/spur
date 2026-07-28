@@ -314,6 +314,7 @@ private val StopSwipeHandleSize = 52.dp
 private val MapRotationOptionGap = 16.dp
 private val FilterChipVisualInset = 8.dp
 private const val MotionDurationDefaultMillis = 200
+private const val EditorPointTransitionDurationMillis = 10
 private const val FeedbackNoticeDurationMillis = 2_500L
 private const val PendingPhotoRevealDelayMillis = 1_000L
 private const val MinimumSystemSplashDurationMillis = 3_000L
@@ -1058,9 +1059,9 @@ private const val TourEndpointRingLayer = "tour-endpoint-ring-layer"
 private const val TourEndpointEndLayer = "tour-endpoint-end-layer"
 private const val TourEndpointTypeProperty = "endpoint-type"
 private const val TourEndpointEnd = "end"
-private const val TourEndpointScale = 1.25f
+private const val TourEndpointScale = 1.25f * 1.5f
 private const val TourEndpointRadius = 7f * TourEndpointScale
-private const val TourEndpointStrokeWidth = 2.5f * TourEndpointScale
+private const val TourEndpointStrokeWidth = TourRouteBorderPerSidePixels
 private const val TourEndpointEndRadius = 3f * TourEndpointScale
 private const val SelectedTrackPointSource = "selected-track-point-source"
 private const val SelectedTrackPointLayer = "selected-track-point-layer"
@@ -1681,6 +1682,17 @@ private fun MapPage(
     val visibleMapMoments = remember(mapMoments, tour) {
         tour?.let { mapMomentsForTour(mapMoments, it) } ?: mapMoments
     }
+    val renderedMapMoments = remember(
+        visibleMapMoments,
+        routePoints,
+        isTourEditing,
+    ) {
+        if (isTourEditing) {
+            momentsAttachedToTrackPoints(visibleMapMoments, routePoints)
+        } else {
+            visibleMapMoments
+        }
+    }
     val editorLocations = remember(tour, routePoints, visibleMapMoments) {
         tour?.let {
             editorLocations(
@@ -1937,7 +1949,7 @@ private fun MapPage(
                 initialMapZoom = initialMapZoom,
                 defaultMapBearing = defaultMapRotation.bearing,
                 mapSettingsVisible = showDirectionBottomSheet,
-                mapMoments = visibleMapMoments,
+                mapMoments = renderedMapMoments,
                 momentImageRevision = photoRevision,
                 routePoints = routePoints,
                 trailColors = trailColors,
@@ -4701,10 +4713,11 @@ private fun MapSurface(
             if (selectedTrackPointRequest == 0L) return@getMapAsync
             currentSelectedTrackPoint?.let { point ->
                 map.locationComponent.cameraMode = CameraMode.NONE
-                map.moveCamera(
+                map.animateCamera(
                     CameraUpdateFactory.newLatLng(
                         LatLng(point.latitude, point.longitude),
                     ),
+                    EditorPointTransitionDurationMillis,
                 )
             }
             selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
@@ -4855,16 +4868,21 @@ private fun MapSurface(
 
         val density = LocalDensity.current
         val selectedPointSizePx = with(density) { 20.dp.roundToPx() }
-        selectedTrackPointPosition?.let { position ->
-            SelectedTrackPointPuck(
-                modifier = Modifier.offset {
-                    IntOffset(
-                        x = position.x.roundToInt() - selectedPointSizePx / 2,
-                        y = position.y.roundToInt() - selectedPointSizePx / 2,
-                    )
-                },
-            )
-        }
+        selectedTrackPointPosition
+            ?.takeUnless {
+                selectedTrackPoint?.id == routePoints.firstOrNull()?.id ||
+                    selectedTrackPoint?.id == routePoints.lastOrNull()?.id
+            }
+            ?.let { position ->
+                SelectedTrackPointPuck(
+                    modifier = Modifier.offset {
+                        IntOffset(
+                            x = position.x.roundToInt() - selectedPointSizePx / 2,
+                            y = position.y.roundToInt() - selectedPointSizePx / 2,
+                        )
+                    },
+                )
+            }
 
         val manualPuckSizePx = with(density) { 52.dp.roundToPx() }
         manualLocationPosition?.let { position ->
@@ -6424,7 +6442,9 @@ private fun Style.showTourEndpoints(
     } else {
         ringLayer.setProperties(
             circleColor(colors.fill.toArgb()),
+            circleRadius(TourEndpointRadius),
             circleStrokeColor(colors.stroke.toArgb()),
+            circleStrokeWidth(TourEndpointStrokeWidth),
         )
     }
     val endLayer = getLayerAs<CircleLayer>(TourEndpointEndLayer)
@@ -6443,7 +6463,10 @@ private fun Style.showTourEndpoints(
                 ),
         )
     } else {
-        endLayer.setProperties(circleColor(colors.stroke.toArgb()))
+        endLayer.setProperties(
+            circleColor(colors.stroke.toArgb()),
+            circleRadius(TourEndpointEndRadius),
+        )
     }
     source.setGeoJson(tourEndpointFeatures(points))
 }
