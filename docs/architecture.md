@@ -32,15 +32,13 @@ During direct map gestures, the main control rails fade out and back in over
 The MapLibre accuracy circle is hidden. The location pulse is black while the
 map is free and switches to the selected trail color only while location
 following is active; interrupting follow with a map gesture restores black.
-The active follow icon fades between full and half opacity on the same shared
-signal period as that map pulse.
-MapLibre keeps ownership of moment clustering and coordinates. After each
-settled render, `MapSurface` treats the current-location pulse and persona as
-one rectangular screen-space exclusion zone. Only rendered moment symbols
-whose normal bounds overlap that zone receive a visual offset to the nearest
-free slot below, left, or right, including a gap to the persona and neighboring
-symbols. Cluster badges move with their symbols, and displaced clusters expand
-around their original geographic center when tapped.
+The entire active follow button fades between full and half GPU-layer opacity
+on the same shared signal period as that map pulse, revealing the map beneath
+instead of merely darkening its inner colors.
+MapLibre keeps ownership of moment clustering and coordinates. Moment and
+cluster layers are inserted below the MapLibre location stack, making
+`MapPersonaLayer` the topmost map renderer. There is deliberately no custom
+collision detection or visual marker displacement.
 
 ## Data flow
 

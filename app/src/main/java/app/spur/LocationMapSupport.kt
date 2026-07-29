@@ -65,7 +65,7 @@ internal fun enableLocationTracking(
     locationComponent.isLocationComponentEnabled = manualLocation == null
     locationComponent.renderMode = RenderMode.NORMAL
     locationComponent.cameraMode = CameraMode.NONE
-    style.showCurrentLocationFootprints(
+    style.showMapPersona(
         context = context,
         visible = manualLocation == null,
     )
@@ -115,27 +115,27 @@ private fun LocationComponentOptions.Builder.spurLocationAppearance(
         .pulseAlpha(LocationPulseAlpha)
         .pulseInterpolator(AccelerateDecelerateInterpolator())
 
-private fun Style.showCurrentLocationFootprints(
+private fun Style.showMapPersona(
     context: Context,
     visible: Boolean,
 ) {
-    context.currentLocationFootprintsBitmap()?.let {
-        addImage(CurrentLocationFootprintsImage, it)
+    context.mapPersonaBitmap()?.let {
+        addImage(MapPersonaImage, it)
     }
-    val layer = getLayerAs<SymbolLayer>(CurrentLocationFootprintsLayer)
+    val layer = getLayerAs<SymbolLayer>(MapPersonaLayer)
     if (layer == null) {
         addLayerAbove(
             SymbolLayer(
-                CurrentLocationFootprintsLayer,
+                MapPersonaLayer,
                 LocationComponentConstants.LOCATION_SOURCE,
             ).withProperties(
-                iconImage(CurrentLocationFootprintsImage),
+                iconImage(MapPersonaImage),
                 iconAnchor(Property.ICON_ANCHOR_CENTER),
                 iconAllowOverlap(true),
                 iconIgnorePlacement(true),
                 iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
                 iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
-                iconTranslate(arrayOf(0f, -CurrentLocationFootprintsLiftPixels)),
+                iconTranslate(arrayOf(0f, -MapPersonaLiftPixels)),
                 iconTranslateAnchor(Property.ICON_TRANSLATE_ANCHOR_VIEWPORT),
                 visibility(
                     if (visible) Property.VISIBLE else Property.NONE,
@@ -152,7 +152,7 @@ private fun Style.showCurrentLocationFootprints(
     }
 }
 
-private fun Context.currentLocationFootprintsBitmap(): android.graphics.Bitmap? {
+private fun Context.mapPersonaBitmap(): android.graphics.Bitmap? {
     val halo = ContextCompat.getDrawable(
         this,
         R.drawable.ic_footprints_location_halo,
@@ -257,7 +257,7 @@ internal fun MapLibreMap.showGpsLocationPuck(
 ) {
     if (!context.hasLocationPermission() || !locationComponent.isLocationComponentActivated) return
     locationComponent.isLocationComponentEnabled = show
-    style?.getLayer(CurrentLocationFootprintsLayer)?.setProperties(
+    style?.getLayer(MapPersonaLayer)?.setProperties(
         visibility(
             if (show) Property.VISIBLE else Property.NONE,
         ),

@@ -215,8 +215,8 @@ internal fun createMomentClusterBitmap(
 ): android.graphics.Bitmap {
     val scale = context.resources.displayMetrics.density
     return android.graphics.Bitmap.createBitmap(
-        (MomentClusterWidth * scale).toInt(),
-        (MomentClusterHeight * scale).toInt(),
+        (70 * scale).toInt(),
+        (66 * scale).toInt(),
         android.graphics.Bitmap.Config.ARGB_8888,
     ).also { bitmap ->
         val canvas = android.graphics.Canvas(bitmap)

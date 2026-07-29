@@ -88,6 +88,7 @@ internal fun StartTourBottomSheet(
 
 @Composable
 internal fun MainMenu(
+    onOpenHistory: () -> Unit,
     onOpenTour: () -> Unit,
     onOpenButtonColors: () -> Unit,
     onOpenTrailColors: () -> Unit,
@@ -125,6 +126,10 @@ internal fun MainMenu(
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
         }
+        SheetMenuItem(
+            label = "History",
+            onClick = onOpenHistory,
+        )
         SheetMenuItem(label = "Tour", onClick = onOpenTour)
         SheetMenuItem(label = "Buttonfarben", onClick = onOpenButtonColors)
         SheetMenuItem(label = "Trail", onClick = onOpenTrailColors)

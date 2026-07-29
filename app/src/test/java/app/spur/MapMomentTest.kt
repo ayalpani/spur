@@ -1,6 +1,5 @@
 package app.spur
 
-import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -158,67 +157,6 @@ class MapMomentTest {
         offsets.values.forEach { offset ->
             assertTrue(offset.getDistance() > MomentMarkerWidth / 2f)
         }
-    }
-
-    @Test
-    fun personaAvoidanceUsesSeparateSideSlots() {
-        val items = listOf("a", "b").map { key ->
-            PersonaAvoidanceItem(
-                key = key,
-                anchor = Offset(100f, 100f),
-                offset = Offset.Zero,
-                width = MomentMarkerWidth.toFloat(),
-                height = MomentMarkerHeight.toFloat(),
-            )
-        }
-
-        assertEquals(
-            mapOf(
-                "a" to Offset(-74f, 43f),
-                "b" to Offset(74f, 43f),
-            ),
-            avoidPersonaOverlaps(Offset(100f, 100f), items),
-        )
-    }
-
-    @Test
-    fun personaAvoidanceLeavesClearMarkerAtItsMapPosition() {
-        assertTrue(
-            avoidPersonaOverlaps(
-                location = Offset(100f, 100f),
-                items = listOf(
-                    PersonaAvoidanceItem(
-                        key = "clear",
-                        anchor = Offset(300f, 300f),
-                        offset = Offset.Zero,
-                        width = MomentMarkerWidth.toFloat(),
-                        height = MomentMarkerHeight.toFloat(),
-                    ),
-                ),
-            ).isEmpty(),
-        )
-    }
-
-    @Test
-    fun personaAvoidanceKeepsAValidPreviousSlot() {
-        val previousRightSlot = Offset(74f, 43f)
-
-        assertEquals(
-            mapOf("marker" to previousRightSlot),
-            avoidPersonaOverlaps(
-                location = Offset(100f, 100f),
-                items = listOf(
-                    PersonaAvoidanceItem(
-                        key = "marker",
-                        anchor = Offset(100f, 100f),
-                        offset = Offset.Zero,
-                        preferredOffset = previousRightSlot,
-                        width = MomentMarkerWidth.toFloat(),
-                        height = MomentMarkerHeight.toFloat(),
-                    ),
-                ),
-            ),
-        )
     }
 
     @Test

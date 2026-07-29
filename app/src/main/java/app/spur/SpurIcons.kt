@@ -26,7 +26,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser as ComposePathParser
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -153,12 +152,11 @@ internal fun PauseIcon() = LucideIcon(
 )
 
 @Composable
-internal fun FollowLocationIcon(
+internal fun locationSignalButtonAlpha(
     selected: Boolean,
     pulseGeneration: Long?,
-) {
-    val trailColor = LocalTrailColors.current.fill
-    val signalAlpha = if (selected && pulseGeneration != null) {
+): Float =
+    if (selected && pulseGeneration != null) {
         key(pulseGeneration) {
             val transition = rememberInfiniteTransition(label = "Location following signal")
             transition.animateFloat(
@@ -172,15 +170,18 @@ internal fun FollowLocationIcon(
                     repeatMode = RepeatMode.Reverse,
                 ),
                 label = "Location following icon opacity",
-            )
+            ).value
         }
     } else {
-        null
+        1f
     }
+
+@Composable
+internal fun FollowLocationIcon(selected: Boolean) {
+    val trailColor = LocalTrailColors.current.fill
     Box(
         modifier = Modifier
             .size(MapControlSize)
-            .graphicsLayer { alpha = signalAlpha?.value ?: 1f }
             .clip(CircleShape)
             .background(if (selected) trailColor else Color.Transparent),
         contentAlignment = Alignment.Center,
@@ -202,16 +203,6 @@ private fun FootprintsIcon(
         "M4 13h4",
     ),
     color = color,
-    strokeWidth = LucideRegularStrokeWidth,
-)
-
-@Composable
-internal fun HistoryIcon() = LucideIcon(
-    paths = listOf(
-        "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
-        "M3 3v5h5",
-        "M12 7v5l4 2",
-    ),
     strokeWidth = LucideRegularStrokeWidth,
 )
 

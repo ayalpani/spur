@@ -55,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
@@ -545,6 +546,10 @@ internal fun MapPage(
                             PhotoCloseIcon()
                         }
                     } else {
+                        val signalButtonAlpha = locationSignalButtonAlpha(
+                            selected = isFollowingLocation,
+                            pulseGeneration = activeLocationPulseGeneration,
+                        )
                         MapIconButton(
                             contentDescription = "Hauptmenü öffnen",
                             onClick = { showMainMenu = true },
@@ -562,22 +567,18 @@ internal fun MapPage(
                             ) {
                                 LucideIcon(
                                     paths = listOf(
-                                        "M12 20h9",
-                                        "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z",
+                                        "M4 12h.01",
+                                        "M4 16h.01",
+                                        "M4 20h.01",
+                                        "M4 4h.01",
+                                        "M4 8h.01",
+                                        "M9.414 13.414a2 2 0 0 0 1.414.586H19a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1h-8.172a2 2 0 0 0-1.414.586L8 12z",
+                                        "M9.414 21.414a2 2 0 0 0 1.414.586H19a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1h-8.172a2 2 0 0 0-1.414.586L8 20z",
+                                        "M9.414 5.414A2 2 0 0 0 10.828 6H19a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1h-8.172a2 2 0 0 0-1.414.586L8 4z",
                                     ),
                                     strokeWidth = LucideBoldStrokeWidth,
                                 )
                             }
-                        }
-                        MapIconButton(
-                            contentDescription = "Tour-History öffnen",
-                            onClick = {
-                                activeVoiceMoment = null
-                                onOpenHistory()
-                            },
-                            secondary = true,
-                        ) {
-                            HistoryIcon()
                         }
                         MapIconButton(
                             contentDescription = "Moment hinzufügen",
@@ -610,11 +611,11 @@ internal fun MapPage(
                                     followOwnLocation()
                                 }
                             },
+                            modifier = Modifier.graphicsLayer {
+                                alpha = signalButtonAlpha
+                            },
                         ) {
-                            FollowLocationIcon(
-                                selected = isFollowingLocation,
-                                pulseGeneration = activeLocationPulseGeneration,
-                            )
+                            FollowLocationIcon(selected = isFollowingLocation)
                         }
                     }
                 }
@@ -909,6 +910,14 @@ internal fun MapPage(
             sheetState = mainMenuState,
         ) {
             MainMenu(
+                onOpenHistory = {
+                    scope.launch {
+                        mainMenuState.hide()
+                        showMainMenu = false
+                        activeVoiceMoment = null
+                        onOpenHistory()
+                    }
+                },
                 onOpenTour = {
                     scope.launch {
                         mainMenuState.hide()

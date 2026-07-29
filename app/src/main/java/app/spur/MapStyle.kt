@@ -3,13 +3,13 @@ package app.spur
 import android.content.Context
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.selected
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.location.LocationComponentConstants
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.Property
@@ -37,6 +37,7 @@ import org.maplibre.android.style.layers.PropertyFactory.textTranslateAnchor
 import org.maplibre.android.style.layers.PropertyFactory.visibility
 import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.layers.Layer
 import org.maplibre.android.style.sources.GeoJsonOptions
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.sources.RasterSource
@@ -124,11 +125,6 @@ internal data class PreparedMapMoments(
     val features: List<Feature>,
 )
 
-internal data class MapMomentAvoidanceLayout(
-    val momentOffsets: Map<String, Offset> = emptyMap(),
-    val clusterOffsets: Map<Long, Offset> = emptyMap(),
-)
-
 internal fun prepareMapMoments(
     context: Context,
     moments: List<MapMoment>,
@@ -182,10 +178,10 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
         ).also(::addSource)
     source.setGeoJson(FeatureCollection.fromFeatures(features))
 
-    val momentOffset = momentOffsetExpression(moments, emptyMap())
+    val momentOffset = momentOffsetExpression(moments)
     val momentLayer = getLayerAs<SymbolLayer>(MapMomentLayer)
     if (momentLayer == null) {
-        addLayer(
+        addLayerBelowPersona(
             SymbolLayer(MapMomentLayer, MapMomentSource)
                 .withFilter(
                     Expression.neq(Expression.get("cluster"), true),
@@ -202,16 +198,13 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
                 ),
         )
     } else {
-        momentLayer.setProperties(
-            iconImage(Expression.get(MapMomentImageProperty)),
-            iconOffset(momentOffset),
-        )
+        momentLayer.setProperties(iconOffset(momentOffset))
     }
 
     val clusterImage = clusterMomentImageExpression(moments)
     val clusterLayer = getLayerAs<SymbolLayer>(MapMomentClusterLayer)
     if (clusterLayer == null) {
-        addLayer(
+        addLayerBelowPersona(
             SymbolLayer(MapMomentClusterLayer, MapMomentSource)
                 .withFilter(Expression.has("point_count"))
                 .withProperties(
@@ -225,10 +218,7 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
                 ),
         )
     } else {
-        clusterLayer.setProperties(
-            iconImage(clusterImage),
-            iconOffset(Expression.literal(arrayOf(0f, 0f))),
-        )
+        clusterLayer.setProperties(iconImage(clusterImage))
     }
 
     if (getLayer(MapMomentClusterCountBadgeLayer) == null) {
@@ -247,14 +237,14 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
                     circleTranslateAnchor(Property.CIRCLE_TRANSLATE_ANCHOR_VIEWPORT),
                 )
         if (getLayer(MapMomentClusterCountLayer) == null) {
-            addLayer(countBadgeLayer)
+            addLayerBelowPersona(countBadgeLayer)
         } else {
             addLayerBelow(countBadgeLayer, MapMomentClusterCountLayer)
         }
     }
 
     if (getLayer(MapMomentClusterCountLayer) == null) {
-        addLayer(
+        addLayerBelowPersona(
             SymbolLayer(MapMomentClusterCountLayer, MapMomentSource)
                 .withFilter(Expression.has("point_count"))
                 .withProperties(
@@ -276,19 +266,6 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
                 ),
         )
     }
-}
-
-internal fun Style.showMapMomentAvoidanceLayout(
-    moments: List<MapMoment>,
-    layout: MapMomentAvoidanceLayout,
-) {
-    getLayerAs<SymbolLayer>(MapMomentLayer)?.setProperties(
-        iconOffset(momentOffsetExpression(moments, layout.momentOffsets)),
-    )
-    getLayerAs<SymbolLayer>(MapMomentClusterLayer)?.setProperties(
-        iconOffset(clusterOffsetExpression(layout.clusterOffsets)),
-    )
-    showAvoidedClusterCounts(layout.clusterOffsets)
 }
 
 private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression =
@@ -321,11 +298,8 @@ private fun representativeClusterImageExpression(
 private fun clusterMomentImageId(moment: MapMoment, stackSize: Int): String =
     "$MapMomentClusterImagePrefix$stackSize-${moment.id}"
 
-private fun momentOffsetExpression(
-    moments: List<MapMoment>,
-    avoidanceOffsets: Map<String, Offset>,
-): Expression {
-    val offsets = overlappingMomentOffsets(moments) + avoidanceOffsets
+private fun momentOffsetExpression(moments: List<MapMoment>): Expression {
+    val offsets = overlappingMomentOffsets(moments)
     val center = Expression.literal(arrayOf(0f, 0f))
     if (offsets.isEmpty()) return center
     val stops = offsets.map { (momentId, offset) ->
@@ -338,105 +312,11 @@ private fun momentOffsetExpression(
     )
 }
 
-private fun clusterOffsetExpression(offsets: Map<Long, Offset>): Expression {
-    val center = Expression.literal(arrayOf(0f, 0f))
-    if (offsets.isEmpty()) return center
-    val stops = offsets.map { (clusterId, offset) ->
-        Expression.stop(
-            clusterId,
-            Expression.literal(arrayOf(offset.x, offset.y)),
-        )
-    }.toTypedArray()
-    return Expression.match(
-        Expression.toNumber(Expression.get(MapMomentClusterIdProperty)),
-        center,
-        *stops,
-    )
-}
-
-private fun Style.showAvoidedClusterCounts(offsets: Map<Long, Offset>) {
-    val excludedIds = offsets.keys
-    val normalFilter = Expression.all(
-        Expression.has("point_count"),
-        *excludedIds.map { clusterId ->
-            Expression.neq(
-                Expression.toNumber(Expression.get(MapMomentClusterIdProperty)),
-                Expression.literal(clusterId),
-            )
-        }.toTypedArray(),
-    )
-    getLayerAs<CircleLayer>(MapMomentClusterCountBadgeLayer)?.setFilter(normalFilter)
-    getLayerAs<SymbolLayer>(MapMomentClusterCountLayer)?.setFilter(normalFilter)
-
-    val retainedLayerIds = offsets.keys.flatMap { clusterId ->
-        listOf(
-            MapMomentAvoidedClusterBadgePrefix + clusterId,
-            MapMomentAvoidedClusterCountPrefix + clusterId,
-        )
-    }.toSet()
-    layers
-        .map { it.id }
-        .filter {
-            (
-                it.startsWith(MapMomentAvoidedClusterBadgePrefix) ||
-                    it.startsWith(MapMomentAvoidedClusterCountPrefix)
-                ) && it !in retainedLayerIds
-        }
-        .forEach(::removeLayer)
-
-    offsets.forEach { (clusterId, offset) ->
-        val filter = Expression.eq(
-            Expression.toNumber(Expression.get(MapMomentClusterIdProperty)),
-            Expression.literal(clusterId),
-        )
-        val translate = arrayOf(
-            offset.x + MapMomentClusterCountPositionX,
-            offset.y + MapMomentClusterCountPositionY,
-        )
-        val badgeId = MapMomentAvoidedClusterBadgePrefix + clusterId
-        val badge = getLayerAs<CircleLayer>(badgeId)
-        if (badge == null) {
-            addLayer(
-                CircleLayer(badgeId, MapMomentSource)
-                    .withFilter(filter)
-                    .withProperties(
-                        circleRadius(MapMomentClusterCountBadgeRadius),
-                        circleColor(Ink.toArgb()),
-                        circleTranslate(translate),
-                        circleTranslateAnchor(Property.CIRCLE_TRANSLATE_ANCHOR_VIEWPORT),
-                    ),
-            )
-        } else {
-            badge.setFilter(filter)
-            badge.setProperties(circleTranslate(translate))
-        }
-
-        val countId = MapMomentAvoidedClusterCountPrefix + clusterId
-        val count = getLayerAs<SymbolLayer>(countId)
-        if (count == null) {
-            addLayer(
-                SymbolLayer(countId, MapMomentSource)
-                    .withFilter(filter)
-                    .withProperties(
-                        textField(
-                            Expression.toString(
-                                Expression.get("point_count_abbreviated"),
-                            ),
-                        ),
-                        textFont(arrayOf("Noto Sans Bold")),
-                        textSize(13f),
-                        textColor(android.graphics.Color.WHITE),
-                        textTranslate(translate),
-                        textTranslateAnchor(Property.TEXT_TRANSLATE_ANCHOR_VIEWPORT),
-                        textAnchor(Property.TEXT_ANCHOR_CENTER),
-                        textAllowOverlap(true),
-                        textIgnorePlacement(true),
-                        symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
-                    ),
-            )
-        } else {
-            count.setFilter(filter)
-            count.setProperties(textTranslate(translate))
-        }
+private fun Style.addLayerBelowPersona(layer: Layer) {
+    val personaBottomLayer = LocationComponentConstants.PULSING_CIRCLE_LAYER
+    if (getLayer(personaBottomLayer) == null) {
+        addLayer(layer)
+    } else {
+        addLayerBelow(layer, personaBottomLayer)
     }
 }
