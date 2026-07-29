@@ -29,12 +29,14 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -496,6 +498,51 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
+                visible = isMapReady && isTourEditing,
+                modifier = Modifier.align(Alignment.TopStart),
+                enter = slideInVertically(
+                    animationSpec = tween(MotionDurationDefaultMillis),
+                    initialOffsetY = { -it },
+                ) + fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = slideOutVertically(
+                    animationSpec = tween(MotionDurationDefaultMillis),
+                    targetOffsetY = { -it },
+                ) + fadeOut(tween(MotionDurationDefaultMillis)),
+            ) {
+                val headerStyle =
+                    secondaryMapControlStyle(LocalMapControlColors.current)
+                Surface(
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .padding(
+                            start = MapControlHorizontalPadding,
+                            top = 14.dp,
+                        )
+                        .height(MapControlSize)
+                        .mapControlShadow(CircleShape),
+                    color = headerStyle.colors.background,
+                    contentColor = headerStyle.colors.foreground,
+                    shape = CircleShape,
+                    border = headerStyle.border,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onCloseTourEditor,
+                            modifier = Modifier.size(MapControlSize),
+                        ) {
+                            BackIcon()
+                        }
+                        Text(
+                            text = "Waypoints",
+                            modifier = Modifier.padding(end = 24.dp),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(
                 visible = areMapControlsVisible,
                 modifier = Modifier.align(Alignment.BottomEnd),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
@@ -541,13 +588,6 @@ internal fun MapPage(
                             ) {
                                 PlusIcon()
                             }
-                        }
-                        MapIconButton(
-                            contentDescription = "Editor schließen",
-                            onClick = onCloseTourEditor,
-                            secondary = true,
-                        ) {
-                            PhotoCloseIcon()
                         }
                     } else {
                         val signalButtonAlpha = locationSignalButtonAlpha(
