@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.Locale
@@ -206,6 +207,7 @@ internal fun WaypointRail(
             text = "${selectedIndex + 1} von ${locations.size}",
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .zIndex(1f)
                 .padding(top = 10.dp),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
@@ -217,7 +219,7 @@ internal fun WaypointRail(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(56.dp),
+                .fillMaxHeight(),
         ) {
             items(
                 count = locations.size,
