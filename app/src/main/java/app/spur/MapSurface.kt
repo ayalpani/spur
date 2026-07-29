@@ -1,6 +1,8 @@
 package app.spur
 
+import android.annotation.SuppressLint
 import android.graphics.PointF
+import android.os.Looper
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ViewConfiguration
@@ -37,6 +39,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -57,6 +64,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 @Composable
+@SuppressLint("MissingPermission")
 internal fun MapSurface(
     modifier: Modifier = Modifier,
     tourId: Long?,
@@ -137,6 +145,7 @@ internal fun MapSurface(
     var pendingMapMoment by remember { mutableStateOf<MapMoment?>(null) }
     var pendingMomentPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var preparedMapMoments by remember { mutableStateOf<PreparedMapMoments?>(null) }
+    var personaLocation by remember { mutableStateOf<SpurCoordinate?>(null) }
     var renderedVoicePlaybackId by remember { mutableStateOf<String?>(null) }
     var mapStyleRevision by remember { mutableStateOf(0) }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
@@ -148,6 +157,44 @@ internal fun MapSurface(
         MapLibre.getInstance(context)
         MapView(context).apply {
             onCreate(null)
+        }
+    }
+
+    DisposableEffect(context, manualLocation) {
+        if (!context.hasLocationPermission() || manualLocation != null) {
+            personaLocation = null
+            onDispose {}
+        } else {
+            var active = true
+            val client = LocationServices.getFusedLocationProviderClient(context)
+            val callback = object : LocationCallback() {
+                override fun onLocationResult(result: LocationResult) {
+                    val location = result.lastLocation ?: return
+                    personaLocation = SpurCoordinate(
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                    )
+                }
+            }
+            client.lastLocation.addOnSuccessListener { location ->
+                if (active && location != null) {
+                    personaLocation = SpurCoordinate(
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                    )
+                }
+            }
+            client.requestLocationUpdates(
+                LocationRequest.Builder(Priority.PRIORITY_PASSIVE, 1_000L)
+                    .setMinUpdateIntervalMillis(1_000L)
+                    .build(),
+                callback,
+                Looper.getMainLooper(),
+            )
+            onDispose {
+                active = false
+                client.removeLocationUpdates(callback)
+            }
         }
     }
 
@@ -230,6 +277,12 @@ internal fun MapSurface(
                 onLoaded = {
                     mapStyleRevision++
                     hasLoadedMapStyle = true
+                    if (currentManualLocation == null) {
+                        personaLocation = map.currentSpurCoordinate(
+                            context = context,
+                            manual = null,
+                        )
+                    }
                     previewCameraPosition = map.cameraPosition
                     if (currentIsFollowingLocation) {
                         map.followLocation(
@@ -680,11 +733,18 @@ internal fun MapSurface(
         }
     }
 
-    LaunchedEffect(preparedMapMoments, mapStyleRevision) {
+    val visiblePersonaLocation = personaLocation.takeIf {
+        manualLocation == null && selectedTrackPoint == null
+    }
+    LaunchedEffect(
+        preparedMapMoments,
+        visiblePersonaLocation,
+        mapStyleRevision,
+    ) {
         val prepared = preparedMapMoments ?: return@LaunchedEffect
         if (mapStyleRevision == 0) return@LaunchedEffect
         mapView.getMapAsync { map ->
-            map.style?.showMapMoments(prepared)
+            map.style?.showMapMoments(prepared, visiblePersonaLocation)
             val pending = pendingMapMoment
             if (pending != null && prepared.moments.any { it.id == pending.id }) {
                 pendingMapMoment = null

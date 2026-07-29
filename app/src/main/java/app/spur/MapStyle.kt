@@ -129,7 +129,8 @@ internal fun prepareMapMoments(
     context: Context,
     moments: List<MapMoment>,
 ): PreparedMapMoments {
-    val images = HashMap<String, android.graphics.Bitmap>(moments.size * 3)
+    val images = HashMap<String, android.graphics.Bitmap>(moments.size * 3 + 1)
+    images[MapPersonaImage] = createPersonaMarkerBitmap(context)
     val features = moments.mapIndexed { index, moment ->
         val imageId = MapMomentImagePrefix + moment.id
         val marker = createMomentMarkerBitmap(context, moment, selected = false)
@@ -153,7 +154,10 @@ internal fun prepareMapMoments(
     )
 }
 
-internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
+internal fun Style.showMapMoments(
+    prepared: PreparedMapMoments,
+    persona: SpurCoordinate?,
+) {
     val moments = prepared.moments
     val images = prepared.images
     val features = prepared.features
@@ -181,11 +185,9 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
     val momentOffset = momentOffsetExpression(moments)
     val momentLayer = getLayerAs<SymbolLayer>(MapMomentLayer)
     if (momentLayer == null) {
-        addLayerBelowPersona(
+        addLayerBelowLocationPulse(
             SymbolLayer(MapMomentLayer, MapMomentSource)
-                .withFilter(
-                    Expression.neq(Expression.get("cluster"), true),
-                )
+                .withFilter(Expression.neq(Expression.get("cluster"), true))
                 .withProperties(
                     iconImage(Expression.get(MapMomentImageProperty)),
                     iconOffset(momentOffset),
@@ -204,7 +206,7 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
     val clusterImage = clusterMomentImageExpression(moments)
     val clusterLayer = getLayerAs<SymbolLayer>(MapMomentClusterLayer)
     if (clusterLayer == null) {
-        addLayerBelowPersona(
+        addLayerBelowLocationPulse(
             SymbolLayer(MapMomentClusterLayer, MapMomentSource)
                 .withFilter(Expression.has("point_count"))
                 .withProperties(
@@ -237,14 +239,14 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
                     circleTranslateAnchor(Property.CIRCLE_TRANSLATE_ANCHOR_VIEWPORT),
                 )
         if (getLayer(MapMomentClusterCountLayer) == null) {
-            addLayerBelowPersona(countBadgeLayer)
+            addLayerBelowLocationPulse(countBadgeLayer)
         } else {
             addLayerBelow(countBadgeLayer, MapMomentClusterCountLayer)
         }
     }
 
     if (getLayer(MapMomentClusterCountLayer) == null) {
-        addLayerBelowPersona(
+        addLayerBelowLocationPulse(
             SymbolLayer(MapMomentClusterCountLayer, MapMomentSource)
                 .withFilter(Expression.has("point_count"))
                 .withProperties(
@@ -263,10 +265,39 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
                     textAllowOverlap(true),
                     textIgnorePlacement(true),
                     symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
+            ),
+        )
+    }
+
+    val personaSource = getSourceAs<GeoJsonSource>(MapPersonaSource)
+        ?: GeoJsonSource(MapPersonaSource).also(::addSource)
+    personaSource.setGeoJson(personaFeatureCollection(persona))
+    if (getLayer(MapPersonaLayer) == null) {
+        addLayer(
+            SymbolLayer(MapPersonaLayer, MapPersonaSource)
+                .withProperties(
+                    iconImage(MapPersonaImage),
+                    iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+                    iconAllowOverlap(true),
+                    iconIgnorePlacement(true),
+                    iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                    iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                    symbolZOrder(Property.SYMBOL_Z_ORDER_SOURCE),
                 ),
         )
     }
 }
+
+internal fun personaFeatureCollection(persona: SpurCoordinate?): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        persona?.let {
+            listOf(
+                Feature.fromGeometry(
+                    Point.fromLngLat(it.longitude, it.latitude),
+                ),
+            )
+        }.orEmpty(),
+    )
 
 private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression =
     Expression.switchCase(
@@ -312,11 +343,11 @@ private fun momentOffsetExpression(moments: List<MapMoment>): Expression {
     )
 }
 
-private fun Style.addLayerBelowPersona(layer: Layer) {
-    val personaBottomLayer = LocationComponentConstants.PULSING_CIRCLE_LAYER
-    if (getLayer(personaBottomLayer) == null) {
+internal fun Style.addLayerBelowLocationPulse(layer: Layer) {
+    val pulseLayer = LocationComponentConstants.PULSING_CIRCLE_LAYER
+    if (getLayer(pulseLayer) == null) {
         addLayer(layer)
     } else {
-        addLayerBelow(layer, personaBottomLayer)
+        addLayerBelow(layer, pulseLayer)
     }
 }

@@ -158,7 +158,7 @@ internal fun Style.showTourEndpoints(
         ?: GeoJsonSource(TourEndpointSource).also(::addSource)
     val ringLayer = getLayerAs<CircleLayer>(TourEndpointRingLayer)
     if (ringLayer == null) {
-        addLayer(
+        addLayerBelowLocationPulse(
             CircleLayer(TourEndpointRingLayer, TourEndpointSource).withProperties(
                 circleColor(colors.fill.toArgb()),
                 circleRadius(TourEndpointRadius),
@@ -176,7 +176,7 @@ internal fun Style.showTourEndpoints(
     }
     val endLayer = getLayerAs<CircleLayer>(TourEndpointEndLayer)
     if (endLayer == null) {
-        addLayer(
+        addLayerBelowLocationPulse(
             CircleLayer(TourEndpointEndLayer, TourEndpointSource)
                 .withFilter(
                     Expression.eq(

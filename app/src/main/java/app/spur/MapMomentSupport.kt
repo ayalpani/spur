@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.draw.clip
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.PropertyFactory.textSize
@@ -225,6 +226,55 @@ internal fun createMomentClusterBitmap(
         clusterStackOffsets(stackSize).forEach { offset ->
             canvas.drawBitmap(marker, offset * scale, offset * scale, paint)
         }
+    }
+}
+
+internal fun createPersonaMarkerBitmap(context: Context): android.graphics.Bitmap {
+    val scale = context.resources.displayMetrics.density
+    return android.graphics.Bitmap.createBitmap(
+        (MomentMarkerWidth * scale).toInt(),
+        (MomentMarkerHeight * scale).toInt(),
+        android.graphics.Bitmap.Config.ARGB_8888,
+    ).also { bitmap ->
+        val canvas = android.graphics.Canvas(bitmap)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = Ink.toArgb()
+            style = android.graphics.Paint.Style.FILL
+        }
+        val flag = RectF(
+            6 * scale,
+            2 * scale,
+            56 * scale,
+            52 * scale,
+        )
+        canvas.drawRoundRect(flag, 10 * scale, 10 * scale, paint)
+        canvas.drawPath(
+            android.graphics.Path().apply {
+                moveTo(26 * scale, 50 * scale)
+                lineTo(36 * scale, 50 * scale)
+                lineTo(31 * scale, 57 * scale)
+                close()
+            },
+            paint,
+        )
+        ContextCompat.getDrawable(context, R.drawable.ic_footprints_location)
+            ?.mutate()
+            ?.apply {
+                setTint(Color.White.toArgb())
+                setBounds(
+                    (19 * scale).roundToInt(),
+                    (15 * scale).roundToInt(),
+                    (43 * scale).roundToInt(),
+                    (39 * scale).roundToInt(),
+                )
+                draw(canvas)
+            }
+        val edge = createMomentMarkerEdgeBitmap(
+            bitmap,
+            MomentMarkerEdgeWidth * scale,
+        )
+        canvas.drawBitmap(edge, 0f, 0f, null)
+        edge.recycle()
     }
 }
 
