@@ -1034,7 +1034,7 @@ internal fun MapPage(
                     .padding(bottom = 24.dp),
             ) {
                 BottomSheetHeader(
-                    title = "Himmelsrichtung wählen",
+                    title = "Himmelsrichtung",
                     onBack = closeDirection,
                 )
                 MapRotationPicker(
