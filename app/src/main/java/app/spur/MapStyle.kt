@@ -128,9 +128,10 @@ internal data class PreparedMapMoments(
 internal fun prepareMapMoments(
     context: Context,
     moments: List<MapMoment>,
+    personaColor: Color,
 ): PreparedMapMoments {
     val images = HashMap<String, android.graphics.Bitmap>(moments.size * 3 + 1)
-    images[MapPersonaImage] = createPersonaMarkerBitmap(context)
+    images[MapPersonaImage] = createPersonaMarkerBitmap(context, personaColor)
     val features = moments.mapIndexed { index, moment ->
         val imageId = MapMomentImagePrefix + moment.id
         val marker = createMomentMarkerBitmap(context, moment, selected = false)
@@ -277,6 +278,7 @@ internal fun Style.showMapMoments(
             SymbolLayer(MapPersonaLayer, MapPersonaSource)
                 .withProperties(
                     iconImage(MapPersonaImage),
+                    iconOffset(arrayOf(0f, MapPersonaVerticalOffsetDp)),
                     iconAnchor(Property.ICON_ANCHOR_BOTTOM),
                     iconAllowOverlap(true),
                     iconIgnorePlacement(true),

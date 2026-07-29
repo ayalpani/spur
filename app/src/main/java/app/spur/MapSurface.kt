@@ -133,9 +133,8 @@ internal fun MapSurface(
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
     val currentLocationPulseGeneration by rememberUpdatedState(locationPulseGeneration)
-    val currentLocationPulseColor by rememberUpdatedState(
-        if (isFollowingLocation) trailColors.fill else Ink,
-    )
+    val signalColor = LocalSignalColor.current
+    val currentLocationPulseColor by rememberUpdatedState(signalColor)
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
     val currentDefaultMapBearing by rememberUpdatedState(defaultMapBearing)
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
@@ -727,9 +726,13 @@ internal fun MapSurface(
         }
     }
 
-    LaunchedEffect(mapMoments, momentImageRevision) {
+    LaunchedEffect(mapMoments, momentImageRevision, signalColor) {
         preparedMapMoments = withContext(Dispatchers.IO) {
-            prepareMapMoments(context.applicationContext, mapMoments)
+            prepareMapMoments(
+                context = context.applicationContext,
+                moments = mapMoments,
+                personaColor = signalColor,
+            )
         }
     }
 
@@ -817,7 +820,7 @@ internal fun MapSurface(
     LaunchedEffect(
         mapStyleRevision,
         isFollowingLocation,
-        trailColors.fill,
+        signalColor,
     ) {
         if (mapStyleRevision == 0) return@LaunchedEffect
         mapView.getMapAsync { map ->

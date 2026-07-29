@@ -188,12 +188,12 @@ internal fun locationSignalButtonAlpha(
 
 @Composable
 internal fun FollowLocationIcon(selected: Boolean) {
-    val trailColor = LocalTrailColors.current.fill
+    val signalColor = LocalSignalColor.current
     Box(
         modifier = Modifier
             .size(MapControlSize)
             .clip(CircleShape)
-            .background(if (selected) trailColor else Color.Transparent),
+            .background(if (selected) signalColor else Color.Transparent),
         contentAlignment = Alignment.Center,
     ) {
         FootprintsIcon(

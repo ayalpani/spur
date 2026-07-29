@@ -288,7 +288,7 @@ private fun ThemeMapPreview(theme: SpurColorTheme) {
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     CompositionLocalProvider(
-                        LocalTrailColors provides theme.trailColors,
+                        LocalSignalColor provides theme.signalColor,
                     ) {
                         FollowLocationIcon(selected = true)
                     }

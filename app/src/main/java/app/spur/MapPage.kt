@@ -377,6 +377,7 @@ internal fun MapPage(
     CompositionLocalProvider(
         LocalMapControlColors provides mapControlColors,
         LocalAccentColor provides colorTheme.accent.color,
+        LocalSignalColor provides colorTheme.signalColor,
         LocalTrailColors provides trailColors,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {

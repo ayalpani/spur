@@ -229,7 +229,10 @@ internal fun createMomentClusterBitmap(
     }
 }
 
-internal fun createPersonaMarkerBitmap(context: Context): android.graphics.Bitmap {
+internal fun createPersonaMarkerBitmap(
+    context: Context,
+    color: Color,
+): android.graphics.Bitmap {
     val scale = context.resources.displayMetrics.density
     return android.graphics.Bitmap.createBitmap(
         (MomentMarkerWidth * scale).toInt(),
@@ -238,7 +241,7 @@ internal fun createPersonaMarkerBitmap(context: Context): android.graphics.Bitma
     ).also { bitmap ->
         val canvas = android.graphics.Canvas(bitmap)
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            color = Ink.toArgb()
+            this.color = color.toArgb()
             style = android.graphics.Paint.Style.FILL
         }
         val flag = RectF(

@@ -22,6 +22,8 @@ class MapControlColorTest {
             SpurColorTheme.CLASSIC.trailColors,
         )
         assertEquals(MapControlColor.BLUE, SpurColorTheme.CLASSIC.accent)
+        assertEquals(Color.Black, SpurColorTheme.CLASSIC.signalColor)
+        assertEquals(MapControlColor.GREEN.color, SpurColorTheme.FOREST.signalColor)
     }
 
     @Test
