@@ -626,6 +626,13 @@ internal fun MapPage(
                             onStop = onEndTour,
                             modifier = modifier,
                         )
+                    } else if (tour != null) {
+                        TourSummaryPlayer(
+                            tourId = tour.id,
+                            distanceMeters = tour.distanceMeters,
+                            elapsedMillis = (tour.endedAt ?: now) - tour.startedAt,
+                            modifier = modifier,
+                        )
                     } else {
                         val secondaryStyle =
                             secondaryMapControlStyle(LocalMapControlColors.current)
