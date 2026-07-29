@@ -62,9 +62,9 @@ internal const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
 internal const val TrailStrokeAlpha = 0.5f
 internal const val LocationPulseAlpha = 0.48f
-internal const val LocationPulseDurationMillis = 3_000
+internal const val LocationSignalPeriodMillis = 3_000
+internal const val LocationSignalIconMinimumAlpha = 0.5f
 internal const val LocationPulseMaxRadius = 35f
-internal const val LocationPulseScale = 1.15f
 internal const val MapPinTipY = 21.799f
 internal val MapPinIconPaths = listOf(
     "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",

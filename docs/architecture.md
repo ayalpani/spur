@@ -32,6 +32,8 @@ During direct map gestures, the main control rails fade out and back in over
 The MapLibre accuracy circle is hidden. The location pulse is black while the
 map is free and switches to the selected trail color only while location
 following is active; interrupting follow with a map gesture restores black.
+The active follow icon fades between full and half opacity on the same shared
+signal period as that map pulse.
 
 ## Data flow
 

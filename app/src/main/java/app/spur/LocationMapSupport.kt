@@ -110,7 +110,7 @@ private fun LocationComponentOptions.Builder.spurLocationAppearance(
         .pulseEnabled(true)
         .pulseFadeEnabled(true)
         .pulseColor(color.toArgb())
-        .pulseSingleDuration(LocationPulseDurationMillis.toFloat())
+        .pulseSingleDuration(LocationSignalPeriodMillis.toFloat())
         .pulseMaxRadius(LocationPulseMaxRadius)
         .pulseAlpha(LocationPulseAlpha)
         .pulseInterpolator(AccelerateDecelerateInterpolator())

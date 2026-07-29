@@ -158,20 +158,20 @@ internal fun FollowLocationIcon(
     pulseGeneration: Long?,
 ) {
     val trailColor = LocalTrailColors.current.fill
-    val rippleProgress = if (selected && pulseGeneration != null) {
+    val signalAlpha = if (selected && pulseGeneration != null) {
         key(pulseGeneration) {
             val transition = rememberInfiniteTransition(label = "Location following signal")
             transition.animateFloat(
-                initialValue = 0f,
-                targetValue = 1f,
+                initialValue = 1f,
+                targetValue = LocationSignalIconMinimumAlpha,
                 animationSpec = infiniteRepeatable(
                     animation = tween(
-                        durationMillis = LocationPulseDurationMillis,
+                        durationMillis = LocationSignalPeriodMillis / 2,
                         easing = LocationPulseEasing,
                     ),
-                    repeatMode = RepeatMode.Restart,
+                    repeatMode = RepeatMode.Reverse,
                 ),
-                label = "Location following white ripple",
+                label = "Location following icon opacity",
             )
         }
     } else {
@@ -180,24 +180,11 @@ internal fun FollowLocationIcon(
     Box(
         modifier = Modifier
             .size(MapControlSize)
+            .graphicsLayer { alpha = signalAlpha?.value ?: 1f }
             .clip(CircleShape)
             .background(if (selected) trailColor else Color.Transparent),
         contentAlignment = Alignment.Center,
     ) {
-        if (rippleProgress != null) {
-            Box(
-                modifier = Modifier
-                    .size(MapControlSize)
-                    .graphicsLayer {
-                        val phase = rippleProgress.value
-                        val rippleScale = phase * LocationPulseScale
-                        scaleX = rippleScale
-                        scaleY = rippleScale
-                        alpha = (1f - phase) * LocationPulseAlpha
-                    }
-                    .background(Color.White, CircleShape),
-            )
-        }
         FootprintsIcon(
             color = if (selected) Color.White else LocalContentColor.current,
         )
