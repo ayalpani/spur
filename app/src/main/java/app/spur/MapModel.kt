@@ -44,6 +44,7 @@ internal val LocationPulseEasing = Easing { fraction ->
 internal const val TourRouteSource = "tour-route-source"
 internal const val TourRouteBorderLayer = "tour-route-border-layer"
 internal const val TourRouteLayer = "tour-route-layer"
+internal const val TourWaypointLayer = "tour-waypoint-layer"
 internal const val TourEndpointSource = "tour-endpoint-source"
 internal const val TourEndpointRingLayer = "tour-endpoint-ring-layer"
 internal const val TourEndpointEndLayer = "tour-endpoint-end-layer"
@@ -92,6 +93,23 @@ internal data class SelectedBuilding(
     val coordinate: SpurCoordinate,
     val feature: Feature,
 )
+
+internal data class SelectedTrackPointScreenPosition(
+    val pointId: Long,
+    val x: Float,
+    val y: Float,
+)
+
+internal fun visibleSelectedTrackPointPosition(
+    position: SelectedTrackPointScreenPosition?,
+    selectedPointId: Long?,
+    firstPointId: Long?,
+    lastPointId: Long?,
+): SelectedTrackPointScreenPosition? = position?.takeIf {
+    it.pointId == selectedPointId &&
+        selectedPointId != firstPointId &&
+        selectedPointId != lastPointId
+}
 
 internal fun mapRotationFromStored(value: String?): MapRotation =
     MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH

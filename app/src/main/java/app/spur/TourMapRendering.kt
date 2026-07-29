@@ -19,28 +19,47 @@ import org.maplibre.android.style.expressions.Expression
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
+import org.maplibre.geojson.MultiPoint
 import org.maplibre.geojson.Point
 
 internal fun Style.showTourRoute(
     points: List<TrackPoint>,
     colors: TrailColors,
 ) {
-    showTourRoute(tourRouteFeature(points), colors)
+    showTourRoute(tourRouteFeatures(points), colors)
 }
 
-internal fun tourRouteFeature(points: List<TrackPoint>): Feature? =
-    if (points.size >= 2) {
+internal fun tourRouteFeature(points: List<TrackPoint>): Feature? {
+    val coordinates = points.map { Point.fromLngLat(it.longitude, it.latitude) }
+    return if (coordinates.size >= 2) {
         Feature.fromGeometry(
-            LineString.fromLngLats(
-                points.map { Point.fromLngLat(it.longitude, it.latitude) },
-            ),
+            LineString.fromLngLats(coordinates),
         )
     } else {
         null
     }
+}
+
+internal fun tourRouteFeatures(points: List<TrackPoint>): FeatureCollection {
+    val coordinates = points.map { Point.fromLngLat(it.longitude, it.latitude) }
+    return FeatureCollection.fromFeatures(
+        buildList {
+            if (coordinates.size >= 2) {
+                add(Feature.fromGeometry(LineString.fromLngLats(coordinates)))
+            }
+            if (coordinates.isNotEmpty()) {
+                add(
+                    Feature.fromGeometry(
+                        MultiPoint.fromLngLats(coordinates),
+                    ),
+                )
+            }
+        },
+    )
+}
 
 internal fun Style.showTourRoute(
-    route: Feature?,
+    route: FeatureCollection,
     colors: TrailColors,
 ) {
     val source = getSourceAs<GeoJsonSource>(TourRouteSource)
@@ -74,11 +93,19 @@ internal fun Style.showTourRoute(
     } else {
         routeLayer.setProperties(lineColor(colors.fill.toArgb()))
     }
-    if (route != null) {
-        source.setGeoJson(route)
+    val waypointLayer = getLayerAs<CircleLayer>(TourWaypointLayer)
+    if (waypointLayer == null) {
+        addLayerAbove(
+            CircleLayer(TourWaypointLayer, TourRouteSource).withProperties(
+                circleColor(colors.stroke.toArgb()),
+                circleRadius(TourWaypointRadiusPixels),
+            ),
+            TourRouteLayer,
+        )
     } else {
-        source.setGeoJson("""{"type":"FeatureCollection","features":[]}""")
+        waypointLayer.setProperties(circleColor(colors.stroke.toArgb()))
     }
+    source.setGeoJson(route)
 }
 
 internal fun Style.showSelectedTrackPoint(point: TrackPoint?) {

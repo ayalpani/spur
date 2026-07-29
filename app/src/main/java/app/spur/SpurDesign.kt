@@ -37,7 +37,7 @@ internal val StopSwipeHandleSize = 52.dp
 internal val MapRotationOptionGap = 16.dp
 internal val FilterChipVisualInset = 8.dp
 internal const val MotionDurationDefaultMillis = 200
-internal const val EditorPointTransitionDurationMillis = 10
+internal const val EditorPointTransitionDurationMillis = 50
 internal const val FeedbackNoticeDurationMillis = 2_500L
 internal const val PendingPhotoRevealDelayMillis = 1_000L
 internal const val MinimumSystemSplashDurationMillis = 3_000L
@@ -60,6 +60,7 @@ internal const val TourRouteWidthPixels = 6f
 internal const val TourRouteBorderPerSidePixels = 4f
 internal const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
+internal const val TourWaypointRadiusPixels = 2f
 internal const val TrailStrokeAlpha = 0.5f
 internal const val LocationPulseAlpha = 0.48f
 internal const val LocationSignalPeriodMillis = 3_000

@@ -125,7 +125,7 @@ internal fun MapSurface(
     val currentDefaultMapBearing by rememberUpdatedState(defaultMapBearing)
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var selectedTrackPointPosition by remember {
-        mutableStateOf<android.graphics.PointF?>(null)
+        mutableStateOf<SelectedTrackPointScreenPosition?>(null)
     }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
@@ -358,9 +358,10 @@ internal fun MapSurface(
         fun publishSelectedTrackPointPosition() {
             val readyMap = map ?: return
             selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
-                readyMap.projection.toScreenLocation(
+                val position = readyMap.projection.toScreenLocation(
                     LatLng(point.latitude, point.longitude),
                 )
+                SelectedTrackPointScreenPosition(point.id, position.x, position.y)
             }
         }
 
@@ -612,18 +613,15 @@ internal fun MapSurface(
             map.style?.let { style ->
                 style.showSelectedTrackPoint(null)
                 style.showTourEndpoints(
-                    if (currentSelectedTrackPoint == null) {
-                        emptyList()
-                    } else {
-                        currentRoutePoints
-                    },
+                    currentRoutePoints,
                     currentTrailColors,
                 )
             }
             selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
-                map.projection.toScreenLocation(
+                val position = map.projection.toScreenLocation(
                     LatLng(point.latitude, point.longitude),
                 )
+                SelectedTrackPointScreenPosition(point.id, position.x, position.y)
             }
             if (selectedTrackPointRequest == 0L) return@getMapAsync
             currentSelectedTrackPoint?.let { point ->
@@ -636,9 +634,10 @@ internal fun MapSurface(
                 )
             }
             selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
-                map.projection.toScreenLocation(
+                val position = map.projection.toScreenLocation(
                     LatLng(point.latitude, point.longitude),
                 )
+                SelectedTrackPointScreenPosition(point.id, position.x, position.y)
             }
         }
     }
@@ -722,15 +721,15 @@ internal fun MapSurface(
 
     LaunchedEffect(routePoints, trailColors) {
         val points = routePoints
-        val routeFeature = withContext(Dispatchers.Default) {
-            tourRouteFeature(points)
+        val routeFeatures = withContext(Dispatchers.Default) {
+            tourRouteFeatures(points)
         }
         mapView.getMapAsync { map ->
             if (points !== currentRoutePoints) return@getMapAsync
             map.style?.let { style ->
-                style.showTourRoute(routeFeature, currentTrailColors)
+                style.showTourRoute(routeFeatures, currentTrailColors)
                 style.showTourEndpoints(
-                    if (currentSelectedTrackPoint == null) emptyList() else points,
+                    points,
                     currentTrailColors,
                 )
             }
@@ -804,11 +803,12 @@ internal fun MapSurface(
 
         val density = LocalDensity.current
         val selectedPointSizePx = with(density) { 20.dp.roundToPx() }
-        selectedTrackPointPosition
-            ?.takeUnless {
-                selectedTrackPoint?.id == routePoints.firstOrNull()?.id ||
-                    selectedTrackPoint?.id == routePoints.lastOrNull()?.id
-            }
+        visibleSelectedTrackPointPosition(
+            position = selectedTrackPointPosition,
+            selectedPointId = selectedTrackPoint?.id,
+            firstPointId = routePoints.firstOrNull()?.id,
+            lastPointId = routePoints.lastOrNull()?.id,
+        )
             ?.let { position ->
                 SelectedTrackPointPuck(
                     modifier = Modifier.offset {
