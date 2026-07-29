@@ -33,6 +33,8 @@ confirming that the command preserves app data.
 - Use `MapIconButton(secondary = true)` for secondary controls drawn over a
   map. It inverts the selected map-control colors and adds a 1 dp outline at
   50% of the resulting foreground color.
+- In the main map rail, keep the bottom location/follow control and the
+  adjacent moment-add control primary.
 - Keep building details non-modal: no backdrop or full-screen input blocker;
   the exposed map remains interactive while the sheet is open.
 - Keep destructive actions on the established red treatment instead of

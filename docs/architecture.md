@@ -21,7 +21,8 @@ boundaries, not behavior or state architecture.
 
 Map overlay controls share `MapIconButton`. Its secondary variant swaps the
 user-selected map-control foreground and background colors and adds a 1 dp
-outline at 50% of the resulting foreground color.
+outline at 50% of the resulting foreground color. The bottom location/follow
+and moment-add controls remain primary actions.
 
 ## Data flow
 

@@ -584,7 +584,6 @@ internal fun MapPage(
                             onClick = {
                                 momentTarget = MomentPlacementTarget.CurrentLocation
                             },
-                            secondary = true,
                         ) {
                             PlusIcon()
                         }
@@ -621,7 +620,6 @@ internal fun MapPage(
                                     followOwnLocation()
                                 }
                             },
-                            secondary = true,
                         ) {
                             FollowLocationIcon(
                                 selected = isFollowingLocation,
