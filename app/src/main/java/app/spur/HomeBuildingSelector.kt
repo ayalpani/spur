@@ -23,6 +23,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -388,13 +389,10 @@ private fun Style.showSelectableHomeBuildings() {
     )
 }
 
-internal fun highlightedBuildingFeatures(
+internal fun selectedBuildingHighlight(
     home: Feature?,
     selected: Feature?,
-): List<Feature> = buildList {
-    home?.let(::add)
-    if (selected != null && selected.geometry() != home?.geometry()) add(selected)
-}
+): Feature? = selected?.takeUnless { it.geometry() == home?.geometry() }
 
 private fun Style.showSelectedHomeBuilding(feature: Feature?) {
     showHighlightedBuildings(home = feature, selected = null)
@@ -404,34 +402,60 @@ internal fun Style.showHighlightedBuildings(
     home: Feature?,
     selected: Feature?,
 ) {
-    val source = getSourceAs<GeoJsonSource>(HomeBuildingSource)
-        ?: GeoJsonSource(HomeBuildingSource).also(::addSource)
-    if (getLayer(HomeBuildingFillLayer) == null) {
-        val layer = FillLayer(HomeBuildingFillLayer, HomeBuildingSource).withProperties(
-            fillColor(Ink.toArgb()),
+    showBuildingHighlight(
+        feature = home,
+        sourceId = HomeBuildingSource,
+        fillLayerId = HomeBuildingFillLayer,
+        outlineLayerId = HomeBuildingOutlineLayer,
+        color = HomeBuildingGold,
+    )
+    showBuildingHighlight(
+        feature = selectedBuildingHighlight(home, selected),
+        sourceId = SelectedBuildingSource,
+        fillLayerId = SelectedBuildingFillLayer,
+        outlineLayerId = SelectedBuildingOutlineLayer,
+        color = Ink,
+        aboveLayerId = HomeBuildingOutlineLayer,
+    )
+}
+
+private fun Style.showBuildingHighlight(
+    feature: Feature?,
+    sourceId: String,
+    fillLayerId: String,
+    outlineLayerId: String,
+    color: Color,
+    aboveLayerId: String? = null,
+) {
+    val source = getSourceAs<GeoJsonSource>(sourceId)
+        ?: GeoJsonSource(sourceId).also(::addSource)
+    if (getLayer(fillLayerId) == null) {
+        val layer = FillLayer(fillLayerId, sourceId).withProperties(
+            fillColor(color.toArgb()),
             fillOpacity(0.18f),
         )
         when {
+            aboveLayerId != null && getLayer(aboveLayerId) != null ->
+                addLayerAbove(layer, aboveLayerId)
             getLayer(SatelliteLayer) != null -> addLayerAbove(layer, SatelliteLayer)
             getLayer(MapBuildingLayer) != null -> addLayerAbove(layer, MapBuildingLayer)
             else -> addLayer(layer)
         }
     }
-    if (getLayer(HomeBuildingOutlineLayer) == null) {
+    if (getLayer(outlineLayerId) == null) {
         addLayerAbove(
-            LineLayer(HomeBuildingOutlineLayer, HomeBuildingSource).withProperties(
-                lineColor(Ink.toArgb()),
+            LineLayer(outlineLayerId, sourceId).withProperties(
+                lineColor(color.toArgb()),
                 lineWidth(3f),
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
             ),
-            HomeBuildingFillLayer,
+            fillLayerId,
         )
     }
-    val features = highlightedBuildingFeatures(home, selected)
-    if (features.isEmpty()) {
+    if (feature == null) {
         source.setGeoJson("""{"type":"FeatureCollection","features":[]}""")
     } else {
-        source.setGeoJson(FeatureCollection.fromFeatures(features))
+        source.setGeoJson(FeatureCollection.fromFeature(feature))
     }
 }

@@ -131,6 +131,8 @@ internal enum class MapControlColor(
         get() = if (color.luminance() > 0.3f) Ink else Color.White
 }
 
+internal val HomeBuildingGold = MapControlColor.YELLOW.color
+
 internal enum class SpurColorTheme(
     val label: String,
     val primary: MapControlColor,

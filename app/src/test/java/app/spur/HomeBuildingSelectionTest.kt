@@ -86,14 +86,8 @@ class HomeBuildingSelectionTest {
         val home = buildingFeature(longitude = 13.0)
         val selected = buildingFeature(longitude = 13.001)
 
-        assertEquals(
-            listOf(home, selected),
-            highlightedBuildingFeatures(home, selected),
-        )
-        assertEquals(
-            listOf(home),
-            highlightedBuildingFeatures(home, home),
-        )
+        assertEquals(selected, selectedBuildingHighlight(home, selected))
+        assertEquals(null, selectedBuildingHighlight(home, home))
     }
 
     @Test
