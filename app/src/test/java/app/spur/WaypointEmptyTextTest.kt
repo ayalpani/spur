@@ -7,7 +7,7 @@ class WaypointEmptyTextTest {
     @Test
     fun emptyTextReflectsTourState() {
         assertEquals(
-            "Starte eine Tour, um Wegpunkte aufzuzeichnen.",
+            "",
             waypointEmptyText(hasActiveTour = false, hasDisplayedTour = false),
         )
         assertEquals(

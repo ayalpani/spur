@@ -102,8 +102,9 @@ internal fun MapPage(
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
     )
+    val isWaypointRailVisible = tour != null || activeTour != null
     val mapActionsBottomPadding =
-        WaypointRailHeight +
+        (if (isWaypointRailVisible) WaypointRailHeight else 0.dp) +
             MapControlVerticalPadding +
             if (usesStackedMapPlayer) MapControlSize + MapControlGap else 0.dp
     val scope = rememberCoroutineScope()
@@ -649,7 +650,7 @@ internal fun MapPage(
                             top = MapControlVerticalPadding,
                             end = MapControlHorizontalPadding,
                             bottom = MapControlVerticalPadding +
-                                WaypointRailHeight,
+                                if (isWaypointRailVisible) WaypointRailHeight else 0.dp,
                         )
                         .fillMaxWidth()
                         .widthIn(max = 560.dp),
@@ -712,7 +713,7 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = isMapReady,
+                visible = isMapReady && isWaypointRailVisible,
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = slideInVertically(
                     animationSpec = tween(MotionDurationDefaultMillis),

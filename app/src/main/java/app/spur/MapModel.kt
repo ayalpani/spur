@@ -103,7 +103,7 @@ internal fun waypointEmptyText(
 ): String = when {
     hasActiveTour -> "Warte auf GPS-Signal …"
     hasDisplayedTour -> "Keine Wegpunkte aufgezeichnet."
-    else -> "Starte eine Tour, um Wegpunkte aufzuzeichnen."
+    else -> ""
 }
 
 internal fun mapControlColorFromStored(
