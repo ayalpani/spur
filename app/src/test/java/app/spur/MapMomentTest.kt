@@ -50,15 +50,16 @@ class MapMomentTest {
 
     @Test
     fun personaUsesItsOwnExactMapCoordinate() {
-        assertTrue(personaFeatureCollection(null).features().orEmpty().isEmpty())
+        assertNull(personaFeature(null))
 
-        val feature = personaFeatureCollection(
+        val feature = personaFeature(
             SpurCoordinate(latitude = 52.52, longitude = 13.405),
-        ).features().orEmpty().single()
+        )!!
         val point = feature.geometry() as org.maplibre.geojson.Point
 
         assertEquals(13.405, point.longitude(), 0.0)
         assertEquals(52.52, point.latitude(), 0.0)
+        assertEquals(1, feature.getNumberProperty(MapPersonaProperty))
     }
 
     @Test

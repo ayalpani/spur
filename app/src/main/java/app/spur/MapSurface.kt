@@ -133,6 +133,7 @@ internal fun MapSurface(
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
     val currentLocationPulseGeneration by rememberUpdatedState(locationPulseGeneration)
+    val personaColors = LocalMapControlColors.current.inverted
     val signalColor = LocalSignalColor.current
     val currentLocationPulseColor by rememberUpdatedState(signalColor)
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
@@ -448,6 +449,21 @@ internal fun MapSurface(
         val clickListener = MapLibreMap.OnMapClickListener { point ->
             val readyMap = map ?: return@OnMapClickListener false
             val screenPoint = readyMap.projection.toScreenLocation(point)
+            val cluster = readyMap.queryRenderedFeatures(
+                screenPoint,
+                MapPersonaClusterLayer,
+                MapMomentClusterLayer,
+            ).firstOrNull()
+            if (cluster != null) {
+                val source = readyMap.style?.getSourceAs<GeoJsonSource>(MapMomentSource)
+                    ?: return@OnMapClickListener false
+                val expansionZoom = source.getClusterExpansionZoom(cluster).toDouble()
+                readyMap.animateCamera(
+                    CameraUpdateFactory.newLatLngZoom(point, expansionZoom),
+                    MapRotationAnimationMillis.toInt(),
+                )
+                return@OnMapClickListener true
+            }
             val location = if (
                 currentManualLocation == null &&
                 currentSelectedTrackPoint == null
@@ -473,20 +489,6 @@ internal fun MapSurface(
                 )
             ) {
                 currentOnLocationClick()
-                return@OnMapClickListener true
-            }
-            val cluster = readyMap.queryRenderedFeatures(
-                screenPoint,
-                MapMomentClusterLayer,
-            ).firstOrNull()
-            if (cluster != null) {
-                val source = readyMap.style?.getSourceAs<GeoJsonSource>(MapMomentSource)
-                    ?: return@OnMapClickListener false
-                val expansionZoom = source.getClusterExpansionZoom(cluster).toDouble()
-                readyMap.animateCamera(
-                    CameraUpdateFactory.newLatLngZoom(point, expansionZoom),
-                    MapRotationAnimationMillis.toInt(),
-                )
                 return@OnMapClickListener true
             }
             val momentId = readyMap.queryRenderedFeatures(
@@ -726,12 +728,12 @@ internal fun MapSurface(
         }
     }
 
-    LaunchedEffect(mapMoments, momentImageRevision, signalColor) {
+    LaunchedEffect(mapMoments, momentImageRevision, personaColors) {
         preparedMapMoments = withContext(Dispatchers.IO) {
             prepareMapMoments(
                 context = context.applicationContext,
                 moments = mapMoments,
-                personaColor = signalColor,
+                personaColors = personaColors,
             )
         }
     }
