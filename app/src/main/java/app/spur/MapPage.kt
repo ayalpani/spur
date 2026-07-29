@@ -409,7 +409,6 @@ internal fun MapPage(
                 followRequest = followRequest,
                 tourOverviewRequest = tourOverviewRequest,
                 isFollowingLocation = isFollowingLocation,
-                isTrackingActive = isTourActive,
                 locationPulseGeneration = requestedLocationPulseGeneration,
                 isSatelliteView = isSatelliteView,
                 manualLocation = manualLocation,

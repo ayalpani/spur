@@ -59,7 +59,6 @@ internal fun MapSurface(
     followRequest: Int,
     tourOverviewRequest: Int,
     isFollowingLocation: Boolean,
-    isTrackingActive: Boolean,
     locationPulseGeneration: Long,
     isSatelliteView: Boolean,
     manualLocation: SpurCoordinate?,
@@ -120,7 +119,7 @@ internal fun MapSurface(
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
     val currentLocationPulseGeneration by rememberUpdatedState(locationPulseGeneration)
     val currentLocationPulseColor by rememberUpdatedState(
-        if (isTrackingActive) trailColors.fill else Ink,
+        if (isFollowingLocation) trailColors.fill else Ink,
     )
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
     val currentDefaultMapBearing by rememberUpdatedState(defaultMapBearing)
@@ -740,7 +739,7 @@ internal fun MapSurface(
 
     LaunchedEffect(
         mapStyleRevision,
-        isTrackingActive,
+        isFollowingLocation,
         trailColors.fill,
     ) {
         if (mapStyleRevision == 0) return@LaunchedEffect
