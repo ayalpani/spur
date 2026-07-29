@@ -13,7 +13,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,7 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -88,26 +86,60 @@ internal fun MapIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    secondary: Boolean = false,
+    contentColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
-    val controlColors = LocalMapControlColors.current
-    IconButton(
+    val selectedColors = LocalMapControlColors.current
+    val style = if (secondary) {
+        secondaryMapControlStyle(selectedColors)
+    } else {
+        MapControlButtonStyle(colors = selectedColors)
+    }
+    val colors = IconButtonDefaults.filledIconButtonColors(
+        containerColor = style.colors.background,
+        contentColor = contentColor ?: style.colors.foreground,
+    )
+    Surface(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier
             .size(MapControlSize)
             .mapControlShadow(CircleShape)
             .semantics { this.contentDescription = contentDescription },
-        colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = controlColors.background,
-            contentColor = controlColors.foreground,
-        ),
+        shape = CircleShape,
+        color = if (enabled) colors.containerColor else colors.disabledContainerColor,
+        contentColor = if (enabled) colors.contentColor else colors.disabledContentColor,
+        border = style.border,
     ) {
-        CompositionLocalProvider(
-            LocalLucideStrokeWidth provides LucideBoldStrokeWidth,
-            content = content,
-        )
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            CompositionLocalProvider(
+                LocalLucideStrokeWidth provides LucideBoldStrokeWidth,
+                content = content,
+            )
+        }
     }
+}
+
+internal data class MapControlButtonStyle(
+    val colors: MapControlColors,
+    val border: BorderStroke? = null,
+)
+
+internal fun secondaryMapControlStyle(
+    colors: MapControlColors,
+): MapControlButtonStyle {
+    val inverted = colors.inverted
+    return MapControlButtonStyle(
+        colors = inverted,
+        border = BorderStroke(
+            width = 3.dp,
+            color = inverted.foreground.copy(alpha = 0.25f),
+        ),
+    )
 }
 
 @Composable
@@ -118,7 +150,7 @@ internal fun MapStyleButton(
     fallbackPreview: Int,
     onClick: () -> Unit,
 ) {
-    val tourControlColors = LocalMapControlColors.current.inverted
+    val secondaryStyle = secondaryMapControlStyle(LocalMapControlColors.current)
     val previewShape = CircleShape
     val blurRadius by animateDpAsState(
         targetValue = if (isLoading) 7.dp else 0.dp,
@@ -133,7 +165,7 @@ internal fun MapStyleButton(
             .semantics { this.contentDescription = contentDescription },
         shape = previewShape,
         color = Color.Transparent,
-        border = BorderStroke(3.dp, tourControlColors.background),
+        border = secondaryStyle.border,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val previewModifier = Modifier

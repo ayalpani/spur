@@ -12,6 +12,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
@@ -19,18 +20,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -50,10 +52,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.io.File
 
-private val CameraChrome = Color.Black.copy(alpha = 0.42f)
+internal val CameraChrome = Color.Black.copy(alpha = 0.42f)
 
 @Composable
 internal fun CameraScreen(
@@ -96,33 +99,43 @@ internal fun CameraScreen(
         val mainExecutor = ContextCompat.getMainExecutor(context)
         var disposed = false
 
-        providerFuture.addListener(
-            {
-                if (disposed) return@addListener
-                runCatching {
-                    val provider = providerFuture.get()
-                    val preview = Preview.Builder().build().also {
-                        it.surfaceProvider = previewView.surfaceProvider
-                    }
-                    val capture = ImageCapture.Builder()
-                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                        .build()
-                    val selector = CameraSelector.Builder()
-                        .requireLensFacing(lensFacing)
-                        .build()
-
-                    provider.unbindAll()
-                    provider.bindToLifecycle(lifecycleOwner, selector, preview, capture)
-                    imageCapture = capture
-                }.onFailure {
-                    showFeedbackNotice(
-                        FeedbackNoticeKind.ERROR,
-                        "Die Kamera konnte nicht geöffnet werden.",
-                    )
+        fun bindCamera() {
+            if (disposed) return
+            runCatching {
+                val provider = providerFuture.get()
+                val preview = Preview.Builder().build().also {
+                    it.surfaceProvider = previewView.surfaceProvider
                 }
-            },
-            mainExecutor,
-        )
+                val capture = ImageCapture.Builder()
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    .build()
+                val selector = CameraSelector.Builder()
+                    .requireLensFacing(lensFacing)
+                    .build()
+                val useCases = UseCaseGroup.Builder()
+                    .addUseCase(preview)
+                    .addUseCase(capture)
+                    .setViewPort(requireNotNull(previewView.viewPort))
+                    .build()
+
+                provider.unbindAll()
+                provider.bindToLifecycle(lifecycleOwner, selector, useCases)
+                imageCapture = capture
+            }.onFailure {
+                showFeedbackNotice(
+                    FeedbackNoticeKind.ERROR,
+                    "Die Kamera konnte nicht geöffnet werden.",
+                )
+            }
+        }
+
+        providerFuture.addListener({
+            if (previewView.viewPort == null) {
+                previewView.doOnLayout { bindCamera() }
+            } else {
+                bindCamera()
+            }
+        }, mainExecutor)
 
         onDispose {
             disposed = true
@@ -153,7 +166,8 @@ internal fun CameraScreen(
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
                     .padding(18.dp)
-                    .size(52.dp),
+                    .size(52.dp)
+                    .semantics { contentDescription = "Kamera schließen" },
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = CameraChrome,
                     contentColor = Color.White,
@@ -174,7 +188,8 @@ internal fun CameraScreen(
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
                     .padding(end = 26.dp, bottom = 25.dp)
-                    .size(58.dp),
+                    .size(58.dp)
+                    .semantics { contentDescription = "Kamera wechseln" },
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = CameraChrome,
                     contentColor = Color.White,
@@ -226,48 +241,43 @@ internal fun CameraScreen(
             )
         } else {
             val bitmap = remember(photo) { decodePreviewBitmap(photo) }
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Aufgenommenes Foto",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
+            Column(
+                modifier = Modifier.fillMaxSize(),
             ) {
-                Button(
-                    onClick = {
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    if (bitmap != null) {
+                        val photoAspectRatio =
+                            bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)
+                        val mediaModifier = if (maxWidth / maxHeight > photoAspectRatio) {
+                            Modifier
+                                .fillMaxHeight()
+                                .aspectRatio(photoAspectRatio)
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(photoAspectRatio)
+                        }
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "Aufgenommenes Foto",
+                            modifier = mediaModifier,
+                            alignment = Alignment.TopCenter,
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                }
+                AnimatedMediaConfirmationPanel(
+                    onDiscard = {
                         photo.delete()
                         capturedPhoto = null
                     },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 6.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black,
-                    ),
-                ) {
-                    Text("Verwerfen")
-                }
-                Button(
-                    onClick = { onPhotoAccepted(photo) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 6.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black,
-                    ),
-                ) {
-                    Text("Verwenden")
-                }
+                    onAccept = { onPhotoAccepted(photo) },
+                )
             }
         }
     }
@@ -295,14 +305,14 @@ private fun decodePreviewBitmap(file: File): Bitmap? =
     }.getOrNull()
 
 @Composable
-private fun CloseCameraIcon() = LucideIcon(
+internal fun CloseCameraIcon() = LucideIcon(
     paths = listOf("M18 6 6 18", "m6 6 12 12"),
     modifier = Modifier.size(24.dp),
     strokeWidth = LucideBoldStrokeWidth,
 )
 
 @Composable
-private fun SwitchCameraIcon() = LucideIcon(
+internal fun SwitchCameraIcon() = LucideIcon(
     paths = listOf(
         "M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5",
         "M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5",

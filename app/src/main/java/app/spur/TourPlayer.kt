@@ -294,7 +294,10 @@ private fun SwipeStopPrompt(
 }
 
 @Composable
-internal fun LucideStopIcon(color: Color) = LucideIcon(
+internal fun LucideStopIcon(
+    color: Color,
+    contentDescription: String? = "Tour beenden",
+) = LucideIcon(
     paths = listOf(
         "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2",
     ),
@@ -302,7 +305,13 @@ internal fun LucideStopIcon(color: Color) = LucideIcon(
     strokeWidth = LucideBoldStrokeWidth,
     modifier = Modifier
         .size(24.dp)
-        .semantics { contentDescription = "Tour beenden" },
+        .then(
+            if (contentDescription == null) {
+                Modifier
+            } else {
+                Modifier.semantics { this.contentDescription = contentDescription }
+            },
+        ),
 )
 
 internal fun formatKilometers(distanceMeters: Double): String =

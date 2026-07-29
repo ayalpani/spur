@@ -31,10 +31,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -203,6 +205,7 @@ internal fun MapPage(
     var mapInitializationStarted by remember { mutableStateOf(false) }
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
     var isMapGestureActive by remember { mutableStateOf(false) }
+    val areMapControlsVisible = isMapReady && !isMapGestureActive
     val startTourBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -215,8 +218,6 @@ internal fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val directionBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val buildingDetailsBottomSheetState =
-        rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val followOwnLocation: () -> Unit = {
         isTourOverview = false
         isFollowingLocation = true
@@ -403,7 +404,6 @@ internal fun MapPage(
         Box(modifier = Modifier.fillMaxSize()) {
             if (mapInitializationStarted) {
             MapSurface(
-                modifier = Modifier.zIndex(if (isMapGestureActive) 1f else 0f),
                 tourId = tour?.id,
                 tourDisplayRequest = tourDisplayRequest,
                 followRequest = followRequest,
@@ -491,10 +491,10 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = isMapReady,
+                visible = areMapControlsVisible,
                 modifier = Modifier.align(Alignment.BottomEnd),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
-                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
                 Column(
                     modifier = Modifier
@@ -515,6 +515,7 @@ internal fun MapPage(
                                         EditorDeleteTarget.Location(location.point)
                                 },
                                 enabled = routePoints.size > 1,
+                                secondary = true,
                             ) {
                                 PhotoDeleteIcon()
                             }
@@ -531,6 +532,7 @@ internal fun MapPage(
                                             ),
                                         )
                                 },
+                                secondary = true,
                             ) {
                                 PlusIcon()
                             }
@@ -538,6 +540,7 @@ internal fun MapPage(
                         MapIconButton(
                             contentDescription = "Editor schließen",
                             onClick = onCloseTourEditor,
+                            secondary = true,
                         ) {
                             PhotoCloseIcon()
                         }
@@ -545,6 +548,7 @@ internal fun MapPage(
                         MapIconButton(
                             contentDescription = "Hauptmenü öffnen",
                             onClick = { showMainMenu = true },
+                            secondary = true,
                         ) {
                             MenuIcon()
                         }
@@ -554,6 +558,7 @@ internal fun MapPage(
                             MapIconButton(
                                 contentDescription = "Tour bearbeiten",
                                 onClick = onEditTour,
+                                secondary = true,
                             ) {
                                 LucideIcon(
                                     paths = listOf(
@@ -570,6 +575,7 @@ internal fun MapPage(
                                 activeVoiceMoment = null
                                 onOpenHistory()
                             },
+                            secondary = true,
                         ) {
                             HistoryIcon()
                         }
@@ -578,19 +584,10 @@ internal fun MapPage(
                             onClick = {
                                 momentTarget = MomentPlacementTarget.CurrentLocation
                             },
+                            secondary = true,
+                            contentColor = MapControlColor.BLUE.color,
                         ) {
                             PlusIcon()
-                        }
-                        if (manualLocation != null) {
-                            MapIconButton(
-                                contentDescription = "Simulierten Standort zurücksetzen",
-                                onClick = {
-                                    context.saveManualLocation(null)
-                                    manualLocation = null
-                                },
-                            ) {
-                                LucideLocateOffIcon()
-                            }
                         }
                         MapIconButton(
                             contentDescription = when {
@@ -624,10 +621,10 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = isMapReady && !isTourEditing,
+                visible = areMapControlsVisible && !isTourEditing,
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
-                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
                 val mapStyleControl: @Composable () -> Unit = {
                     MapStyleButton(
@@ -659,7 +656,8 @@ internal fun MapPage(
                             modifier = modifier,
                         )
                     } else {
-                        val controlColors = LocalMapControlColors.current.inverted
+                        val secondaryStyle =
+                            secondaryMapControlStyle(LocalMapControlColors.current)
                         Button(
                             onClick = { showStartTourBottomSheet = true },
                             modifier = modifier
@@ -667,9 +665,10 @@ internal fun MapPage(
                                 .mapControlShadow(CircleShape),
                             shape = CircleShape,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = controlColors.background,
-                                contentColor = controlColors.foreground,
+                                containerColor = secondaryStyle.colors.background,
+                                contentColor = secondaryStyle.colors.foreground,
                             ),
+                            border = secondaryStyle.border,
                             elevation = ButtonDefaults.buttonElevation(
                                 defaultElevation = 0.dp,
                                 pressedElevation = 0.dp,
@@ -680,7 +679,7 @@ internal fun MapPage(
                         ) {
                             Text(
                                 text = "Tour starten",
-                                color = controlColors.foreground,
+                                color = secondaryStyle.colors.foreground,
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -704,7 +703,25 @@ internal fun MapPage(
                         horizontalArrangement = Arrangement.spacedBy(MapControlGap),
                         verticalAlignment = Alignment.Bottom,
                     ) {
-                        mapStyleControl()
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(MapControlGap),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            if (manualLocation != null) {
+                                MapIconButton(
+                                    contentDescription =
+                                        "Simulierten Standort zurücksetzen",
+                                    onClick = {
+                                        context.saveManualLocation(null)
+                                        manualLocation = null
+                                    },
+                                    secondary = true,
+                                ) {
+                                    LucideLocateOffIcon()
+                                }
+                            }
+                            mapStyleControl()
+                        }
                         playerControl(Modifier.weight(1f))
                         if (!usesStackedMapPlayer) {
                             Spacer(modifier = Modifier.size(MapControlSize))
@@ -838,6 +855,30 @@ internal fun MapPage(
                     }
                 }
             }
+
+            selectedBuilding?.let { building ->
+                val closeBuildingDetails: () -> Unit = {
+                    selectedBuilding = null
+                }
+                BackHandler(onBack = closeBuildingDetails)
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .zIndex(3f),
+                    shape = RoundedCornerShape(
+                        topStart = 28.dp,
+                        topEnd = 28.dp,
+                    ),
+                    color = SheetBackground,
+                    shadowElevation = 16.dp,
+                ) {
+                    BuildingDetailsBottomSheet(
+                        coordinate = building.coordinate,
+                        onBack = closeBuildingDetails,
+                    )
+                }
+            }
         }
     }
 
@@ -846,36 +887,19 @@ internal fun MapPage(
             onDismissRequest = { showStartTourBottomSheet = false },
             sheetState = startTourBottomSheetState,
         ) {
-            StartTourBottomSheet(
-                onStartTour = {
-                    if (isStartingTour) return@StartTourBottomSheet
-                    isStartingTour = true
-                    scope.launch {
-                        startTourBottomSheetState.hide()
-                        showStartTourBottomSheet = false
-                        onStartTour()
-                    }
-                },
-            )
-        }
-    }
-
-    selectedBuilding?.let { building ->
-        val closeBuildingDetails: () -> Unit = {
-            scope.launch {
-                buildingDetailsBottomSheetState.hide()
-                selectedBuilding = null
+            CompositionLocalProvider(LocalMapControlColors provides mapControlColors) {
+                StartTourBottomSheet(
+                    onStartTour = {
+                        if (isStartingTour) return@StartTourBottomSheet
+                        isStartingTour = true
+                        scope.launch {
+                            startTourBottomSheetState.hide()
+                            showStartTourBottomSheet = false
+                            onStartTour()
+                        }
+                    },
+                )
             }
-        }
-        SpurModalBottomSheet(
-            onDismissRequest = { selectedBuilding = null },
-            sheetState = buildingDetailsBottomSheetState,
-        ) {
-            BackHandler(onBack = closeBuildingDetails)
-            BuildingDetailsBottomSheet(
-                coordinate = building.coordinate,
-                onBack = closeBuildingDetails,
-            )
         }
     }
 
@@ -1328,31 +1352,33 @@ internal fun MapPage(
         }
     }
 
-    MomentComposer(
-        target = momentTarget,
-        showFeedbackNotice = showFeedbackNotice,
-        onDismiss = { momentTarget = null },
-        onMomentAccepted = { target, moment ->
-            when (target) {
-                MomentPlacementTarget.CurrentLocation -> pendingMoment = moment
-                is MomentPlacementTarget.RecordedLocation -> {
-                    val savedMoment = MapMoment(
-                        id = moment.id,
-                        type = moment.type,
-                        latitude = target.coordinate.latitude,
-                        longitude = target.coordinate.longitude,
-                        payload = moment.payload,
-                        tourId = target.tourId,
-                        trackPointId = target.trackPointId,
-                    )
-                    val updatedMoments = mapMoments + savedMoment
-                    context.saveMapMoments(updatedMoments)
-                    mapMoments = updatedMoments
+    CompositionLocalProvider(LocalMapControlColors provides mapControlColors) {
+        MomentComposer(
+            target = momentTarget,
+            showFeedbackNotice = showFeedbackNotice,
+            onDismiss = { momentTarget = null },
+            onMomentAccepted = { target, moment ->
+                when (target) {
+                    MomentPlacementTarget.CurrentLocation -> pendingMoment = moment
+                    is MomentPlacementTarget.RecordedLocation -> {
+                        val savedMoment = MapMoment(
+                            id = moment.id,
+                            type = moment.type,
+                            latitude = target.coordinate.latitude,
+                            longitude = target.coordinate.longitude,
+                            payload = moment.payload,
+                            tourId = target.tourId,
+                            trackPointId = target.trackPointId,
+                        )
+                        val updatedMoments = mapMoments + savedMoment
+                        context.saveMapMoments(updatedMoments)
+                        mapMoments = updatedMoments
+                    }
                 }
-            }
-            momentTarget = null
-        },
-    )
+                momentTarget = null
+            },
+        )
+    }
 
     photoDetail?.let { moment ->
         val photos = remember(visibleMapMoments) {

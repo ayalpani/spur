@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
@@ -80,18 +79,10 @@ internal fun StartTourBottomSheet(
             style = MaterialTheme.typography.bodyLarge,
         )
         Spacer(modifier = Modifier.height(24.dp))
-        Button(
+        SpurPrimaryButton(
+            label = "Los geht’s",
             onClick = onStartTour,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = CircleShape,
-        ) {
-            Text(
-                text = "Los geht’s",
-                fontWeight = FontWeight.Bold,
-            )
-        }
+        )
     }
 }
 

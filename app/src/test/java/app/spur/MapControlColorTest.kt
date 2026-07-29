@@ -1,6 +1,8 @@
 package app.spur
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -63,5 +65,43 @@ class MapControlColorTest {
 
         assertEquals(Color.White, selected.inverted.background)
         assertEquals(Color(0xFF2563EB), selected.inverted.foreground)
+    }
+
+    @Test
+    fun secondaryMapButtonInvertsTheSelectedColors() {
+        val selected = MapControlColors(
+            background = Color.Black,
+            foreground = Color.White,
+        )
+        val secondary = secondaryMapControlStyle(selected)
+
+        assertEquals(selected.inverted, secondary.colors)
+        assertEquals(3.dp, secondary.border?.width)
+        assertEquals(
+            selected.inverted.foreground.copy(alpha = 0.25f),
+            (secondary.border?.brush as SolidColor).value,
+        )
+    }
+
+    @Test
+    fun secondaryButtonUsesASelectedColorThatStaysVisibleOnWhite() {
+        assertEquals(
+            Color.Black,
+            secondaryButtonContentColor(
+                MapControlColors(background = Color.Black, foreground = Color.White),
+            ),
+        )
+        assertEquals(
+            Color.Black,
+            secondaryButtonContentColor(
+                MapControlColors(background = Color.White, foreground = Color.Black),
+            ),
+        )
+        assertEquals(
+            Ink,
+            secondaryButtonContentColor(
+                MapControlColors(background = Color.White, foreground = Color.Yellow),
+            ),
+        )
     }
 }

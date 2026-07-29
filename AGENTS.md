@@ -21,6 +21,33 @@ instrumentation tests must run on a disposable emulator or a dedicated test
 profile. Use only `adb install -r`/`spurctl start` for the personal device after
 confirming that the command preserves app data.
 
+## Design system
+
+- Use `SpurPrimaryButton` for the promoted action in sheets and forms.
+- Its background and foreground come from the user's selected
+  `LocalMapControlColors`; the default is black with white text.
+- Primary labels use the component's shared `titleLarge` semibold typography.
+- Use `SpurSecondaryButton` for secondary actions. It matches the primary
+  button's 60 dp height and typography, with a transparent background and a
+  1 dp black outline at 50% opacity.
+- Use `MapIconButton(secondary = true)` for secondary controls drawn over a
+  map. All secondary map controls use `secondaryMapControlStyle`: it inverts
+  the selected colors and adds the shared 3 dp outline using the secondary
+  font color at 25% opacity. Keep the shared round `Surface` so pressed
+  feedback fills the complete 60 dp control.
+- In the main map rail, keep the bottom location/follow control primary. Place
+  the secondary blue moment-add control immediately above it. Place the
+  manual-location reset above the map-style switcher on the left.
+- Treat the map-style switcher and the inactive `Tour starten` control as
+  secondary map controls using the same shared outline.
+- Fade the main map controls out and back in with
+  `MotionDurationDefaultMillis` around a direct map gesture; do not hide them
+  abruptly through a map z-index change.
+- Keep building details non-modal: no backdrop or full-screen input blocker;
+  the exposed map remains interactive while the sheet is open.
+- Keep destructive actions on the established red treatment instead of
+  overloading the primary-action colors.
+
 ## Refactoring rules
 
 - Make one behavior-neutral extraction per commit.
