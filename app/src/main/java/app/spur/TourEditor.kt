@@ -304,7 +304,7 @@ private fun TourEditorScreen(
                         }
                     }
                 }
-                EditorLocationRail(
+                WaypointRail(
                     locations = locations,
                     selectedPointId = selectedLocation.point.id,
                     onSelected = { selectedPointId = it },

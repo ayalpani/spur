@@ -88,7 +88,6 @@ internal fun StartTourBottomSheet(
 
 @Composable
 internal fun MainMenu(
-    onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
@@ -99,7 +98,6 @@ internal fun MainMenu(
             .navigationBarsPadding()
             .padding(bottom = 24.dp),
     ) {
-        SheetMenuItem(label = "History", onClick = onOpenHistory)
         SheetMenuItem(label = "Settings", onClick = onOpenSettings)
         SheetMenuItem(label = "Über Spur", onClick = onOpenAbout)
     }

@@ -97,6 +97,15 @@ internal data class SelectedBuilding(
 internal fun mapRotationFromStored(value: String?): MapRotation =
     MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH
 
+internal fun waypointEmptyText(
+    hasActiveTour: Boolean,
+    hasDisplayedTour: Boolean,
+): String = when {
+    hasActiveTour -> "Warte auf GPS-Signal …"
+    hasDisplayedTour -> "Keine Wegpunkte aufgezeichnet."
+    else -> "Starte eine Tour, um Wegpunkte aufzuzeichnen."
+}
+
 internal fun mapControlColorFromStored(
     value: String?,
     fallback: MapControlColor = MapControlColor.BLACK,

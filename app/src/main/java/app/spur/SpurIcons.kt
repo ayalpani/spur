@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.PathParser as ComposePathParser
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.semantics.contentDescription
@@ -123,16 +124,20 @@ internal fun PlusIcon() = LucideIcon(
 )
 
 @Composable
-internal fun WaypointsIcon() = LucideIcon(
+internal fun HistoryIcon() = LucideIcon(
     paths = listOf(
-        "m10.586 5.414-5.172 5.172",
-        "m18.586 13.414-5.172 5.172",
-        "M6 12h12",
-        "M14 20a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
-        "M14 4a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
-        "M22 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
-        "M6 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
+        "M4 12h.01",
+        "M4 16h.01",
+        "M4 20h.01",
+        "M4 4h.01",
+        "M4 8h.01",
+        "M9.414 13.414a2 2 0 0 0 1.414.586H19a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1h-8.172a2 2 0 0 0-1.414.586L8 12z",
+        "M9.414 21.414a2 2 0 0 0 1.414.586H19a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1h-8.172a2 2 0 0 0-1.414.586L8 20z",
+        "M9.414 5.414A2 2 0 0 0 10.828 6H19a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1h-8.172a2 2 0 0 0-1.414.586L8 4z",
     ),
+    modifier = Modifier
+        .size(32.dp)
+        .graphicsLayer { rotationZ = 90f },
     strokeWidth = LucideRegularStrokeWidth,
 )
 

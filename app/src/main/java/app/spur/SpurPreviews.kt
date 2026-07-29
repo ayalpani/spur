@@ -9,7 +9,6 @@ import androidx.compose.ui.platform.LocalContext
 @Composable
 private fun MapPagePreview() {
     MapPage(
-        store = TourStore(LocalContext.current),
         tour = null,
         activeTour = null,
         tourDisplayRequest = 0,
@@ -19,9 +18,6 @@ private fun MapPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
-        showWaypoints = false,
-        onShowWaypointsChange = {},
-        onRoutePointsChanged = {},
         onDeleteTour = {},
     )
 }
@@ -37,7 +33,6 @@ private fun ActiveTourPagePreview() {
         pointCount = 42,
     )
     MapPage(
-        store = TourStore(LocalContext.current),
         tour = tour,
         activeTour = tour,
         tourDisplayRequest = 0,
@@ -47,9 +42,6 @@ private fun ActiveTourPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
-        showWaypoints = false,
-        onShowWaypointsChange = {},
-        onRoutePointsChanged = {},
         onDeleteTour = {},
     )
 }
@@ -61,7 +53,7 @@ private fun HistoryPagePreview() {
         store = TourStore(LocalContext.current),
         revision = 0,
         onBack = {},
-        onShowWaypoints = {},
+        onSelectTour = {},
     )
 }
 

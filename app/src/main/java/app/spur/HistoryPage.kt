@@ -66,7 +66,7 @@ internal fun HistoryPage(
     revision: Long,
     isVisible: Boolean = true,
     onBack: () -> Unit,
-    onShowWaypoints: (Long) -> Unit,
+    onSelectTour: (Long) -> Unit,
     showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
     photoRevision: Long = 0L,
     onPhotoRotated: () -> Unit = {},
@@ -203,7 +203,7 @@ internal fun HistoryPage(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onShowWaypoints(tour.id) },
+                                .clickable { onSelectTour(tour.id) },
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             shape = RoundedCornerShape(20.dp),
                         ) {

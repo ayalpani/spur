@@ -107,12 +107,35 @@ internal fun EditorDeleteSheet(
 }
 
 @Composable
-internal fun EditorLocationRail(
+internal fun WaypointRail(
     locations: List<EditorLocation>,
-    selectedPointId: Long,
+    selectedPointId: Long?,
+    emptyText: String = "Keine Wegpunkte aufgezeichnet.",
     onSelected: (Long) -> Unit,
 ) {
-    val initialIndex = locations.indexOfFirst { it.point.id == selectedPointId }
+    if (locations.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(WaypointRailHeight)
+                .background(Color.White)
+                .padding(horizontal = 24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = emptyText,
+                color = Ink.copy(alpha = 0.46f),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        }
+        return
+    }
+
+    val resolvedSelectedPointId = selectedPointId ?: locations.last().point.id
+    val initialIndex = locations.indexOfFirst {
+        it.point.id == resolvedSelectedPointId
+    }
         .coerceAtLeast(0)
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val scope = rememberCoroutineScope()
@@ -171,11 +194,11 @@ internal fun EditorLocationRail(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .height(EditorLocationRailHeight)
+            .height(WaypointRailHeight)
             .background(Color.White),
     ) {
         val selectedIndex = locations.indexOfFirst {
-            it.point.id == selectedPointId
+            it.point.id == resolvedSelectedPointId
         }.coerceAtLeast(0)
         val itemWidth = 10.dp
         val edgePadding = (maxWidth - itemWidth) / 2
