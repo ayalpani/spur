@@ -423,6 +423,7 @@ internal fun MapSurface(
         }
 
         val moveListener = MapLibreMap.OnCameraMoveListener {
+            avoidanceRefreshPending = true
             if (currentManualLocation != null) publishManualLocationPosition()
             if (pendingMapMoment != null) publishPendingMomentPosition()
             if (currentSelectedTrackPoint != null) publishSelectedTrackPointPosition()
