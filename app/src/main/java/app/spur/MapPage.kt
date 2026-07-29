@@ -488,30 +488,6 @@ internal fun MapPage(
 
             AnimatedVisibility(
                 visible = areMapControlsVisible,
-                modifier = Modifier.align(Alignment.TopEnd),
-                enter = fadeIn(tween(MotionDurationDefaultMillis)),
-                exit = fadeOut(tween(MotionDurationDefaultMillis)),
-            ) {
-                MapIconButton(
-                    contentDescription = "History öffnen",
-                    onClick = {
-                        activeVoiceMoment = null
-                        onOpenHistory()
-                    },
-                    modifier = Modifier
-                        .statusBarsPadding()
-                        .padding(
-                            top = 14.dp,
-                            end = MapControlHorizontalPadding,
-                        ),
-                    secondary = true,
-                ) {
-                    HistoryIcon()
-                }
-            }
-
-            AnimatedVisibility(
-                visible = areMapControlsVisible,
                 modifier = Modifier.align(Alignment.BottomEnd),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
@@ -700,6 +676,16 @@ internal fun MapPage(
                                 ) {
                                     LucideLocateOffIcon()
                                 }
+                            }
+                            MapIconButton(
+                                contentDescription = "Letzte Touren öffnen",
+                                onClick = {
+                                    activeVoiceMoment = null
+                                    onOpenHistory()
+                                },
+                                secondary = true,
+                            ) {
+                                HistoryIcon()
                             }
                             mapStyleControl()
                         }

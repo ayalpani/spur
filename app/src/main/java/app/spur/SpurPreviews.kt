@@ -48,12 +48,11 @@ private fun ActiveTourPagePreview() {
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
-private fun HistoryPagePreview() {
-    HistoryPage(
+private fun HistoryBottomSheetPreview() {
+    HistoryBottomSheet(
         store = TourStore(LocalContext.current),
         revision = 0,
-        onBack = {},
-        onSelectTour = {},
+        onOpenTour = {},
     )
 }
 

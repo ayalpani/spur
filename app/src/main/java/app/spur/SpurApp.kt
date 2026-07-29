@@ -6,20 +6,17 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableLongStateOf
@@ -30,7 +27,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
@@ -41,11 +37,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 internal fun SpurApp(splashExitComplete: Boolean) {
     val context = LocalContext.current
     val store = remember { TourStore(context) }
@@ -65,6 +61,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     }
     val navController = rememberNavController()
     var isHistoryVisible by rememberSaveable { mutableStateOf(false) }
+    val historySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var feedbackNotice by remember { mutableStateOf<FeedbackNotice?>(null) }
     var feedbackNoticeId by remember { mutableLongStateOf(0L) }
     val showFeedbackNotice: ShowFeedbackNotice = { kind, message ->
@@ -281,36 +278,15 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         }
                     }
 
-                    val historyPanelOffset by animateFloatAsState(
-                        targetValue = if (isHistoryVisible) 0f else 1f,
-                        animationSpec = tween(
-                            durationMillis = PanelMotionDurationMillis,
-                            easing = FastOutSlowInEasing,
-                        ),
-                        label = "History panel offset",
-                    )
-                    BoxWithConstraints(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .zIndex(2f),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .offset {
-                                    IntOffset(
-                                        x = (constraints.maxWidth * historyPanelOffset)
-                                            .roundToInt(),
-                                        y = 0,
-                                    )
-                                },
+                    if (isHistoryVisible) {
+                        SpurModalBottomSheet(
+                            onDismissRequest = { isHistoryVisible = false },
+                            sheetState = historySheetState,
                         ) {
-                            HistoryPage(
+                            HistoryBottomSheet(
                                 store = store,
                                 revision = historyRevision,
-                                isVisible = isHistoryVisible,
-                                onBack = { isHistoryVisible = false },
-                                onSelectTour = { id ->
+                                onOpenTour = { id ->
                                     if (displayedTourId != id) {
                                         displayedTour = null
                                         routePoints = emptyList()
@@ -319,9 +295,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                     displayedTourRequest++
                                     isHistoryVisible = false
                                 },
-                                showFeedbackNotice = showFeedbackNotice,
-                                photoRevision = photoRevision,
-                                onPhotoRotated = { photoRevision++ },
                             )
                         }
                     }
