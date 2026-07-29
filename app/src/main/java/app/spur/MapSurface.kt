@@ -604,8 +604,11 @@ internal fun MapSurface(
             }
             currentSelectedTrackPoint?.let { point ->
                 map.locationComponent.cameraMode = CameraMode.NONE
-                val update = CameraUpdateFactory.newLatLng(
-                    LatLng(point.latitude, point.longitude),
+                val update = CameraUpdateFactory.newCameraPosition(
+                    org.maplibre.android.camera.CameraPosition.Builder(map.cameraPosition)
+                        .target(LatLng(point.latitude, point.longitude))
+                        .padding(0.0, 0.0, 0.0, 0.0)
+                        .build(),
                 )
                 if (selectedTrackPointRequest == 0L) {
                     map.moveCamera(update)
