@@ -13,7 +13,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,7 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -98,29 +96,31 @@ internal fun MapIconButton(
     } else {
         MapControlButtonStyle(colors = selectedColors)
     }
-    IconButton(
+    val colors = IconButtonDefaults.filledIconButtonColors(
+        containerColor = style.colors.background,
+        contentColor = contentColor ?: style.colors.foreground,
+    )
+    Surface(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier
             .size(MapControlSize)
             .mapControlShadow(CircleShape)
-            .then(
-                if (style.border != null) {
-                    Modifier.border(style.border, CircleShape)
-                } else {
-                    Modifier
-                },
-            )
             .semantics { this.contentDescription = contentDescription },
-        colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = style.colors.background,
-            contentColor = contentColor ?: style.colors.foreground,
-        ),
+        shape = CircleShape,
+        color = if (enabled) colors.containerColor else colors.disabledContainerColor,
+        contentColor = if (enabled) colors.contentColor else colors.disabledContentColor,
+        border = style.border,
     ) {
-        CompositionLocalProvider(
-            LocalLucideStrokeWidth provides LucideBoldStrokeWidth,
-            content = content,
-        )
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            CompositionLocalProvider(
+                LocalLucideStrokeWidth provides LucideBoldStrokeWidth,
+                content = content,
+            )
+        }
     }
 }
 

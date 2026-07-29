@@ -205,6 +205,7 @@ internal fun MapPage(
     var mapInitializationStarted by remember { mutableStateOf(false) }
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
     var isMapGestureActive by remember { mutableStateOf(false) }
+    val areMapControlsVisible = isMapReady && !isMapGestureActive
     val startTourBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -403,7 +404,6 @@ internal fun MapPage(
         Box(modifier = Modifier.fillMaxSize()) {
             if (mapInitializationStarted) {
             MapSurface(
-                modifier = Modifier.zIndex(if (isMapGestureActive) 1f else 0f),
                 tourId = tour?.id,
                 tourDisplayRequest = tourDisplayRequest,
                 followRequest = followRequest,
@@ -491,10 +491,10 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = isMapReady,
+                visible = areMapControlsVisible,
                 modifier = Modifier.align(Alignment.BottomEnd),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
-                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
                 Column(
                     modifier = Modifier
@@ -621,10 +621,10 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = isMapReady && !isTourEditing,
+                visible = areMapControlsVisible && !isTourEditing,
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
-                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
                 val mapStyleControl: @Composable () -> Unit = {
                     MapStyleButton(
