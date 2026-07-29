@@ -88,15 +88,30 @@ internal fun MapIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    secondary: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val controlColors = LocalMapControlColors.current
+    val controlColors = mapButtonColors(
+        colors = LocalMapControlColors.current,
+        secondary = secondary,
+    )
     IconButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier
             .size(MapControlSize)
             .mapControlShadow(CircleShape)
+            .then(
+                if (secondary) {
+                    Modifier.border(
+                        width = 1.dp,
+                        color = controlColors.foreground.copy(alpha = 0.5f),
+                        shape = CircleShape,
+                    )
+                } else {
+                    Modifier
+                },
+            )
             .semantics { this.contentDescription = contentDescription },
         colors = IconButtonDefaults.filledIconButtonColors(
             containerColor = controlColors.background,
@@ -109,6 +124,11 @@ internal fun MapIconButton(
         )
     }
 }
+
+internal fun mapButtonColors(
+    colors: MapControlColors,
+    secondary: Boolean,
+): MapControlColors = if (secondary) colors.inverted else colors
 
 @Composable
 internal fun MapStyleButton(

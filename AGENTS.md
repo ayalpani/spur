@@ -30,6 +30,9 @@ confirming that the command preserves app data.
 - Use `SpurSecondaryButton` for secondary actions. It matches the primary
   button's 60 dp height and typography, with a transparent background and a
   1 dp black outline at 50% opacity.
+- Use `MapIconButton(secondary = true)` for secondary controls drawn over a
+  map. It inverts the selected map-control colors and adds a 1 dp outline at
+  50% of the resulting foreground color.
 - Keep building details non-modal: no backdrop or full-screen input blocker;
   the exposed map remains interactive while the sheet is open.
 - Keep destructive actions on the established red treatment instead of

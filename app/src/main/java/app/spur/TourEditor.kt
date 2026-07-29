@@ -143,6 +143,7 @@ private fun TourEditorScreen(
                 MapIconButton(
                     contentDescription = "Editor schließen",
                     onClick = onBack,
+                    secondary = true,
                 ) {
                     BackIcon()
                 }

@@ -19,6 +19,10 @@ boundaries, not behavior or state architecture.
 | Home automation | home building/start point, geofence registration and exit receiver | SharedPreferences + Android geofencing |
 | History/editor/player | reading, displaying, trimming and playing stored tours | Compose + `TourStore` |
 
+Map overlay controls share `MapIconButton`. Its secondary variant swaps the
+user-selected map-control foreground and background colors and adds a 1 dp
+outline at 50% of the resulting foreground color.
+
 ## Data flow
 
 ```mermaid

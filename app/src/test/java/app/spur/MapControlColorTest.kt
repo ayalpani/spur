@@ -66,6 +66,17 @@ class MapControlColorTest {
     }
 
     @Test
+    fun secondaryMapButtonInvertsTheSelectedColors() {
+        val selected = MapControlColors(
+            background = Color.Black,
+            foreground = Color.White,
+        )
+
+        assertEquals(selected, mapButtonColors(selected, secondary = false))
+        assertEquals(selected.inverted, mapButtonColors(selected, secondary = true))
+    }
+
+    @Test
     fun secondaryButtonUsesASelectedColorThatStaysVisibleOnWhite() {
         assertEquals(
             Color.Black,

@@ -515,6 +515,7 @@ internal fun MapPage(
                                         EditorDeleteTarget.Location(location.point)
                                 },
                                 enabled = routePoints.size > 1,
+                                secondary = true,
                             ) {
                                 PhotoDeleteIcon()
                             }
@@ -531,6 +532,7 @@ internal fun MapPage(
                                             ),
                                         )
                                 },
+                                secondary = true,
                             ) {
                                 PlusIcon()
                             }
@@ -538,6 +540,7 @@ internal fun MapPage(
                         MapIconButton(
                             contentDescription = "Editor schließen",
                             onClick = onCloseTourEditor,
+                            secondary = true,
                         ) {
                             PhotoCloseIcon()
                         }
@@ -545,6 +548,7 @@ internal fun MapPage(
                         MapIconButton(
                             contentDescription = "Hauptmenü öffnen",
                             onClick = { showMainMenu = true },
+                            secondary = true,
                         ) {
                             MenuIcon()
                         }
@@ -554,6 +558,7 @@ internal fun MapPage(
                             MapIconButton(
                                 contentDescription = "Tour bearbeiten",
                                 onClick = onEditTour,
+                                secondary = true,
                             ) {
                                 LucideIcon(
                                     paths = listOf(
@@ -570,6 +575,7 @@ internal fun MapPage(
                                 activeVoiceMoment = null
                                 onOpenHistory()
                             },
+                            secondary = true,
                         ) {
                             HistoryIcon()
                         }
@@ -578,6 +584,7 @@ internal fun MapPage(
                             onClick = {
                                 momentTarget = MomentPlacementTarget.CurrentLocation
                             },
+                            secondary = true,
                         ) {
                             PlusIcon()
                         }
@@ -588,6 +595,7 @@ internal fun MapPage(
                                     context.saveManualLocation(null)
                                     manualLocation = null
                                 },
+                                secondary = true,
                             ) {
                                 LucideLocateOffIcon()
                             }
@@ -613,6 +621,7 @@ internal fun MapPage(
                                     followOwnLocation()
                                 }
                             },
+                            secondary = true,
                         ) {
                             FollowLocationIcon(
                                 selected = isFollowingLocation,
