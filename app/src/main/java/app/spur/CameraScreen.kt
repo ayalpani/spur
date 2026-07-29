@@ -12,6 +12,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
@@ -51,6 +52,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.io.File
 
@@ -97,33 +99,43 @@ internal fun CameraScreen(
         val mainExecutor = ContextCompat.getMainExecutor(context)
         var disposed = false
 
-        providerFuture.addListener(
-            {
-                if (disposed) return@addListener
-                runCatching {
-                    val provider = providerFuture.get()
-                    val preview = Preview.Builder().build().also {
-                        it.surfaceProvider = previewView.surfaceProvider
-                    }
-                    val capture = ImageCapture.Builder()
-                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                        .build()
-                    val selector = CameraSelector.Builder()
-                        .requireLensFacing(lensFacing)
-                        .build()
-
-                    provider.unbindAll()
-                    provider.bindToLifecycle(lifecycleOwner, selector, preview, capture)
-                    imageCapture = capture
-                }.onFailure {
-                    showFeedbackNotice(
-                        FeedbackNoticeKind.ERROR,
-                        "Die Kamera konnte nicht geöffnet werden.",
-                    )
+        fun bindCamera() {
+            if (disposed) return
+            runCatching {
+                val provider = providerFuture.get()
+                val preview = Preview.Builder().build().also {
+                    it.surfaceProvider = previewView.surfaceProvider
                 }
-            },
-            mainExecutor,
-        )
+                val capture = ImageCapture.Builder()
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    .build()
+                val selector = CameraSelector.Builder()
+                    .requireLensFacing(lensFacing)
+                    .build()
+                val useCases = UseCaseGroup.Builder()
+                    .addUseCase(preview)
+                    .addUseCase(capture)
+                    .setViewPort(requireNotNull(previewView.viewPort))
+                    .build()
+
+                provider.unbindAll()
+                provider.bindToLifecycle(lifecycleOwner, selector, useCases)
+                imageCapture = capture
+            }.onFailure {
+                showFeedbackNotice(
+                    FeedbackNoticeKind.ERROR,
+                    "Die Kamera konnte nicht geöffnet werden.",
+                )
+            }
+        }
+
+        providerFuture.addListener({
+            if (previewView.viewPort == null) {
+                previewView.doOnLayout { bindCamera() }
+            } else {
+                bindCamera()
+            }
+        }, mainExecutor)
 
         onDispose {
             disposed = true

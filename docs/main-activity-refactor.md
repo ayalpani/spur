@@ -67,7 +67,7 @@ checkpoints. Results and any deliberate file-size exception are recorded here.
 | Compose characterization | 2 onboarding instrumentation tests passed on Galaxy A54 |
 | Final automated gate | declaration-body comparison, JVM tests, debug build, and lint passed |
 | Final branch device smoke test | map/style/follow, tour start/stop, process restart, new history/editor entry, and moment composer passed |
-| Media confirmation follow-up | Full-aspect photo/video previews, synchronized 420 ms preview/panel transition, action panel above Android navigation, video play/pause/progress, and discard flow passed on Galaxy A54; JVM tests, build, and lint passed |
+| Media confirmation follow-up | CameraX photo viewport matches saved framing; full-aspect photo/video previews, synchronized 420 ms preview/panel transition, action panel above Android navigation, video play/pause/progress, and discard flow passed on Galaxy A54; JVM tests, build, and lint passed |
 
 Four cohesive declarations remain deliberately above the usual 500-line
 guideline: `MapPage` (screen/state coordinator), `MapSurface` (single MapLibre

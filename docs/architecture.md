@@ -60,7 +60,9 @@ releases the current `MediaRecorder`/`MediaPlayer`. CameraX remains isolated in
 `CameraScreen` and `VideoCameraScreen`; both bind to the current lifecycle
 owner. `VideoConfirmationScreen` owns preview playback. Video recordings are
 finalized before preview, deleted when discarded, and retained only after the
-user confirms them. Photo and video confirmation share
+user confirms them. Photo preview and capture belong to the same CameraX
+`UseCaseGroup` and share the `PreviewView` viewport, so the saved photo contains
+exactly the framing shown in the camera. Photo and video confirmation share
 `AnimatedMediaConfirmationPanel`: the complete medium is fitted into the
 remaining top-centered preview area, with both dimensions constrained by its
 actual aspect ratio, while the fixed, non-draggable action panel occupies its
