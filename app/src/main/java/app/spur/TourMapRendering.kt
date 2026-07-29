@@ -2,8 +2,10 @@ package app.spur
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.toArgb
+import org.maplibre.android.location.LocationComponentConstants
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.Layer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
@@ -73,7 +75,7 @@ internal fun Style.showTourRoute(
             lineJoin(Property.LINE_JOIN_ROUND),
         )
         if (getLayer(TourRouteLayer) == null) {
-            addLayer(borderLayer)
+            addTourLayerBelowMarkers(borderLayer)
         } else {
             addLayerBelow(borderLayer, TourRouteLayer)
         }
@@ -82,7 +84,7 @@ internal fun Style.showTourRoute(
     }
     val routeLayer = getLayerAs<LineLayer>(TourRouteLayer)
     if (routeLayer == null) {
-        addLayer(
+        addTourLayerBelowMarkers(
             LineLayer(TourRouteLayer, TourRouteSource).withProperties(
                 lineColor(colors.fill.toArgb()),
                 lineWidth(TourRouteWidthPixels),
@@ -106,6 +108,20 @@ internal fun Style.showTourRoute(
         waypointLayer.setProperties(circleColor(colors.stroke.toArgb()))
     }
     source.setGeoJson(route)
+}
+
+private fun Style.addTourLayerBelowMarkers(layer: Layer) {
+    val markerLayer = when {
+        getLayer(MapMomentLayer) != null -> MapMomentLayer
+        getLayer(LocationComponentConstants.PULSING_CIRCLE_LAYER) != null ->
+            LocationComponentConstants.PULSING_CIRCLE_LAYER
+        else -> null
+    }
+    if (markerLayer == null) {
+        addLayer(layer)
+    } else {
+        addLayerBelow(layer, markerLayer)
+    }
 }
 
 internal fun Style.showSelectedTrackPoint(point: TrackPoint?) {
