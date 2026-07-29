@@ -190,9 +190,11 @@ internal fun BottomSheetHeader(
         if (onBack != null) {
             IconButton(
                 onClick = onBack,
-                modifier = Modifier.align(Alignment.CenterStart),
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .semantics { contentDescription = "Schließen" },
             ) {
-                BackIcon()
+                PhotoCloseIcon()
             }
         }
         Text(

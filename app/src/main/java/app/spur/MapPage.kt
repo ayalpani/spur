@@ -37,6 +37,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -213,6 +214,19 @@ internal fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val directionBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val aboutBottomSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    fun swapBottomSheets(
+        currentState: SheetState,
+        showNext: () -> Unit,
+        hideCurrent: () -> Unit,
+    ) {
+        showNext()
+        scope.launch {
+            currentState.hide()
+            hideCurrent()
+        }
+    }
     val followOwnLocation: () -> Unit = {
         isTourOverview = false
         isFollowingLocation = true
@@ -860,18 +874,18 @@ internal fun MapPage(
         ) {
             MainMenu(
                 onOpenSettings = {
-                    scope.launch {
-                        mainMenuState.hide()
-                        showMainMenu = false
-                        showSettingsMenu = true
-                    }
+                    swapBottomSheets(
+                        currentState = mainMenuState,
+                        showNext = { showSettingsMenu = true },
+                        hideCurrent = { showMainMenu = false },
+                    )
                 },
                 onOpenAbout = {
-                    scope.launch {
-                        mainMenuState.hide()
-                        showMainMenu = false
-                        showAboutBottomSheet = true
-                    }
+                    swapBottomSheets(
+                        currentState = mainMenuState,
+                        showNext = { showAboutBottomSheet = true },
+                        hideCurrent = { showMainMenu = false },
+                    )
                 },
             )
         }
@@ -879,16 +893,16 @@ internal fun MapPage(
 
     if (showSettingsMenu) {
         val closeSettingsMenu: () -> Unit = {
-            scope.launch {
-                settingsMenuState.hide()
-                showSettingsMenu = false
-                showMainMenu = true
-            }
+            swapBottomSheets(
+                currentState = settingsMenuState,
+                showNext = { showMainMenu = true },
+                hideCurrent = { showSettingsMenu = false },
+            )
         }
         SpurModalBottomSheet(
             onDismissRequest = {
-                showSettingsMenu = false
                 showMainMenu = true
+                showSettingsMenu = false
             },
             sheetState = settingsMenuState,
         ) {
@@ -896,32 +910,32 @@ internal fun MapPage(
             SettingsMenu(
                 onBack = closeSettingsMenu,
                 onOpenTour = {
-                    scope.launch {
-                        settingsMenuState.hide()
-                        showSettingsMenu = false
-                        showTourMenu = true
-                    }
+                    swapBottomSheets(
+                        currentState = settingsMenuState,
+                        showNext = { showTourMenu = true },
+                        hideCurrent = { showSettingsMenu = false },
+                    )
                 },
                 onOpenButtonColors = {
-                    scope.launch {
-                        settingsMenuState.hide()
-                        showSettingsMenu = false
-                        showButtonColorsBottomSheet = true
-                    }
+                    swapBottomSheets(
+                        currentState = settingsMenuState,
+                        showNext = { showButtonColorsBottomSheet = true },
+                        hideCurrent = { showSettingsMenu = false },
+                    )
                 },
                 onOpenTrailColors = {
-                    scope.launch {
-                        settingsMenuState.hide()
-                        showSettingsMenu = false
-                        showTrailColorsBottomSheet = true
-                    }
+                    swapBottomSheets(
+                        currentState = settingsMenuState,
+                        showNext = { showTrailColorsBottomSheet = true },
+                        hideCurrent = { showSettingsMenu = false },
+                    )
                 },
                 onOpenDirection = {
-                    scope.launch {
-                        settingsMenuState.hide()
-                        showSettingsMenu = false
-                        showDirectionBottomSheet = true
-                    }
+                    swapBottomSheets(
+                        currentState = settingsMenuState,
+                        showNext = { showDirectionBottomSheet = true },
+                        hideCurrent = { showSettingsMenu = false },
+                    )
                 },
             )
         }
@@ -941,16 +955,16 @@ internal fun MapPage(
 
     if (showTourMenu) {
         val closeTourMenu: () -> Unit = {
-            scope.launch {
-                tourMenuState.hide()
-                showTourMenu = false
-                showSettingsMenu = true
-            }
+            swapBottomSheets(
+                currentState = tourMenuState,
+                showNext = { showSettingsMenu = true },
+                hideCurrent = { showTourMenu = false },
+            )
         }
         SpurModalBottomSheet(
             onDismissRequest = {
-                showTourMenu = false
                 showSettingsMenu = true
+                showTourMenu = false
             },
             sheetState = tourMenuState,
         ) {
@@ -958,11 +972,11 @@ internal fun MapPage(
             TourMenu(
                 onBack = closeTourMenu,
                 onOpenHomeAutoStart = {
-                    scope.launch {
-                        tourMenuState.hide()
-                        showTourMenu = false
-                        showHomeAutoStartBottomSheet = true
-                    }
+                    swapBottomSheets(
+                        currentState = tourMenuState,
+                        showNext = { showHomeAutoStartBottomSheet = true },
+                        hideCurrent = { showTourMenu = false },
+                    )
                 },
                 onShareTour = if (isTourActive) {
                     {
@@ -977,11 +991,11 @@ internal fun MapPage(
                 },
                 onDeleteTour = tour?.let { visibleTour ->
                     {
-                        scope.launch {
-                            tourMenuState.hide()
-                            showTourMenu = false
-                            tourToDelete = visibleTour
-                        }
+                        swapBottomSheets(
+                            currentState = tourMenuState,
+                            showNext = { tourToDelete = visibleTour },
+                            hideCurrent = { showTourMenu = false },
+                        )
                     }
                 },
             )
@@ -991,19 +1005,19 @@ internal fun MapPage(
     if (showHomeAutoStartBottomSheet) {
         SpurModalBottomSheet(
             onDismissRequest = {
-                showHomeAutoStartBottomSheet = false
                 showTourMenu = true
+                showHomeAutoStartBottomSheet = false
             },
             sheetState = homeAutoStartBottomSheetState,
         ) {
             HomeAutoStartBottomSheet(
                 onSettingsChanged = { homeBuilding = it.homeBuilding },
                 onBack = {
-                    scope.launch {
-                        homeAutoStartBottomSheetState.hide()
-                        showHomeAutoStartBottomSheet = false
-                        showTourMenu = true
-                    }
+                    swapBottomSheets(
+                        currentState = homeAutoStartBottomSheetState,
+                        showNext = { showTourMenu = true },
+                        hideCurrent = { showHomeAutoStartBottomSheet = false },
+                    )
                 },
             )
         }
@@ -1011,11 +1025,11 @@ internal fun MapPage(
 
     if (showButtonColorsBottomSheet) {
         val closeButtonColors: () -> Unit = {
-            scope.launch {
-                buttonColorsBottomSheetState.hide()
-                showButtonColorsBottomSheet = false
-                showSettingsMenu = true
-            }
+            swapBottomSheets(
+                currentState = buttonColorsBottomSheetState,
+                showNext = { showSettingsMenu = true },
+                hideCurrent = { showButtonColorsBottomSheet = false },
+            )
         }
         val selectMapControlBackground: (MapControlColor) -> Unit = {
             mapControlBackground = it
@@ -1027,8 +1041,8 @@ internal fun MapPage(
         }
         SpurModalBottomSheet(
             onDismissRequest = {
-                showButtonColorsBottomSheet = false
                 showSettingsMenu = true
+                showButtonColorsBottomSheet = false
             },
             sheetState = buttonColorsBottomSheetState,
         ) {
@@ -1080,11 +1094,11 @@ internal fun MapPage(
 
     if (showTrailColorsBottomSheet) {
         val closeTrailColors: () -> Unit = {
-            scope.launch {
-                trailColorsBottomSheetState.hide()
-                showTrailColorsBottomSheet = false
-                showSettingsMenu = true
-            }
+            swapBottomSheets(
+                currentState = trailColorsBottomSheetState,
+                showNext = { showSettingsMenu = true },
+                hideCurrent = { showTrailColorsBottomSheet = false },
+            )
         }
         val selectTrailFill: (MapControlColor) -> Unit = {
             trailFillColor = it
@@ -1096,8 +1110,8 @@ internal fun MapPage(
         }
         SpurModalBottomSheet(
             onDismissRequest = {
-                showTrailColorsBottomSheet = false
                 showSettingsMenu = true
+                showTrailColorsBottomSheet = false
             },
             sheetState = trailColorsBottomSheetState,
         ) {
@@ -1148,6 +1162,13 @@ internal fun MapPage(
     }
 
     if (showDirectionBottomSheet) {
+        val closeDirection: () -> Unit = {
+            swapBottomSheets(
+                currentState = directionBottomSheetState,
+                showNext = { showSettingsMenu = true },
+                hideCurrent = { showDirectionBottomSheet = false },
+            )
+        }
         val compassRotation = remember {
             Animatable(-defaultMapRotation.bearing.toFloat())
         }
@@ -1166,8 +1187,8 @@ internal fun MapPage(
         }
         SpurModalBottomSheet(
             onDismissRequest = {
-                showDirectionBottomSheet = false
                 showSettingsMenu = true
+                showDirectionBottomSheet = false
             },
             sheetState = directionBottomSheetState,
         ) {
@@ -1179,13 +1200,7 @@ internal fun MapPage(
             ) {
                 BottomSheetHeader(
                     title = "Himmelsrichtung wählen",
-                    onBack = {
-                        scope.launch {
-                            directionBottomSheetState.hide()
-                            showDirectionBottomSheet = false
-                            showSettingsMenu = true
-                        }
-                    },
+                    onBack = closeDirection,
                 )
                 MapRotationPicker(
                     compassRotation = compassRotation.value,
@@ -1198,13 +1213,20 @@ internal fun MapPage(
     }
 
     if (showAboutBottomSheet) {
+        val closeAbout: () -> Unit = {
+            swapBottomSheets(
+                currentState = aboutBottomSheetState,
+                showNext = { showMainMenu = true },
+                hideCurrent = { showAboutBottomSheet = false },
+            )
+        }
         val uriHandler = LocalUriHandler.current
         SpurModalBottomSheet(
             onDismissRequest = {
-                showAboutBottomSheet = false
                 showMainMenu = true
+                showAboutBottomSheet = false
             },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            sheetState = aboutBottomSheetState,
         ) {
             Column(
                 modifier = Modifier
@@ -1215,10 +1237,7 @@ internal fun MapPage(
             ) {
                 BottomSheetHeader(
                     title = "Über Spur",
-                    onBack = {
-                        showAboutBottomSheet = false
-                        showMainMenu = true
-                    },
+                    onBack = closeAbout,
                 )
                 Text(
                     text = "Spur hält deine Wege und Erinnerungen privat auf deinem Gerät fest.",
