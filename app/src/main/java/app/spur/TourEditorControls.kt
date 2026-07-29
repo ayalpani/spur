@@ -240,29 +240,21 @@ internal fun WaypointRail(
                     contentAlignment = Alignment.BottomCenter,
                 ) {
                     if (index == 0) {
-                        Text(
-                            text = "Start",
+                        WaypointEndpointLabel(
+                            label = "Start",
+                            timestamp = location.point.recordedAt,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .offset(x = (-26).dp, y = (-10).dp)
-                                .requiredWidth(40.dp),
-                            color = Ink.copy(alpha = 0.28f),
-                            textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
+                                .offset(x = (-33).dp, y = (-2).dp),
                         )
                     }
                     if (index == locations.lastIndex) {
-                        Text(
-                            text = "Ende",
+                        WaypointEndpointLabel(
+                            label = "Ende",
+                            timestamp = location.point.recordedAt,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .offset(x = 26.dp, y = (-10).dp)
-                                .requiredWidth(40.dp),
-                            color = Ink.copy(alpha = 0.28f),
-                            textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
+                                .offset(x = 33.dp, y = (-2).dp),
                         )
                     }
                     Column(
@@ -294,6 +286,32 @@ internal fun WaypointRail(
                 .width(2.dp)
                 .height(32.dp)
                 .background(Ink, CircleShape),
+        )
+    }
+}
+
+@Composable
+private fun WaypointEndpointLabel(
+    label: String,
+    timestamp: Long,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.requiredWidth(56.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = label,
+            color = Ink.copy(alpha = 0.28f),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = formatClock(timestamp),
+            color = Ink.copy(alpha = 0.46f),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelSmall,
         )
     }
 }
