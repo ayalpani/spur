@@ -231,6 +231,7 @@ internal data class PersonaAvoidanceItem(
     val key: String,
     val anchor: Offset,
     val offset: Offset,
+    val preferredOffset: Offset? = null,
     val width: Float,
     val height: Float,
 )
@@ -255,7 +256,13 @@ internal fun avoidPersonaOverlaps(
                 item,
                 colliding.size + 8,
             )
-            val target = candidates
+            val preferred = item.preferredOffset
+                ?.let { itemRect(item.copy(offset = it)) }
+                ?.takeIf { candidate ->
+                    !candidate.overlaps(persona) &&
+                        occupied.none { it.overlaps(candidate.withPersonaGap()) }
+                }
+            val target = preferred ?: candidates
                 .filter { candidate ->
                     val padded = candidate.withPersonaGap()
                     occupied.none { it.overlaps(padded) }

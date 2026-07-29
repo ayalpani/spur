@@ -405,6 +405,7 @@ internal fun MapSurface(
                 readyMap.calculateMapMomentAvoidanceLayout(
                     location = location,
                     moments = moments,
+                    previousLayout = appliedAvoidanceLayout ?: MapMomentAvoidanceLayout(),
                     density = context.resources.displayMetrics.density,
                     mapWidth = mapView.width,
                     mapHeight = mapView.height,
@@ -923,6 +924,7 @@ internal fun MapSurface(
 private fun MapLibreMap.calculateMapMomentAvoidanceLayout(
     location: SpurCoordinate,
     moments: List<MapMoment>,
+    previousLayout: MapMomentAvoidanceLayout,
     density: Float,
     mapWidth: Int,
     mapHeight: Int,
@@ -955,6 +957,7 @@ private fun MapLibreMap.calculateMapMomentAvoidanceLayout(
                 key = key,
                 anchor = anchor,
                 offset = Offset.Zero,
+                preferredOffset = previousLayout.clusterOffsets[clusterId],
                 width = MomentClusterWidth.toFloat(),
                 height = MomentClusterHeight.toFloat(),
             )
@@ -967,6 +970,7 @@ private fun MapLibreMap.calculateMapMomentAvoidanceLayout(
                 key = key,
                 anchor = anchor,
                 offset = baseMomentOffsets[momentId] ?: Offset.Zero,
+                preferredOffset = previousLayout.momentOffsets[momentId],
                 width = MomentMarkerWidth.toFloat(),
                 height = MomentMarkerHeight.toFloat(),
             )

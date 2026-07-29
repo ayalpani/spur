@@ -200,6 +200,28 @@ class MapMomentTest {
     }
 
     @Test
+    fun personaAvoidanceKeepsAValidPreviousSlot() {
+        val previousRightSlot = Offset(74f, 43f)
+
+        assertEquals(
+            mapOf("marker" to previousRightSlot),
+            avoidPersonaOverlaps(
+                location = Offset(100f, 100f),
+                items = listOf(
+                    PersonaAvoidanceItem(
+                        key = "marker",
+                        anchor = Offset(100f, 100f),
+                        offset = Offset.Zero,
+                        preferredOffset = previousRightSlot,
+                        width = MomentMarkerWidth.toFloat(),
+                        height = MomentMarkerHeight.toFloat(),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun photoViewerUsesChronologicalOrder() {
         val newest = MapMoment(
             id = "photo-3000",
