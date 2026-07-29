@@ -78,6 +78,7 @@ internal suspend fun Context.deleteStoredTour(
             ?: return@withContext false
     }
     store.deleteTour(tourId)
+    deleteTourHistoryAssets(tourId)
     true
 }
 

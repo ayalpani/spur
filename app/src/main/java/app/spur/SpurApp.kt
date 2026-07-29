@@ -260,6 +260,16 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                         routePoints = result.second
                                         now = System.currentTimeMillis()
                                         historyRevision++
+                                        result.first?.let { finishedTour ->
+                                            if (
+                                                context.ensureTourHistoryAssets(
+                                                    finishedTour,
+                                                    result.second,
+                                                )
+                                            ) {
+                                                historyRevision++
+                                            }
+                                        }
                                     }
                                 },
                                 onOpenHistory = {
@@ -295,6 +305,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                     displayedTourRequest++
                                     isHistoryVisible = false
                                 },
+                                onDismiss = { isHistoryVisible = false },
                             )
                         }
                     }
