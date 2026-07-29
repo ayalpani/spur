@@ -54,7 +54,6 @@ internal val PhotoMapPreviewSize = 96.dp
 internal val LoaderAsteriskSize = 128.dp
 internal val LoaderTextGap = 20.dp
 internal val EditorLocationRailHeight = 96.dp
-internal val EditorMetricBarHeight = 68.dp
 internal const val PhotoMapPreviewZoom = 17.5
 internal const val TourRouteWidthPixels = 6f
 internal const val TourRouteBorderPerSidePixels = 4f

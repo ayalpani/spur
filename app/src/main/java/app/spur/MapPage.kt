@@ -107,7 +107,7 @@ internal fun MapPage(
         LocalConfiguration.current.screenWidthDp,
     )
     val mapActionsBottomPadding = if (isTourEditing) {
-        EditorLocationRailHeight + EditorMetricBarHeight + MapControlVerticalPadding
+        EditorLocationRailHeight + MapControlVerticalPadding
     } else {
         MapControlVerticalPadding +
             if (usesStackedMapPlayer) MapControlSize + MapControlGap else 0.dp
@@ -625,7 +625,7 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = areMapControlsVisible && !isTourEditing,
+                visible = areMapControlsVisible,
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
@@ -695,8 +695,11 @@ internal fun MapPage(
                     modifier = Modifier
                         .navigationBarsPadding()
                         .padding(
-                            horizontal = MapControlHorizontalPadding,
-                            vertical = MapControlVerticalPadding,
+                            start = MapControlHorizontalPadding,
+                            top = MapControlVerticalPadding,
+                            end = MapControlHorizontalPadding,
+                            bottom = MapControlVerticalPadding +
+                                if (isTourEditing) EditorLocationRailHeight else 0.dp,
                         )
                         .fillMaxWidth()
                         .widthIn(max = 560.dp),
@@ -711,7 +714,7 @@ internal fun MapPage(
                             verticalArrangement = Arrangement.spacedBy(MapControlGap),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            if (manualLocation != null) {
+                            if (!isTourEditing && manualLocation != null) {
                                 MapIconButton(
                                     contentDescription =
                                         "Simulierten Standort zurücksetzen",
@@ -726,38 +729,27 @@ internal fun MapPage(
                             }
                             mapStyleControl()
                         }
-                        playerControl(Modifier.weight(1f))
-                        if (!usesStackedMapPlayer) {
+                        if (isTourEditing) {
+                            val editedTour = tour
+                            val location = selectedEditorLocation
+                            if (editedTour != null && location != null) {
+                                TourSummaryPlayer(
+                                    tourId = editedTour.id,
+                                    distanceMeters = location.distanceFromStartMeters,
+                                    elapsedMillis = location.elapsedMillis,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(MapControlSize),
+                                )
+                            } else {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        } else {
+                            playerControl(Modifier.weight(1f))
+                        }
+                        if (isTourEditing || !usesStackedMapPlayer) {
                             Spacer(modifier = Modifier.size(MapControlSize))
                         }
-                    }
-                }
-            }
-
-            AnimatedVisibility(
-                visible = isMapReady &&
-                    isTourEditing &&
-                    tour != null,
-                modifier = Modifier.align(Alignment.BottomCenter),
-                enter = fadeIn(tween(MotionDurationDefaultMillis)),
-                exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
-            ) {
-                tour?.let { editedTour ->
-                    selectedEditorLocation?.let { location ->
-                        TourSummaryPlayer(
-                            tourId = editedTour.id,
-                            distanceMeters = location.distanceFromStartMeters,
-                            elapsedMillis = location.elapsedMillis,
-                            modifier = Modifier
-                                .navigationBarsPadding()
-                                .padding(
-                                    start = MapControlHorizontalPadding,
-                                    end = MapControlHorizontalPadding,
-                                    bottom = EditorLocationRailHeight + 8.dp,
-                                )
-                                .fillMaxWidth()
-                                .height(EditorMetricBarHeight - 8.dp),
-                        )
                     }
                 }
             }
