@@ -465,6 +465,7 @@ internal fun MapPage(
                         MomentType.EMOJI -> Unit
                     }
                 },
+                onLocationClick = followOwnLocation,
                 onBuildingClick = { selectedBuilding = it },
                 onManualLocationChanged = { location ->
                     context.saveManualLocation(location)

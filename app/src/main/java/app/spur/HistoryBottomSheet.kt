@@ -193,20 +193,16 @@ private fun HistorySheetHeader() {
 
 @Composable
 private fun HistorySectionHeader(label: String) {
-    Column(
+    Text(
+        text = label,
         modifier = Modifier
             .fillMaxWidth()
-            .background(SheetBackground),
-    ) {
-        HorizontalDivider(color = Ink.copy(alpha = 0.12f))
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        HorizontalDivider(color = Ink.copy(alpha = 0.12f))
-    }
+            .background(Mist)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        color = Ink,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+    )
 }
 
 @Composable

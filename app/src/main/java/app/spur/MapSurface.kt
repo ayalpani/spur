@@ -87,6 +87,7 @@ internal fun MapSurface(
     onMomentPlaced: (MapMoment) -> Unit,
     onMomentPlacementFailed: (PendingMapMoment) -> Unit,
     onMomentClick: (MapMoment, Offset) -> Unit,
+    onLocationClick: () -> Unit,
     onBuildingClick: (SelectedBuilding) -> Unit,
     onManualLocationChanged: (SpurCoordinate) -> Unit,
     onFollowingInterrupted: () -> Unit,
@@ -100,6 +101,7 @@ internal fun MapSurface(
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnMomentPlacementFailed by rememberUpdatedState(onMomentPlacementFailed)
     val currentOnMomentClick by rememberUpdatedState(onMomentClick)
+    val currentOnLocationClick by rememberUpdatedState(onLocationClick)
     val currentOnBuildingClick by rememberUpdatedState(onBuildingClick)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentOnFollowingInterrupted by rememberUpdatedState(onFollowingInterrupted)
@@ -394,6 +396,33 @@ internal fun MapSurface(
         val clickListener = MapLibreMap.OnMapClickListener { point ->
             val readyMap = map ?: return@OnMapClickListener false
             val screenPoint = readyMap.projection.toScreenLocation(point)
+            val location = if (
+                currentManualLocation == null &&
+                currentSelectedTrackPoint == null
+            ) {
+                readyMap.currentSpurCoordinate(context, manual = null)
+            } else {
+                null
+            }
+            val locationPoint = location?.let {
+                readyMap.projection.toScreenLocation(
+                    LatLng(it.latitude, it.longitude),
+                )
+            }
+            if (
+                locationPoint != null &&
+                isWithinLocationHitTarget(
+                    clickX = screenPoint.x,
+                    clickY = screenPoint.y,
+                    locationX = locationPoint.x,
+                    locationY = locationPoint.y,
+                    hitTargetSize = LocationPuckHitTargetDp *
+                        context.resources.displayMetrics.density,
+                )
+            ) {
+                currentOnLocationClick()
+                return@OnMapClickListener true
+            }
             val cluster = readyMap.queryRenderedFeatures(
                 screenPoint,
                 MapMomentClusterLayer,

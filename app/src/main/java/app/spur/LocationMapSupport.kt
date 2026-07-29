@@ -12,27 +12,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.core.content.ContextCompat
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.location.LocationComponentActivationOptions
-import org.maplibre.android.location.LocationComponentConstants
 import org.maplibre.android.location.LocationComponentOptions
 import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
-import org.maplibre.android.style.layers.Property
-import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
-import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
-import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
-import org.maplibre.android.style.layers.PropertyFactory.iconImage
-import org.maplibre.android.style.layers.PropertyFactory.iconPitchAlignment
-import org.maplibre.android.style.layers.PropertyFactory.iconRotationAlignment
-import org.maplibre.android.style.layers.PropertyFactory.iconTranslate
-import org.maplibre.android.style.layers.PropertyFactory.iconTranslateAnchor
-import org.maplibre.android.style.layers.PropertyFactory.visibility
-import org.maplibre.android.style.layers.SymbolLayer
 import java.io.File
 
 internal fun satelliteStyleBuilder(): Style.Builder {
@@ -65,10 +52,6 @@ internal fun enableLocationTracking(
     locationComponent.isLocationComponentEnabled = manualLocation == null
     locationComponent.renderMode = RenderMode.NORMAL
     locationComponent.cameraMode = CameraMode.NONE
-    style.showMapPersona(
-        context = context,
-        visible = manualLocation == null,
-    )
 
     val location = map.currentSpurCoordinate(
         context = context,
@@ -114,69 +97,6 @@ private fun LocationComponentOptions.Builder.spurLocationAppearance(
         .pulseMaxRadius(LocationPulseMaxRadius)
         .pulseAlpha(LocationPulseAlpha)
         .pulseInterpolator(AccelerateDecelerateInterpolator())
-
-private fun Style.showMapPersona(
-    context: Context,
-    visible: Boolean,
-) {
-    context.mapPersonaBitmap()?.let {
-        addImage(MapPersonaImage, it)
-    }
-    val layer = getLayerAs<SymbolLayer>(MapPersonaLayer)
-    if (layer == null) {
-        addLayerAbove(
-            SymbolLayer(
-                MapPersonaLayer,
-                LocationComponentConstants.LOCATION_SOURCE,
-            ).withProperties(
-                iconImage(MapPersonaImage),
-                iconAnchor(Property.ICON_ANCHOR_CENTER),
-                iconAllowOverlap(true),
-                iconIgnorePlacement(true),
-                iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
-                iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
-                iconTranslate(arrayOf(0f, -MapPersonaLiftPixels)),
-                iconTranslateAnchor(Property.ICON_TRANSLATE_ANCHOR_VIEWPORT),
-                visibility(
-                    if (visible) Property.VISIBLE else Property.NONE,
-                ),
-            ),
-            LocationComponentConstants.FOREGROUND_LAYER,
-        )
-    } else {
-        layer.setProperties(
-            visibility(
-                if (visible) Property.VISIBLE else Property.NONE,
-            ),
-        )
-    }
-}
-
-private fun Context.mapPersonaBitmap(): android.graphics.Bitmap? {
-    val halo = ContextCompat.getDrawable(
-        this,
-        R.drawable.ic_footprints_location_halo,
-    )?.mutate() ?: return null
-    val footprints = ContextCompat.getDrawable(
-        this,
-        R.drawable.ic_footprints_location,
-    )?.mutate() ?: return null
-    val width = maxOf(halo.intrinsicWidth, footprints.intrinsicWidth)
-    val height = maxOf(halo.intrinsicHeight, footprints.intrinsicHeight)
-    return android.graphics.Bitmap.createBitmap(
-        width,
-        height,
-        android.graphics.Bitmap.Config.ARGB_8888,
-    ).also { bitmap ->
-        val canvas = android.graphics.Canvas(bitmap)
-        halo.setTint(Color.White.toArgb())
-        halo.setBounds(0, 0, width, height)
-        halo.draw(canvas)
-        footprints.setTint(Ink.toArgb())
-        footprints.setBounds(0, 0, width, height)
-        footprints.draw(canvas)
-    }
-}
 
 internal fun MapLibreMap.followLocation(
     context: Context,
@@ -257,11 +177,6 @@ internal fun MapLibreMap.showGpsLocationPuck(
 ) {
     if (!context.hasLocationPermission() || !locationComponent.isLocationComponentActivated) return
     locationComponent.isLocationComponentEnabled = show
-    style?.getLayer(MapPersonaLayer)?.setProperties(
-        visibility(
-            if (show) Property.VISIBLE else Property.NONE,
-        ),
-    )
 }
 
 @SuppressLint("MissingPermission")

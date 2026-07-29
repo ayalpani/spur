@@ -35,9 +35,7 @@ internal const val MomentMarkerStroke = 3f
 internal const val MomentMarkerEdgeWidth = 1f
 internal const val MapPreviewPixels = 180
 internal const val LocationPulseWatchdogMillis = LocationSignalPeriodMillis * 10L
-internal const val MapPersonaImage = "map-persona-image"
-internal const val MapPersonaLayer = "map-persona-layer"
-internal const val MapPersonaLiftPixels = 16f
+internal const val LocationPuckHitTargetDp = 60f
 internal val LocationPulseEasing = Easing { fraction ->
     (cos((fraction + 1f) * PI) / 2f + 0.5f).toFloat()
 }
@@ -126,6 +124,18 @@ internal fun nearestCompassRotation(current: Float, target: Float): Float {
         delta <= -180f -> delta + 360f
         else -> delta
     }
+}
+
+internal fun isWithinLocationHitTarget(
+    clickX: Float,
+    clickY: Float,
+    locationX: Float,
+    locationY: Float,
+    hitTargetSize: Float,
+): Boolean {
+    val radius = hitTargetSize / 2f
+    return abs(clickX - locationX) <= radius &&
+        abs(clickY - locationY) <= radius
 }
 
 internal fun mapRotationOptionCenterDistance(
