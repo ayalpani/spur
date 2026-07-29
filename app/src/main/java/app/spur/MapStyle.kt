@@ -56,6 +56,7 @@ internal fun setMapStyle(
     defaultMapBearing: Double,
     routePoints: List<TrackPoint>,
     trailColors: TrailColors,
+    locationPulseColor: Color,
     onLoaded: () -> Unit,
 ) {
     val cameraPosition = map.cameraPosition
@@ -74,7 +75,7 @@ internal fun setMapStyle(
             manualLocation = manualLocation,
             initialMapZoom = initialMapZoom,
             defaultMapBearing = defaultMapBearing,
-            pulseColor = trailColors.fill,
+            pulseColor = locationPulseColor,
         )
         style.showTourRoute(routePoints, trailColors)
         if (!centerOnLocation) {

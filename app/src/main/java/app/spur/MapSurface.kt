@@ -59,6 +59,7 @@ internal fun MapSurface(
     followRequest: Int,
     tourOverviewRequest: Int,
     isFollowingLocation: Boolean,
+    isTrackingActive: Boolean,
     locationPulseGeneration: Long,
     isSatelliteView: Boolean,
     manualLocation: SpurCoordinate?,
@@ -118,6 +119,9 @@ internal fun MapSurface(
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
     val currentLocationPulseGeneration by rememberUpdatedState(locationPulseGeneration)
+    val currentLocationPulseColor by rememberUpdatedState(
+        if (isTrackingActive) trailColors.fill else Ink,
+    )
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
     val currentDefaultMapBearing by rememberUpdatedState(defaultMapBearing)
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
@@ -218,6 +222,7 @@ internal fun MapSurface(
                 defaultMapBearing = defaultMapBearing,
                 routePoints = currentRoutePoints,
                 trailColors = currentTrailColors,
+                locationPulseColor = currentLocationPulseColor,
                 onLoaded = {
                     mapStyleRevision++
                     hasLoadedMapStyle = true
@@ -735,6 +740,17 @@ internal fun MapSurface(
 
     LaunchedEffect(
         mapStyleRevision,
+        isTrackingActive,
+        trailColors.fill,
+    ) {
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.restartLocationPulse(currentLocationPulseColor)
+        }
+    }
+
+    LaunchedEffect(
+        mapStyleRevision,
         locationPulseGeneration,
     ) {
         val generation = locationPulseGeneration
@@ -745,7 +761,7 @@ internal fun MapSurface(
         ) return@LaunchedEffect
         mapView.getMapAsync { map ->
             if (generation != currentLocationPulseGeneration) return@getMapAsync
-            map.restartLocationPulse(currentTrailColors.fill)
+            map.restartLocationPulse(currentLocationPulseColor)
             currentOnLocationPulseStarted(generation)
         }
     }
