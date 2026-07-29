@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.IconButton
@@ -45,7 +47,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -139,11 +141,25 @@ internal fun ThemePickerOverlay(
                             fontWeight = FontWeight.Bold,
                         )
                     }
+                    val selectedThemeIndex =
+                        SpurColorTheme.entries.indexOf(selectedTheme).coerceAtLeast(0)
+                    val themeListState = rememberLazyListState(
+                        initialFirstVisibleItemIndex = selectedThemeIndex,
+                    )
+                    LaunchedEffect(selectedThemeIndex, sheetVisible) {
+                        if (sheetVisible) {
+                            themeListState.scrollToItem(selectedThemeIndex)
+                        }
+                    }
                     LazyRow(
+                        state = themeListState,
                         contentPadding = PaddingValues(horizontal = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        items(SpurColorTheme.entries) { theme ->
+                        items(
+                            items = SpurColorTheme.entries,
+                            key = SpurColorTheme::name,
+                        ) { theme ->
                             ThemePreview(
                                 theme = theme,
                                 selected = theme == selectedTheme,
@@ -164,12 +180,15 @@ private fun ThemePreview(
     onClick: () -> Unit,
 ) {
     Surface(
-        onClick = onClick,
         modifier = Modifier
             .size(width = 154.dp, height = 192.dp)
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.RadioButton,
+            )
             .semantics {
                 contentDescription = "Theme ${theme.label}"
-                this.selected = selected
             },
         shape = RoundedCornerShape(22.dp),
         color = Sand,
