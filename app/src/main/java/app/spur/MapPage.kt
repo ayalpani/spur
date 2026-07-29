@@ -584,20 +584,10 @@ internal fun MapPage(
                             onClick = {
                                 momentTarget = MomentPlacementTarget.CurrentLocation
                             },
+                            secondary = true,
+                            contentColor = MapControlColor.GREEN.color,
                         ) {
                             PlusIcon()
-                        }
-                        if (manualLocation != null) {
-                            MapIconButton(
-                                contentDescription = "Simulierten Standort zurücksetzen",
-                                onClick = {
-                                    context.saveManualLocation(null)
-                                    manualLocation = null
-                                },
-                                secondary = true,
-                            ) {
-                                LucideLocateOffIcon()
-                            }
                         }
                         MapIconButton(
                             contentDescription = when {
@@ -666,7 +656,8 @@ internal fun MapPage(
                             modifier = modifier,
                         )
                     } else {
-                        val controlColors = LocalMapControlColors.current.inverted
+                        val secondaryStyle =
+                            secondaryMapControlStyle(LocalMapControlColors.current)
                         Button(
                             onClick = { showStartTourBottomSheet = true },
                             modifier = modifier
@@ -674,9 +665,10 @@ internal fun MapPage(
                                 .mapControlShadow(CircleShape),
                             shape = CircleShape,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = controlColors.background,
-                                contentColor = controlColors.foreground,
+                                containerColor = secondaryStyle.colors.background,
+                                contentColor = secondaryStyle.colors.foreground,
                             ),
+                            border = secondaryStyle.border,
                             elevation = ButtonDefaults.buttonElevation(
                                 defaultElevation = 0.dp,
                                 pressedElevation = 0.dp,
@@ -687,7 +679,7 @@ internal fun MapPage(
                         ) {
                             Text(
                                 text = "Tour starten",
-                                color = controlColors.foreground,
+                                color = secondaryStyle.colors.foreground,
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -711,7 +703,25 @@ internal fun MapPage(
                         horizontalArrangement = Arrangement.spacedBy(MapControlGap),
                         verticalAlignment = Alignment.Bottom,
                     ) {
-                        mapStyleControl()
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(MapControlGap),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            if (manualLocation != null) {
+                                MapIconButton(
+                                    contentDescription =
+                                        "Simulierten Standort zurücksetzen",
+                                    onClick = {
+                                        context.saveManualLocation(null)
+                                        manualLocation = null
+                                    },
+                                    secondary = true,
+                                ) {
+                                    LucideLocateOffIcon()
+                                }
+                            }
+                            mapStyleControl()
+                        }
                         playerControl(Modifier.weight(1f))
                         if (!usesStackedMapPlayer) {
                             Spacer(modifier = Modifier.size(MapControlSize))

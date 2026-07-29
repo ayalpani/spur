@@ -89,12 +89,15 @@ internal fun MapIconButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     secondary: Boolean = false,
+    contentColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
-    val controlColors = mapButtonColors(
-        colors = LocalMapControlColors.current,
-        secondary = secondary,
-    )
+    val selectedColors = LocalMapControlColors.current
+    val style = if (secondary) {
+        secondaryMapControlStyle(selectedColors)
+    } else {
+        MapControlButtonStyle(colors = selectedColors)
+    }
     IconButton(
         onClick = onClick,
         enabled = enabled,
@@ -102,20 +105,16 @@ internal fun MapIconButton(
             .size(MapControlSize)
             .mapControlShadow(CircleShape)
             .then(
-                if (secondary) {
-                    Modifier.border(
-                        width = 1.dp,
-                        color = controlColors.foreground.copy(alpha = 0.5f),
-                        shape = CircleShape,
-                    )
+                if (style.border != null) {
+                    Modifier.border(style.border, CircleShape)
                 } else {
                     Modifier
                 },
             )
             .semantics { this.contentDescription = contentDescription },
         colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = controlColors.background,
-            contentColor = controlColors.foreground,
+            containerColor = style.colors.background,
+            contentColor = contentColor ?: style.colors.foreground,
         ),
     ) {
         CompositionLocalProvider(
@@ -125,10 +124,23 @@ internal fun MapIconButton(
     }
 }
 
-internal fun mapButtonColors(
+internal data class MapControlButtonStyle(
+    val colors: MapControlColors,
+    val border: BorderStroke? = null,
+)
+
+internal fun secondaryMapControlStyle(
     colors: MapControlColors,
-    secondary: Boolean,
-): MapControlColors = if (secondary) colors.inverted else colors
+): MapControlButtonStyle {
+    val inverted = colors.inverted
+    return MapControlButtonStyle(
+        colors = inverted,
+        border = BorderStroke(
+            width = 1.dp,
+            color = inverted.foreground.copy(alpha = 0.28f),
+        ),
+    )
+}
 
 @Composable
 internal fun MapStyleButton(
@@ -138,7 +150,7 @@ internal fun MapStyleButton(
     fallbackPreview: Int,
     onClick: () -> Unit,
 ) {
-    val tourControlColors = LocalMapControlColors.current.inverted
+    val secondaryStyle = secondaryMapControlStyle(LocalMapControlColors.current)
     val previewShape = CircleShape
     val blurRadius by animateDpAsState(
         targetValue = if (isLoading) 7.dp else 0.dp,
@@ -153,7 +165,7 @@ internal fun MapStyleButton(
             .semantics { this.contentDescription = contentDescription },
         shape = previewShape,
         color = Color.Transparent,
-        border = BorderStroke(3.dp, tourControlColors.background),
+        border = secondaryStyle.border,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val previewModifier = Modifier

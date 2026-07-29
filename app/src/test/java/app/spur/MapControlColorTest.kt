@@ -1,6 +1,7 @@
 package app.spur
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -71,9 +72,10 @@ class MapControlColorTest {
             background = Color.Black,
             foreground = Color.White,
         )
+        val secondary = secondaryMapControlStyle(selected)
 
-        assertEquals(selected, mapButtonColors(selected, secondary = false))
-        assertEquals(selected.inverted, mapButtonColors(selected, secondary = true))
+        assertEquals(selected.inverted, secondary.colors)
+        assertEquals(1.dp, secondary.border?.width)
     }
 
     @Test
