@@ -111,67 +111,76 @@ internal fun HistoryBottomSheet(
     val sections = remember(items) {
         historySections(items, System.currentTimeMillis())
     }
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight(0.92f)
             .navigationBarsPadding(),
     ) {
-        HistorySheetHeader()
-        if (items.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "Noch keine Touren",
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                    color = Ink.copy(alpha = 0.62f),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-            ) {
-                sections.forEach { section ->
-                    stickyHeader(key = "section-${section.label}") {
-                        HistorySectionHeader(section.label)
-                    }
-                    itemsIndexed(
-                        items = section.tours,
-                        key = { _, item -> item.tour.id },
-                    ) { index, item ->
-                        HistoryTourRow(
-                            item = item,
-                            onClick = { onOpenTour(item.tour.id) },
-                        )
-                        if (index < section.tours.lastIndex) {
-                            HorizontalDivider(
-                                color = Ink.copy(alpha = 0.12f),
+        Column(modifier = Modifier.fillMaxHeight()) {
+            HistorySheetHeader()
+            if (items.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Noch keine Touren",
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        color = Ink.copy(alpha = 0.62f),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 96.dp),
+                ) {
+                    sections.forEach { section ->
+                        stickyHeader(key = "section-${section.label}") {
+                            HistorySectionHeader(section.label)
+                        }
+                        itemsIndexed(
+                            items = section.tours,
+                            key = { _, item -> item.tour.id },
+                        ) { index, item ->
+                            HistoryTourRow(
+                                item = item,
+                                onClick = { onOpenTour(item.tour.id) },
                             )
+                            if (index < section.tours.lastIndex) {
+                                HorizontalDivider(
+                                    color = Ink.copy(alpha = 0.12f),
+                                )
+                            }
                         }
                     }
                 }
             }
         }
-        HistoryCloseButton(onDismiss)
+        HistoryCloseButton(
+            onDismiss = onDismiss,
+            modifier = Modifier.align(Alignment.BottomEnd),
+        )
     }
 }
 
 @Composable
 private fun HistorySheetHeader() {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(
+            10.dp,
+            Alignment.CenterHorizontally,
+        ),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         HistoryIcon()
         Text(
@@ -311,11 +320,12 @@ private fun HistoryMomentThumbnail(moment: MapMoment) {
 }
 
 @Composable
-private fun HistoryCloseButton(onDismiss: () -> Unit) {
+private fun HistoryCloseButton(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+        modifier = modifier.padding(horizontal = 18.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.End,
     ) {
         val colors = LocalMapControlColors.current
