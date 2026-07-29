@@ -55,7 +55,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var displayedTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var displayedTourRequest by rememberSaveable { mutableLongStateOf(0L) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
-    var isTourEditing by rememberSaveable { mutableStateOf(false) }
+    var showWaypoints by rememberSaveable { mutableStateOf(false) }
     var historyRevision by remember { mutableLongStateOf(0L) }
     var photoRevision by remember { mutableLongStateOf(0L) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -139,7 +139,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                 displayedTour = null
                 displayedTourId = null
                 routePoints = emptyList()
-                isTourEditing = false
+                showWaypoints = false
             }
             historyRevision++
         }
@@ -271,9 +271,8 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 onOpenHistory = {
                                     isHistoryVisible = true
                                 },
-                                isTourEditing = isTourEditing,
-                                onEditTour = { isTourEditing = true },
-                                onCloseTourEditor = { isTourEditing = false },
+                                showWaypoints = showWaypoints,
+                                onShowWaypointsChange = { showWaypoints = it },
                                 onRoutePointsChanged = {
                                     routePoints = it
                                     historyRevision++
@@ -320,14 +319,14 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 revision = historyRevision,
                                 isVisible = isHistoryVisible,
                                 onBack = { isHistoryVisible = false },
-                                onEditTour = { id ->
+                                onShowWaypoints = { id ->
                                     if (displayedTourId != id) {
                                         displayedTour = null
                                         routePoints = emptyList()
                                     }
                                     displayedTourId = id
                                     displayedTourRequest++
-                                    isTourEditing = true
+                                    showWaypoints = true
                                     isHistoryVisible = false
                                 },
                                 showFeedbackNotice = showFeedbackNotice,

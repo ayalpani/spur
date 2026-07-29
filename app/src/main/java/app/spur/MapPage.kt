@@ -29,14 +29,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -91,9 +89,8 @@ internal fun MapPage(
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
-    isTourEditing: Boolean,
-    onEditTour: () -> Unit,
-    onCloseTourEditor: () -> Unit,
+    showWaypoints: Boolean,
+    onShowWaypointsChange: (Boolean) -> Unit,
     onRoutePointsChanged: (List<TrackPoint>) -> Unit,
     onDeleteTour: (Long) -> Unit,
     showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
@@ -108,7 +105,7 @@ internal fun MapPage(
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
     )
-    val mapActionsBottomPadding = if (isTourEditing) {
+    val mapActionsBottomPadding = if (showWaypoints) {
         EditorLocationRailHeight + MapControlVerticalPadding
     } else {
         MapControlVerticalPadding +
@@ -228,8 +225,8 @@ internal fun MapPage(
         isFollowingLocation = true
         followRequest++
     }
-    LaunchedEffect(isTourEditing, tour?.id, editorLocations.size) {
-        if (!isTourEditing) {
+    LaunchedEffect(showWaypoints, tour?.id, editorLocations.size) {
+        if (!showWaypoints) {
             editorDeleteTarget = null
             return@LaunchedEffect
         }
@@ -391,10 +388,10 @@ internal fun MapPage(
         onBack = followOwnLocation,
     )
     BackHandler(
-        enabled = isTourEditing &&
+        enabled = showWaypoints &&
             momentTarget == null &&
             editorDeleteTarget == null,
-        onBack = onCloseTourEditor,
+        onBack = { onShowWaypointsChange(false) },
     )
     val mapControlColors = MapControlColors(
         background = mapControlBackground.color,
@@ -428,7 +425,7 @@ internal fun MapPage(
                 trailColors = trailColors,
                 homeBuilding = homeBuilding,
                 selectedBuilding = selectedBuilding?.feature,
-                selectedTrackPoint = if (isTourEditing) {
+                selectedTrackPoint = if (showWaypoints) {
                     selectedEditorLocation?.point
                 } else {
                     null
@@ -498,55 +495,6 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = isMapReady && isTourEditing,
-                modifier = Modifier.align(Alignment.TopStart),
-                enter = slideInVertically(
-                    animationSpec = tween(MotionDurationDefaultMillis),
-                    initialOffsetY = { -it },
-                ) + fadeIn(tween(MotionDurationDefaultMillis)),
-                exit = slideOutVertically(
-                    animationSpec = tween(MotionDurationDefaultMillis),
-                    targetOffsetY = { -it },
-                ) + fadeOut(tween(MotionDurationDefaultMillis)),
-            ) {
-                val headerStyle =
-                    secondaryMapControlStyle(LocalMapControlColors.current)
-                Surface(
-                    modifier = Modifier
-                        .statusBarsPadding()
-                        .padding(
-                            start = MapControlHorizontalPadding,
-                            top = 14.dp,
-                        )
-                        .height(MapControlSize)
-                        .mapControlShadow(CircleShape),
-                    color = headerStyle.colors.background,
-                    contentColor = headerStyle.colors.foreground,
-                    shape = CircleShape,
-                    border = headerStyle.border,
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = onCloseTourEditor,
-                            modifier = Modifier
-                                .size(MapControlSize)
-                                .semantics {
-                                    contentDescription = "Waypoints schließen"
-                                },
-                        ) {
-                            PhotoCloseIcon()
-                        }
-                        Text(
-                            text = "Waypoints",
-                            modifier = Modifier.padding(end = 24.dp),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-            }
-
-            AnimatedVisibility(
                 visible = areMapControlsVisible,
                 modifier = Modifier.align(Alignment.BottomEnd),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
@@ -562,7 +510,7 @@ internal fun MapPage(
                     verticalArrangement = Arrangement.spacedBy(MapControlGap),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    if (isTourEditing) {
+                    if (showWaypoints) {
                         selectedEditorLocation?.let { location ->
                             MapIconButton(
                                 contentDescription = "GPS-Punkt löschen",
@@ -593,6 +541,13 @@ internal fun MapPage(
                                 PlusIcon()
                             }
                         }
+                        MapIconButton(
+                            contentDescription = "Waypoints ausblenden",
+                            onClick = { onShowWaypointsChange(false) },
+                            modifier = Modifier.semantics { selected = true },
+                        ) {
+                            WaypointsIcon()
+                        }
                     } else {
                         val signalButtonAlpha = locationSignalButtonAlpha(
                             selected = isFollowingLocation,
@@ -609,22 +564,12 @@ internal fun MapPage(
                             it.endedAt != null || activeTour?.id == it.id
                         }?.let {
                             MapIconButton(
-                                contentDescription = "Tour bearbeiten",
-                                onClick = onEditTour,
+                                contentDescription = "Waypoints anzeigen",
+                                onClick = { onShowWaypointsChange(true) },
+                                modifier = Modifier.semantics { selected = false },
                                 secondary = true,
                             ) {
-                                LucideIcon(
-                                    paths = listOf(
-                                        "m10.586 5.414-5.172 5.172",
-                                        "m18.586 13.414-5.172 5.172",
-                                        "M6 12h12",
-                                        "M14 20a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
-                                        "M14 4a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
-                                        "M22 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
-                                        "M6 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
-                                    ),
-                                    strokeWidth = LucideRegularStrokeWidth,
-                                )
+                                WaypointsIcon()
                             }
                         }
                         MapIconButton(
@@ -743,7 +688,7 @@ internal fun MapPage(
                             top = MapControlVerticalPadding,
                             end = MapControlHorizontalPadding,
                             bottom = MapControlVerticalPadding +
-                                if (isTourEditing) EditorLocationRailHeight else 0.dp,
+                                if (showWaypoints) EditorLocationRailHeight else 0.dp,
                         )
                         .fillMaxWidth()
                         .widthIn(max = 560.dp),
@@ -758,7 +703,7 @@ internal fun MapPage(
                             verticalArrangement = Arrangement.spacedBy(MapControlGap),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            if (!isTourEditing && manualLocation != null) {
+                            if (!showWaypoints && manualLocation != null) {
                                 MapIconButton(
                                     contentDescription =
                                         "Simulierten Standort zurücksetzen",
@@ -773,7 +718,7 @@ internal fun MapPage(
                             }
                             mapStyleControl()
                         }
-                        if (isTourEditing) {
+                        if (showWaypoints) {
                             val editedTour = tour
                             val location = selectedEditorLocation
                             if (editedTour != null && location != null) {
@@ -791,7 +736,7 @@ internal fun MapPage(
                         } else {
                             playerControl(Modifier.weight(1f))
                         }
-                        if (isTourEditing || !usesStackedMapPlayer) {
+                        if (showWaypoints || !usesStackedMapPlayer) {
                             Spacer(modifier = Modifier.size(MapControlSize))
                         }
                     }
@@ -799,7 +744,7 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = isMapReady && isTourEditing && editorLocations.isNotEmpty(),
+                visible = isMapReady && showWaypoints && editorLocations.isNotEmpty(),
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = slideInVertically(
                     animationSpec = tween(MotionDurationDefaultMillis),

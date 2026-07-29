@@ -19,9 +19,8 @@ private fun MapPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
-        isTourEditing = false,
-        onEditTour = {},
-        onCloseTourEditor = {},
+        showWaypoints = false,
+        onShowWaypointsChange = {},
         onRoutePointsChanged = {},
         onDeleteTour = {},
     )
@@ -48,9 +47,8 @@ private fun ActiveTourPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
-        isTourEditing = false,
-        onEditTour = {},
-        onCloseTourEditor = {},
+        showWaypoints = false,
+        onShowWaypointsChange = {},
         onRoutePointsChanged = {},
         onDeleteTour = {},
     )
@@ -63,7 +61,7 @@ private fun HistoryPagePreview() {
         store = TourStore(LocalContext.current),
         revision = 0,
         onBack = {},
-        onEditTour = {},
+        onShowWaypoints = {},
     )
 }
 

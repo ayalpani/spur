@@ -123,6 +123,20 @@ internal fun PlusIcon() = LucideIcon(
 )
 
 @Composable
+internal fun WaypointsIcon() = LucideIcon(
+    paths = listOf(
+        "m10.586 5.414-5.172 5.172",
+        "m18.586 13.414-5.172 5.172",
+        "M6 12h12",
+        "M14 20a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
+        "M14 4a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
+        "M22 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
+        "M6 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
+    ),
+    strokeWidth = LucideRegularStrokeWidth,
+)
+
+@Composable
 internal fun MicrophoneIcon(
     modifier: Modifier = Modifier.size(24.dp),
     color: Color = LocalContentColor.current,
