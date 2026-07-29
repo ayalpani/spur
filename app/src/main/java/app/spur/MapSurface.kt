@@ -373,7 +373,7 @@ internal fun MapSurface(
             }
         }
 
-        fun updateMapMomentAvoidance() {
+        fun updateMapMomentAvoidance(settled: Boolean) {
             val readyMap = map ?: return
             val moments = currentMapMoments
             val personaVisible =
@@ -419,7 +419,7 @@ internal fun MapSurface(
             avoidanceImageRevision = currentMomentImageRevision
             avoidanceStyleRevision = mapStyleRevision
             appliedAvoidanceLayout = layout
-            avoidanceRefreshPending = false
+            avoidanceRefreshPending = !settled
         }
 
         val moveListener = MapLibreMap.OnCameraMoveListener {
@@ -448,7 +448,6 @@ internal fun MapSurface(
             publishManualLocationPosition()
             publishPendingMomentPosition()
             publishSelectedTrackPointPosition()
-            updateMapMomentAvoidance()
             previewCameraPosition = map?.cameraPosition
             if (shouldStopFollowing(cameraMoveReason)) {
                 map?.cameraPosition?.zoom?.let(context::saveDefaultMapZoom)
@@ -458,7 +457,7 @@ internal fun MapSurface(
         }
         val renderingFrameListener =
             MapView.OnDidFinishRenderingFrameListener { fully, _, _ ->
-                if (fully) updateMapMomentAvoidance()
+                updateMapMomentAvoidance(settled = fully)
             }
         val clickListener = MapLibreMap.OnMapClickListener { point ->
             val readyMap = map ?: return@OnMapClickListener false

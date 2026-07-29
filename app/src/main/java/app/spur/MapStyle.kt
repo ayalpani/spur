@@ -288,12 +288,7 @@ internal fun Style.showMapMomentAvoidanceLayout(
     getLayerAs<SymbolLayer>(MapMomentClusterLayer)?.setProperties(
         iconOffset(clusterOffsetExpression(layout.clusterOffsets)),
     )
-    getLayerAs<CircleLayer>(MapMomentClusterCountBadgeLayer)?.setProperties(
-        circleTranslate(clusterCountOffsetExpression(layout.clusterOffsets)),
-    )
-    getLayerAs<SymbolLayer>(MapMomentClusterCountLayer)?.setProperties(
-        textTranslate(clusterCountOffsetExpression(layout.clusterOffsets)),
-    )
+    showAvoidedClusterCounts(layout.clusterOffsets)
 }
 
 private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression =
@@ -359,28 +354,89 @@ private fun clusterOffsetExpression(offsets: Map<Long, Offset>): Expression {
     )
 }
 
-private fun clusterCountOffsetExpression(offsets: Map<Long, Offset>): Expression {
-    val default = Expression.literal(
-        arrayOf(
-            MapMomentClusterCountPositionX,
-            MapMomentClusterCountPositionY,
-        ),
+private fun Style.showAvoidedClusterCounts(offsets: Map<Long, Offset>) {
+    val excludedIds = offsets.keys
+    val normalFilter = Expression.all(
+        Expression.has("point_count"),
+        *excludedIds.map { clusterId ->
+            Expression.neq(
+                Expression.toNumber(Expression.get(MapMomentClusterIdProperty)),
+                Expression.literal(clusterId),
+            )
+        }.toTypedArray(),
     )
-    if (offsets.isEmpty()) return default
-    val stops = offsets.map { (clusterId, offset) ->
-        Expression.stop(
-            clusterId,
-            Expression.literal(
-                arrayOf(
-                    offset.x + MapMomentClusterCountPositionX,
-                    offset.y + MapMomentClusterCountPositionY,
-                ),
-            ),
+    getLayerAs<CircleLayer>(MapMomentClusterCountBadgeLayer)?.setFilter(normalFilter)
+    getLayerAs<SymbolLayer>(MapMomentClusterCountLayer)?.setFilter(normalFilter)
+
+    val retainedLayerIds = offsets.keys.flatMap { clusterId ->
+        listOf(
+            MapMomentAvoidedClusterBadgePrefix + clusterId,
+            MapMomentAvoidedClusterCountPrefix + clusterId,
         )
-    }.toTypedArray()
-    return Expression.match(
-        Expression.toNumber(Expression.get(MapMomentClusterIdProperty)),
-        default,
-        *stops,
-    )
+    }.toSet()
+    layers
+        .map { it.id }
+        .filter {
+            (
+                it.startsWith(MapMomentAvoidedClusterBadgePrefix) ||
+                    it.startsWith(MapMomentAvoidedClusterCountPrefix)
+                ) && it !in retainedLayerIds
+        }
+        .forEach(::removeLayer)
+
+    offsets.forEach { (clusterId, offset) ->
+        val filter = Expression.eq(
+            Expression.toNumber(Expression.get(MapMomentClusterIdProperty)),
+            Expression.literal(clusterId),
+        )
+        val translate = arrayOf(
+            offset.x + MapMomentClusterCountPositionX,
+            offset.y + MapMomentClusterCountPositionY,
+        )
+        val badgeId = MapMomentAvoidedClusterBadgePrefix + clusterId
+        val badge = getLayerAs<CircleLayer>(badgeId)
+        if (badge == null) {
+            addLayer(
+                CircleLayer(badgeId, MapMomentSource)
+                    .withFilter(filter)
+                    .withProperties(
+                        circleRadius(MapMomentClusterCountBadgeRadius),
+                        circleColor(Ink.toArgb()),
+                        circleTranslate(translate),
+                        circleTranslateAnchor(Property.CIRCLE_TRANSLATE_ANCHOR_VIEWPORT),
+                    ),
+            )
+        } else {
+            badge.setFilter(filter)
+            badge.setProperties(circleTranslate(translate))
+        }
+
+        val countId = MapMomentAvoidedClusterCountPrefix + clusterId
+        val count = getLayerAs<SymbolLayer>(countId)
+        if (count == null) {
+            addLayer(
+                SymbolLayer(countId, MapMomentSource)
+                    .withFilter(filter)
+                    .withProperties(
+                        textField(
+                            Expression.toString(
+                                Expression.get("point_count_abbreviated"),
+                            ),
+                        ),
+                        textFont(arrayOf("Noto Sans Bold")),
+                        textSize(13f),
+                        textColor(android.graphics.Color.WHITE),
+                        textTranslate(translate),
+                        textTranslateAnchor(Property.TEXT_TRANSLATE_ANCHOR_VIEWPORT),
+                        textAnchor(Property.TEXT_ANCHOR_CENTER),
+                        textAllowOverlap(true),
+                        textIgnorePlacement(true),
+                        symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
+                    ),
+            )
+        } else {
+            count.setFilter(filter)
+            count.setProperties(textTranslate(translate))
+        }
+    }
 }
