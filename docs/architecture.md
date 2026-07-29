@@ -29,6 +29,9 @@ remains primary; the blue secondary moment-add control sits immediately above
 it, while manual-location reset sits above the map-style switcher.
 During direct map gestures, the main control rails fade out and back in over
 `MotionDurationDefaultMillis`; the map does not abruptly cover them via z-index.
+The MapLibre accuracy circle is hidden. The location pulse is black while the
+map is free and switches to the selected trail color only while location
+following is active; interrupting follow with a map gesture restores black.
 
 ## Data flow
 
