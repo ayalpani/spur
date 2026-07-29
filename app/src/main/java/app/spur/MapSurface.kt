@@ -4,6 +4,10 @@ import android.graphics.PointF
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ViewConfiguration
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -134,6 +138,7 @@ internal fun MapSurface(
     var renderedVoicePlaybackId by remember { mutableStateOf<String?>(null) }
     var mapStyleRevision by remember { mutableStateOf(0) }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
+    var isSelectedTrackPointVisible by remember { mutableStateOf(false) }
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
     var fittedTourDisplayRequest by remember { mutableLongStateOf(-1L) }
     var lastMapSettingsBearing by remember { mutableStateOf(defaultMapBearing) }
@@ -362,7 +367,10 @@ internal fun MapSurface(
         val moveStartedListener = MapLibreMap.OnCameraMoveStartedListener { reason ->
             isCameraMoving = true
             cameraMoveReason = reason
-            if (shouldStopFollowing(reason)) currentOnMapGestureActiveChanged(true)
+            if (shouldStopFollowing(reason)) {
+                isSelectedTrackPointVisible = false
+                currentOnMapGestureActiveChanged(true)
+            }
             if (shouldShowMapPreviewLoading(currentIsFollowingLocation, reason)) {
                 currentOnAlternateMapPreviewLoadingChanged(true)
             }
@@ -619,6 +627,10 @@ internal fun MapSurface(
         }
     }
 
+    LaunchedEffect(selectedTrackPoint?.id, selectedTrackPointRequest) {
+        isSelectedTrackPointVisible = selectedTrackPoint != null
+    }
+
     LaunchedEffect(manualLocation, selectedTrackPoint == null) {
         mapView.getMapAsync { map ->
             map.showGpsLocationPuck(
@@ -780,7 +792,14 @@ internal fun MapSurface(
 
         val density = LocalDensity.current
         selectedTrackPoint?.let {
-            SelectedTrackPointPuck(modifier = Modifier.align(Alignment.Center))
+            AnimatedVisibility(
+                visible = isSelectedTrackPointVisible,
+                modifier = Modifier.align(Alignment.Center),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
+            ) {
+                SelectedTrackPointPuck()
+            }
         }
 
         val manualPuckSizePx = with(density) { 52.dp.roundToPx() }
