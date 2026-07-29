@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
@@ -124,9 +125,6 @@ internal fun MapSurface(
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
     val currentDefaultMapBearing by rememberUpdatedState(defaultMapBearing)
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
-    var selectedTrackPointPosition by remember {
-        mutableStateOf<SelectedTrackPointScreenPosition?>(null)
-    }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
     }
@@ -355,20 +353,9 @@ internal fun MapSurface(
             }
         }
 
-        fun publishSelectedTrackPointPosition() {
-            val readyMap = map ?: return
-            selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
-                val position = readyMap.projection.toScreenLocation(
-                    LatLng(point.latitude, point.longitude),
-                )
-                SelectedTrackPointScreenPosition(point.id, position.x, position.y)
-            }
-        }
-
         val moveListener = MapLibreMap.OnCameraMoveListener {
             if (currentManualLocation != null) publishManualLocationPosition()
             if (pendingMapMoment != null) publishPendingMomentPosition()
-            if (currentSelectedTrackPoint != null) publishSelectedTrackPointPosition()
         }
         var cameraMoveReason =
             MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
@@ -389,7 +376,6 @@ internal fun MapSurface(
             if (!isMapTouchActive) currentOnMapGestureActiveChanged(false)
             publishManualLocationPosition()
             publishPendingMomentPosition()
-            publishSelectedTrackPointPosition()
             previewCameraPosition = map?.cameraPosition
             if (shouldStopFollowing(cameraMoveReason)) {
                 map?.cameraPosition?.zoom?.let(context::saveDefaultMapZoom)
@@ -501,7 +487,6 @@ internal fun MapSurface(
             readyMap.addOnMapClickListener(clickListener)
             publishManualLocationPosition()
             publishPendingMomentPosition()
-            publishSelectedTrackPointPosition()
         }
         onDispose {
             cancelManualLocationHold()
@@ -617,27 +602,16 @@ internal fun MapSurface(
                     currentTrailColors,
                 )
             }
-            selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
-                val position = map.projection.toScreenLocation(
-                    LatLng(point.latitude, point.longitude),
-                )
-                SelectedTrackPointScreenPosition(point.id, position.x, position.y)
-            }
-            if (selectedTrackPointRequest == 0L) return@getMapAsync
             currentSelectedTrackPoint?.let { point ->
                 map.locationComponent.cameraMode = CameraMode.NONE
-                map.animateCamera(
-                    CameraUpdateFactory.newLatLng(
-                        LatLng(point.latitude, point.longitude),
-                    ),
-                    EditorPointTransitionDurationMillis,
-                )
-            }
-            selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
-                val position = map.projection.toScreenLocation(
+                val update = CameraUpdateFactory.newLatLng(
                     LatLng(point.latitude, point.longitude),
                 )
-                SelectedTrackPointScreenPosition(point.id, position.x, position.y)
+                if (selectedTrackPointRequest == 0L) {
+                    map.moveCamera(update)
+                } else {
+                    map.animateCamera(update, EditorPointTransitionDurationMillis)
+                }
             }
         }
     }
@@ -802,23 +776,9 @@ internal fun MapSurface(
         )
 
         val density = LocalDensity.current
-        val selectedPointSizePx = with(density) { 20.dp.roundToPx() }
-        visibleSelectedTrackPointPosition(
-            position = selectedTrackPointPosition,
-            selectedPointId = selectedTrackPoint?.id,
-            firstPointId = routePoints.firstOrNull()?.id,
-            lastPointId = routePoints.lastOrNull()?.id,
-        )
-            ?.let { position ->
-                SelectedTrackPointPuck(
-                    modifier = Modifier.offset {
-                        IntOffset(
-                            x = position.x.roundToInt() - selectedPointSizePx / 2,
-                            y = position.y.roundToInt() - selectedPointSizePx / 2,
-                        )
-                    },
-                )
-            }
+        selectedTrackPoint?.let {
+            SelectedTrackPointPuck(modifier = Modifier.align(Alignment.Center))
+        }
 
         val manualPuckSizePx = with(density) { 52.dp.roundToPx() }
         manualLocationPosition?.let { position ->

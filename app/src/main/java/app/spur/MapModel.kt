@@ -94,23 +94,6 @@ internal data class SelectedBuilding(
     val feature: Feature,
 )
 
-internal data class SelectedTrackPointScreenPosition(
-    val pointId: Long,
-    val x: Float,
-    val y: Float,
-)
-
-internal fun visibleSelectedTrackPointPosition(
-    position: SelectedTrackPointScreenPosition?,
-    selectedPointId: Long?,
-    firstPointId: Long?,
-    lastPointId: Long?,
-): SelectedTrackPointScreenPosition? = position?.takeIf {
-    it.pointId == selectedPointId &&
-        selectedPointId != firstPointId &&
-        selectedPointId != lastPointId
-}
-
 internal fun mapRotationFromStored(value: String?): MapRotation =
     MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH
 
