@@ -631,7 +631,7 @@ internal fun MapPage(
                             tourId = tour.id,
                             distanceMeters = tour.distanceMeters,
                             elapsedMillis = (tour.endedAt ?: now) - tour.startedAt,
-                            modifier = modifier,
+                            modifier = modifier.height(MapControlSize),
                         )
                     } else {
                         val secondaryStyle =
