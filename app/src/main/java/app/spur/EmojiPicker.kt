@@ -205,12 +205,14 @@ internal fun SpurModalBottomSheet(
     onDismissRequest: () -> Unit,
     sheetState: SheetState,
     containerColor: Color = SheetBackground,
+    scrimColor: Color = BottomSheetDefaults.ScrimColor,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
         containerColor = containerColor,
+        scrimColor = scrimColor,
     ) {
         LightSheetNavigationBar(containerColor)
         content()

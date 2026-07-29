@@ -8,6 +8,30 @@ import org.junit.Test
 
 class MapControlColorTest {
     @Test
+    fun curatedThemesExposePrimarySecondaryAccentAndTrailColors() {
+        assertEquals(3, SpurColorTheme.entries.size)
+        assertEquals(
+            MapControlColors(background = Color.Black, foreground = Color.White),
+            SpurColorTheme.CLASSIC.mapControlColors,
+        )
+        assertEquals(
+            TrailColors(
+                fill = MapControlColor.BLUE.color,
+                stroke = Color.Black.copy(alpha = TrailStrokeAlpha),
+            ),
+            SpurColorTheme.CLASSIC.trailColors,
+        )
+        assertEquals(MapControlColor.BLUE, SpurColorTheme.CLASSIC.accent)
+    }
+
+    @Test
+    fun storedThemeFallsBackToClassic() {
+        assertEquals(SpurColorTheme.FOREST, colorThemeFromStored("FOREST"))
+        assertEquals(SpurColorTheme.CLASSIC, colorThemeFromStored("invalid"))
+        assertEquals(SpurColorTheme.CLASSIC, colorThemeFromStored(null))
+    }
+
+    @Test
     fun paletteHasSixteenRainbowOrderedPersistentOptionsAndDefaultsToBlack() {
         assertEquals(16, MapControlColor.entries.size)
         assertEquals(

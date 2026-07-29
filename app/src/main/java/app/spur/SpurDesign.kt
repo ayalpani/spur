@@ -130,6 +130,45 @@ internal enum class MapControlColor(
         get() = if (color.luminance() > 0.3f) Ink else Color.White
 }
 
+internal enum class SpurColorTheme(
+    val label: String,
+    val primary: MapControlColor,
+    val secondary: MapControlColor,
+    val accent: MapControlColor,
+) {
+    CLASSIC(
+        label = "Klassisch",
+        primary = MapControlColor.BLACK,
+        secondary = MapControlColor.WHITE,
+        accent = MapControlColor.BLUE,
+    ),
+    FOREST(
+        label = "Wald",
+        primary = MapControlColor.GREEN,
+        secondary = MapControlColor.WHITE,
+        accent = MapControlColor.YELLOW,
+    ),
+    ELECTRIC(
+        label = "Elektrisch",
+        primary = MapControlColor.INDIGO,
+        secondary = MapControlColor.WHITE,
+        accent = MapControlColor.ORANGE,
+    ),
+    ;
+
+    val mapControlColors: MapControlColors
+        get() = MapControlColors(
+            background = primary.color,
+            foreground = secondary.color,
+        )
+
+    val trailColors: TrailColors
+        get() = TrailColors(
+            fill = accent.color,
+            stroke = primary.color.copy(alpha = TrailStrokeAlpha),
+        )
+}
+
 internal fun momentMarkerColor(type: MomentType): Color = when (type) {
     MomentType.PHOTO -> MomentMarkerGreen
     MomentType.VIDEO -> MapControlColor.BLUE.color
@@ -183,11 +222,11 @@ internal val LocalMapControlColors = staticCompositionLocalOf {
         foreground = MapControlColor.WHITE.color,
     )
 }
+internal val LocalAccentColor = staticCompositionLocalOf {
+    SpurColorTheme.CLASSIC.accent.color
+}
 internal val LocalTrailColors = staticCompositionLocalOf {
-    TrailColors(
-        fill = MapControlColor.YELLOW.color,
-        stroke = MapControlColor.BLACK.color.copy(alpha = TrailStrokeAlpha),
-    )
+    SpurColorTheme.CLASSIC.trailColors
 }
 internal val LocalLucideStrokeWidth = staticCompositionLocalOf { LucideRegularStrokeWidth }
 

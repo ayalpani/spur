@@ -13,8 +13,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -35,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SheetState
@@ -124,8 +123,7 @@ internal fun MapPage(
     var showSettingsMenu by rememberSaveable { mutableStateOf(false) }
     var showTourMenu by rememberSaveable { mutableStateOf(false) }
     var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
-    var showButtonColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
-    var showTrailColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var showThemePicker by rememberSaveable { mutableStateOf(false) }
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
     var tourToDelete by remember { mutableStateOf<Tour?>(null) }
@@ -179,17 +177,8 @@ internal fun MapPage(
     var defaultMapRotation by remember {
         mutableStateOf(context.loadDefaultMapRotation())
     }
-    var mapControlBackground by remember {
-        mutableStateOf(context.loadMapControlColor())
-    }
-    var mapControlForeground by remember {
-        mutableStateOf(context.loadMapControlForegroundColor(mapControlBackground))
-    }
-    var trailFillColor by remember {
-        mutableStateOf(context.loadTrailFillColor())
-    }
-    var trailStrokeColor by remember {
-        mutableStateOf(context.loadTrailStrokeColor())
+    var colorTheme by remember {
+        mutableStateOf(context.loadColorTheme())
     }
     var isMapRendered by remember { mutableStateOf(false) }
     var systemSplashTimeElapsed by remember(initialLoadingComplete) {
@@ -208,10 +197,6 @@ internal fun MapPage(
     val settingsMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val tourMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val homeAutoStartBottomSheetState =
-        rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val buttonColorsBottomSheetState =
-        rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val trailColorsBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val directionBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -259,7 +244,7 @@ internal fun MapPage(
     LaunchedEffect(
         isMapReady,
         manualLocation,
-        trailFillColor,
+        colorTheme,
         isFollowingLocation,
     ) {
         if (!isMapReady || manualLocation != null) {
@@ -380,24 +365,18 @@ internal fun MapPage(
             !showSettingsMenu &&
             !showTourMenu &&
             !showHomeAutoStartBottomSheet &&
-            !showButtonColorsBottomSheet &&
-            !showTrailColorsBottomSheet &&
+            !showThemePicker &&
             !showDirectionBottomSheet &&
             !showAboutBottomSheet &&
             photoDetail == null &&
             mediaDetail == null,
         onBack = followOwnLocation,
     )
-    val mapControlColors = MapControlColors(
-        background = mapControlBackground.color,
-        foreground = mapControlForeground.color,
-    )
-    val trailColors = TrailColors(
-        fill = trailFillColor.color,
-        stroke = trailStrokeColor.color.copy(alpha = TrailStrokeAlpha),
-    )
+    val mapControlColors = colorTheme.mapControlColors
+    val trailColors = colorTheme.trailColors
     CompositionLocalProvider(
         LocalMapControlColors provides mapControlColors,
+        LocalAccentColor provides colorTheme.accent.color,
         LocalTrailColors provides trailColors,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -535,7 +514,7 @@ internal fun MapPage(
                             }
                         },
                         secondary = true,
-                        contentColor = MapControlColor.BLUE.color,
+                        contentColor = LocalAccentColor.current,
                     ) {
                         PlusIcon()
                     }
@@ -900,6 +879,11 @@ internal fun MapPage(
                 showSettingsMenu = false
             },
             sheetState = settingsMenuState,
+            scrimColor = if (showThemePicker) {
+                Color.Transparent
+            } else {
+                BottomSheetDefaults.ScrimColor
+            },
         ) {
             BackHandler(onBack = closeSettingsMenu)
             SettingsMenu(
@@ -911,19 +895,12 @@ internal fun MapPage(
                         hideCurrent = { showSettingsMenu = false },
                     )
                 },
-                onOpenButtonColors = {
-                    swapBottomSheets(
-                        currentState = settingsMenuState,
-                        showNext = { showButtonColorsBottomSheet = true },
-                        hideCurrent = { showSettingsMenu = false },
-                    )
-                },
-                onOpenTrailColors = {
-                    swapBottomSheets(
-                        currentState = settingsMenuState,
-                        showNext = { showTrailColorsBottomSheet = true },
-                        hideCurrent = { showSettingsMenu = false },
-                    )
+                onOpenTheme = {
+                    showThemePicker = true
+                    scope.launch {
+                        settingsMenuState.hide()
+                        showSettingsMenu = false
+                    }
                 },
                 onOpenDirection = {
                     swapBottomSheets(
@@ -1015,144 +992,6 @@ internal fun MapPage(
                     )
                 },
             )
-        }
-    }
-
-    if (showButtonColorsBottomSheet) {
-        val closeButtonColors: () -> Unit = {
-            swapBottomSheets(
-                currentState = buttonColorsBottomSheetState,
-                showNext = { showSettingsMenu = true },
-                hideCurrent = { showButtonColorsBottomSheet = false },
-            )
-        }
-        val selectMapControlBackground: (MapControlColor) -> Unit = {
-            mapControlBackground = it
-            context.saveMapControlColor(it)
-        }
-        val selectMapControlForeground: (MapControlColor) -> Unit = {
-            mapControlForeground = it
-            context.saveMapControlForegroundColor(it)
-        }
-        SpurModalBottomSheet(
-            onDismissRequest = {
-                showSettingsMenu = true
-                showButtonColorsBottomSheet = false
-            },
-            sheetState = buttonColorsBottomSheetState,
-        ) {
-            BackHandler(onBack = closeButtonColors)
-            Column(
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 24.dp)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                BottomSheetHeader(
-                    title = "Buttonfarben wählen",
-                    onBack = closeButtonColors,
-                )
-                MapControlColorPreview(
-                    colors = mapControlColors,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "Buttonfarbe",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                MapControlColorPicker(
-                    label = "Buttonfarbe",
-                    selectedColor = mapControlBackground,
-                    onSelect = selectMapControlBackground,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "Icon- und Textfarbe",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                MapControlColorPicker(
-                    label = "Icon- und Textfarbe",
-                    selectedColor = mapControlForeground,
-                    onSelect = selectMapControlForeground,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-
-    if (showTrailColorsBottomSheet) {
-        val closeTrailColors: () -> Unit = {
-            swapBottomSheets(
-                currentState = trailColorsBottomSheetState,
-                showNext = { showSettingsMenu = true },
-                hideCurrent = { showTrailColorsBottomSheet = false },
-            )
-        }
-        val selectTrailFill: (MapControlColor) -> Unit = {
-            trailFillColor = it
-            context.saveTrailFillColor(it)
-        }
-        val selectTrailStroke: (MapControlColor) -> Unit = {
-            trailStrokeColor = it
-            context.saveTrailStrokeColor(it)
-        }
-        SpurModalBottomSheet(
-            onDismissRequest = {
-                showSettingsMenu = true
-                showTrailColorsBottomSheet = false
-            },
-            sheetState = trailColorsBottomSheetState,
-        ) {
-            BackHandler(onBack = closeTrailColors)
-            Column(
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 24.dp)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                BottomSheetHeader(
-                    title = "Trailfarben wählen",
-                    onBack = closeTrailColors,
-                )
-                TrailColorPreview(
-                    colors = trailColors,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "Füllfarbe",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                MapControlColorPicker(
-                    label = "Trail-Füllfarbe",
-                    selectedColor = trailFillColor,
-                    onSelect = selectTrailFill,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "Randfarbe",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                MapControlColorPicker(
-                    label = "Trail-Randfarbe",
-                    selectedColor = trailStrokeColor,
-                    onSelect = selectTrailStroke,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
         }
     }
 
@@ -1278,6 +1117,16 @@ internal fun MapPage(
             }
         }
     }
+
+    ThemePickerOverlay(
+        visible = showThemePicker,
+        selectedTheme = colorTheme,
+        onSelect = { theme ->
+            colorTheme = theme
+            context.saveColorTheme(theme)
+        },
+        onDismiss = { showThemePicker = false },
+    )
 
     CompositionLocalProvider(LocalMapControlColors provides mapControlColors) {
         MomentComposer(
