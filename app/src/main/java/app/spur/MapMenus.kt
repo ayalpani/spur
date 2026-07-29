@@ -89,13 +89,8 @@ internal fun StartTourBottomSheet(
 @Composable
 internal fun MainMenu(
     onOpenHistory: () -> Unit,
-    onOpenTour: () -> Unit,
-    onOpenButtonColors: () -> Unit,
-    onOpenTrailColors: () -> Unit,
-    onOpenDirection: () -> Unit,
+    onOpenSettings: () -> Unit,
     onOpenAbout: () -> Unit,
-    onShareTour: (() -> Unit)?,
-    onDeleteTour: (() -> Unit)?,
 ) {
     Column(
         modifier = Modifier
@@ -104,6 +99,54 @@ internal fun MainMenu(
             .navigationBarsPadding()
             .padding(bottom = 24.dp),
     ) {
+        SheetMenuItem(label = "History", onClick = onOpenHistory)
+        SheetMenuItem(label = "Settings", onClick = onOpenSettings)
+        SheetMenuItem(label = "Über Spur", onClick = onOpenAbout)
+    }
+}
+
+@Composable
+internal fun SettingsMenu(
+    onBack: () -> Unit,
+    onOpenTour: () -> Unit,
+    onOpenButtonColors: () -> Unit,
+    onOpenTrailColors: () -> Unit,
+    onOpenDirection: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(bottom = 24.dp),
+    ) {
+        BottomSheetHeader(
+            title = "Settings",
+            modifier = Modifier.padding(horizontal = 24.dp),
+            onBack = onBack,
+        )
+        SheetMenuItem(label = "Tour", onClick = onOpenTour)
+        SheetMenuItem(label = "Buttonfarbe", onClick = onOpenButtonColors)
+        SheetMenuItem(label = "Trail", onClick = onOpenTrailColors)
+        SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
+    }
+}
+
+@Composable
+internal fun TourMenu(
+    onBack: () -> Unit,
+    onOpenHomeAutoStart: () -> Unit,
+    onShareTour: (() -> Unit)?,
+    onDeleteTour: (() -> Unit)?,
+) {
+    Column(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(bottom = 24.dp),
+    ) {
+        BottomSheetHeader(
+            title = "Tour",
+            modifier = Modifier.padding(horizontal = 24.dp),
+            onBack = onBack,
+        )
         if (onDeleteTour != null || onShareTour != null) {
             onDeleteTour?.let {
                 SheetMenuItem(
@@ -126,33 +169,6 @@ internal fun MainMenu(
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
         }
-        SheetMenuItem(
-            label = "History",
-            onClick = onOpenHistory,
-        )
-        SheetMenuItem(label = "Tour", onClick = onOpenTour)
-        SheetMenuItem(label = "Buttonfarben", onClick = onOpenButtonColors)
-        SheetMenuItem(label = "Trail", onClick = onOpenTrailColors)
-        SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
-        SheetMenuItem(label = "Über Spur", onClick = onOpenAbout)
-    }
-}
-
-@Composable
-internal fun TourMenu(
-    onBack: () -> Unit,
-    onOpenHomeAutoStart: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .navigationBarsPadding()
-            .padding(bottom = 24.dp),
-    ) {
-        BottomSheetHeader(
-            title = "Tour",
-            modifier = Modifier.padding(horizontal = 24.dp),
-            onBack = onBack,
-        )
         SheetMenuItem(
             label = "Startautomatik",
             leading = { HomeIcon() },

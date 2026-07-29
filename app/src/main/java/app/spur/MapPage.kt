@@ -126,6 +126,7 @@ internal fun MapPage(
     var isStartingTour by rememberSaveable { mutableStateOf(false) }
     var momentTarget by remember { mutableStateOf<MomentPlacementTarget?>(null) }
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
+    var showSettingsMenu by rememberSaveable { mutableStateOf(false) }
     var showTourMenu by rememberSaveable { mutableStateOf(false) }
     var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showButtonColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
@@ -210,6 +211,7 @@ internal fun MapPage(
     val startTourBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val settingsMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val tourMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val homeAutoStartBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -231,6 +233,7 @@ internal fun MapPage(
         }
         showStartTourBottomSheet = false
         showMainMenu = false
+        showSettingsMenu = false
         isFollowingLocation = false
         isTourOverview = false
         if (editorLocations.none { it.point.id == selectedEditorPointId }) {
@@ -374,6 +377,7 @@ internal fun MapPage(
         enabled = isTourOverview &&
             !showStartTourBottomSheet &&
             !showMainMenu &&
+            !showSettingsMenu &&
             !showTourMenu &&
             !showHomeAutoStartBottomSheet &&
             !showButtonColorsBottomSheet &&
@@ -576,7 +580,10 @@ internal fun MapPage(
                                         "M9.414 21.414a2 2 0 0 0 1.414.586H19a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1h-8.172a2 2 0 0 0-1.414.586L8 20z",
                                         "M9.414 5.414A2 2 0 0 0 10.828 6H19a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1h-8.172a2 2 0 0 0-1.414.586L8 4z",
                                     ),
-                                    strokeWidth = LucideBoldStrokeWidth,
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .graphicsLayer { rotationZ = 90f },
+                                    strokeWidth = LucideRegularStrokeWidth,
                                 )
                             }
                         }
@@ -918,32 +925,11 @@ internal fun MapPage(
                         onOpenHistory()
                     }
                 },
-                onOpenTour = {
+                onOpenSettings = {
                     scope.launch {
                         mainMenuState.hide()
                         showMainMenu = false
-                        showTourMenu = true
-                    }
-                },
-                onOpenButtonColors = {
-                    scope.launch {
-                        mainMenuState.hide()
-                        showMainMenu = false
-                        showButtonColorsBottomSheet = true
-                    }
-                },
-                onOpenTrailColors = {
-                    scope.launch {
-                        mainMenuState.hide()
-                        showMainMenu = false
-                        showTrailColorsBottomSheet = true
-                    }
-                },
-                onOpenDirection = {
-                    scope.launch {
-                        mainMenuState.hide()
-                        showMainMenu = false
-                        showDirectionBottomSheet = true
+                        showSettingsMenu = true
                     }
                 },
                 onOpenAbout = {
@@ -953,24 +939,54 @@ internal fun MapPage(
                         showAboutBottomSheet = true
                     }
                 },
-                onShareTour = if (isTourActive) {
-                    {
-                        scope.launch {
-                            mainMenuState.hide()
-                            showMainMenu = false
-                            shareActiveTour(context)
-                        }
+            )
+        }
+    }
+
+    if (showSettingsMenu) {
+        val closeSettingsMenu: () -> Unit = {
+            scope.launch {
+                settingsMenuState.hide()
+                showSettingsMenu = false
+                showMainMenu = true
+            }
+        }
+        SpurModalBottomSheet(
+            onDismissRequest = {
+                showSettingsMenu = false
+                showMainMenu = true
+            },
+            sheetState = settingsMenuState,
+        ) {
+            BackHandler(onBack = closeSettingsMenu)
+            SettingsMenu(
+                onBack = closeSettingsMenu,
+                onOpenTour = {
+                    scope.launch {
+                        settingsMenuState.hide()
+                        showSettingsMenu = false
+                        showTourMenu = true
                     }
-                } else {
-                    null
                 },
-                onDeleteTour = tour?.let { visibleTour ->
-                    {
-                        scope.launch {
-                            mainMenuState.hide()
-                            showMainMenu = false
-                            tourToDelete = visibleTour
-                        }
+                onOpenButtonColors = {
+                    scope.launch {
+                        settingsMenuState.hide()
+                        showSettingsMenu = false
+                        showButtonColorsBottomSheet = true
+                    }
+                },
+                onOpenTrailColors = {
+                    scope.launch {
+                        settingsMenuState.hide()
+                        showSettingsMenu = false
+                        showTrailColorsBottomSheet = true
+                    }
+                },
+                onOpenDirection = {
+                    scope.launch {
+                        settingsMenuState.hide()
+                        showSettingsMenu = false
+                        showDirectionBottomSheet = true
                     }
                 },
             )
@@ -1060,13 +1076,13 @@ internal fun MapPage(
             scope.launch {
                 tourMenuState.hide()
                 showTourMenu = false
-                showMainMenu = true
+                showSettingsMenu = true
             }
         }
         SpurModalBottomSheet(
             onDismissRequest = {
                 showTourMenu = false
-                showMainMenu = true
+                showSettingsMenu = true
             },
             sheetState = tourMenuState,
         ) {
@@ -1078,6 +1094,26 @@ internal fun MapPage(
                         tourMenuState.hide()
                         showTourMenu = false
                         showHomeAutoStartBottomSheet = true
+                    }
+                },
+                onShareTour = if (isTourActive) {
+                    {
+                        scope.launch {
+                            tourMenuState.hide()
+                            showTourMenu = false
+                            shareActiveTour(context)
+                        }
+                    }
+                } else {
+                    null
+                },
+                onDeleteTour = tour?.let { visibleTour ->
+                    {
+                        scope.launch {
+                            tourMenuState.hide()
+                            showTourMenu = false
+                            tourToDelete = visibleTour
+                        }
                     }
                 },
             )
@@ -1110,7 +1146,7 @@ internal fun MapPage(
             scope.launch {
                 buttonColorsBottomSheetState.hide()
                 showButtonColorsBottomSheet = false
-                showMainMenu = true
+                showSettingsMenu = true
             }
         }
         val selectMapControlBackground: (MapControlColor) -> Unit = {
@@ -1124,7 +1160,7 @@ internal fun MapPage(
         SpurModalBottomSheet(
             onDismissRequest = {
                 showButtonColorsBottomSheet = false
-                showMainMenu = true
+                showSettingsMenu = true
             },
             sheetState = buttonColorsBottomSheetState,
         ) {
@@ -1179,7 +1215,7 @@ internal fun MapPage(
             scope.launch {
                 trailColorsBottomSheetState.hide()
                 showTrailColorsBottomSheet = false
-                showMainMenu = true
+                showSettingsMenu = true
             }
         }
         val selectTrailFill: (MapControlColor) -> Unit = {
@@ -1193,7 +1229,7 @@ internal fun MapPage(
         SpurModalBottomSheet(
             onDismissRequest = {
                 showTrailColorsBottomSheet = false
-                showMainMenu = true
+                showSettingsMenu = true
             },
             sheetState = trailColorsBottomSheetState,
         ) {
@@ -1263,7 +1299,7 @@ internal fun MapPage(
         SpurModalBottomSheet(
             onDismissRequest = {
                 showDirectionBottomSheet = false
-                showMainMenu = true
+                showSettingsMenu = true
             },
             sheetState = directionBottomSheetState,
         ) {
@@ -1279,7 +1315,7 @@ internal fun MapPage(
                         scope.launch {
                             directionBottomSheetState.hide()
                             showDirectionBottomSheet = false
-                            showMainMenu = true
+                            showSettingsMenu = true
                         }
                     },
                 )
