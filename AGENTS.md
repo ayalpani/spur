@@ -33,7 +33,7 @@ confirming that the command preserves app data.
 - Use `MapIconButton(secondary = true)` for secondary controls drawn over a
   map. All secondary map controls use `secondaryMapControlStyle`: it inverts
   the selected colors and adds the shared 2 dp outline using the secondary
-  font color at 50% opacity.
+  font color at 25% opacity.
 - In the main map rail, keep the bottom location/follow control primary. Place
   the secondary green moment-add control immediately above it. Place the
   manual-location reset above the map-style switcher on the left.

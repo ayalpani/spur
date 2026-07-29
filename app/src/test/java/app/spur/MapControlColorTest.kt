@@ -78,7 +78,7 @@ class MapControlColorTest {
         assertEquals(selected.inverted, secondary.colors)
         assertEquals(2.dp, secondary.border?.width)
         assertEquals(
-            selected.inverted.foreground.copy(alpha = 0.5f),
+            selected.inverted.foreground.copy(alpha = 0.25f),
             (secondary.border?.brush as SolidColor).value,
         )
     }
