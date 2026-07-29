@@ -118,7 +118,6 @@ internal fun HistoryBottomSheet(
             .navigationBarsPadding(),
     ) {
         Column(modifier = Modifier.fillMaxHeight()) {
-            HistorySheetHeader()
             if (items.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -166,27 +165,6 @@ internal fun HistoryBottomSheet(
         HistoryCloseButton(
             onDismiss = onDismiss,
             modifier = Modifier.align(Alignment.BottomEnd),
-        )
-    }
-}
-
-@Composable
-private fun HistorySheetHeader() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(
-            10.dp,
-            Alignment.CenterHorizontally,
-        ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        HistoryIcon()
-        Text(
-            text = "Deine Touren",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
         )
     }
 }

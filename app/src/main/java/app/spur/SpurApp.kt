@@ -61,7 +61,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     }
     val navController = rememberNavController()
     var isHistoryVisible by rememberSaveable { mutableStateOf(false) }
-    val historySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var feedbackNotice by remember { mutableStateOf<FeedbackNotice?>(null) }
     var feedbackNoticeId by remember { mutableLongStateOf(0L) }
     val showFeedbackNotice: ShowFeedbackNotice = { kind, message ->
@@ -289,6 +288,8 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                     }
 
                     if (isHistoryVisible) {
+                        val historySheetState =
+                            rememberModalBottomSheetState(skipPartiallyExpanded = false)
                         SpurModalBottomSheet(
                             onDismissRequest = { isHistoryVisible = false },
                             sheetState = historySheetState,
