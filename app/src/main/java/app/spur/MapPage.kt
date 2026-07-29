@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -473,6 +474,30 @@ internal fun MapPage(
 
             AnimatedVisibility(
                 visible = areMapControlsVisible,
+                modifier = Modifier.align(Alignment.TopEnd),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
+            ) {
+                MapIconButton(
+                    contentDescription = "History öffnen",
+                    onClick = {
+                        activeVoiceMoment = null
+                        onOpenHistory()
+                    },
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .padding(
+                            top = 14.dp,
+                            end = MapControlHorizontalPadding,
+                        ),
+                    secondary = true,
+                ) {
+                    HistoryIcon()
+                }
+            }
+
+            AnimatedVisibility(
+                visible = areMapControlsVisible,
                 modifier = Modifier.align(Alignment.BottomEnd),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
@@ -497,16 +522,6 @@ internal fun MapPage(
                         secondary = true,
                     ) {
                         MenuIcon()
-                    }
-                    MapIconButton(
-                        contentDescription = "History öffnen",
-                        onClick = {
-                            activeVoiceMoment = null
-                            onOpenHistory()
-                        },
-                        secondary = true,
-                    ) {
-                        HistoryIcon()
                     }
                     MapIconButton(
                         contentDescription = "Moment hinzufügen",
