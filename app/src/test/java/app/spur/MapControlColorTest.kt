@@ -76,7 +76,7 @@ class MapControlColorTest {
         val secondary = secondaryMapControlStyle(selected)
 
         assertEquals(selected.inverted, secondary.colors)
-        assertEquals(2.dp, secondary.border?.width)
+        assertEquals(3.dp, secondary.border?.width)
         assertEquals(
             selected.inverted.foreground.copy(alpha = 0.25f),
             (secondary.border?.brush as SolidColor).value,

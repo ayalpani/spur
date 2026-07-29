@@ -585,7 +585,7 @@ internal fun MapPage(
                                 momentTarget = MomentPlacementTarget.CurrentLocation
                             },
                             secondary = true,
-                            contentColor = MapControlColor.GREEN.color,
+                            contentColor = MapControlColor.BLUE.color,
                         ) {
                             PlusIcon()
                         }
