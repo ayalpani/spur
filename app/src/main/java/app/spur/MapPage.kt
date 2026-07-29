@@ -528,9 +528,13 @@ internal fun MapPage(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
                             onClick = onCloseTourEditor,
-                            modifier = Modifier.size(MapControlSize),
+                            modifier = Modifier
+                                .size(MapControlSize)
+                                .semantics {
+                                    contentDescription = "Waypoints schließen"
+                                },
                         ) {
-                            BackIcon()
+                            PhotoCloseIcon()
                         }
                         Text(
                             text = "Waypoints",
