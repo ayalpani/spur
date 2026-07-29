@@ -34,6 +34,13 @@ map is free and switches to the selected trail color only while location
 following is active; interrupting follow with a map gesture restores black.
 The active follow icon fades between full and half opacity on the same shared
 signal period as that map pulse.
+MapLibre keeps ownership of moment clustering and coordinates. After each
+settled render, `MapSurface` treats the current-location pulse and persona as
+one rectangular screen-space exclusion zone. Only rendered moment symbols
+whose normal bounds overlap that zone receive a visual offset to the nearest
+free slot below, left, or right, including a gap to the persona and neighboring
+symbols. Cluster badges move with their symbols, and displaced clusters expand
+around their original geographic center when tapped.
 
 ## Data flow
 

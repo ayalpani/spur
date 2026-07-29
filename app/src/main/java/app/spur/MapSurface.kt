@@ -45,6 +45,7 @@ import org.maplibre.android.maps.Style
 import org.maplibre.android.snapshotter.MapSnapshotter
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
+import org.maplibre.geojson.Point
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
@@ -118,6 +119,7 @@ internal fun MapSurface(
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
     val currentLocationPulseGeneration by rememberUpdatedState(locationPulseGeneration)
+    val currentMomentImageRevision by rememberUpdatedState(momentImageRevision)
     val currentLocationPulseColor by rememberUpdatedState(
         if (isFollowingLocation) trailColors.fill else Ink,
     )
@@ -330,6 +332,13 @@ internal fun MapSurface(
         var map: MapLibreMap? = null
         var isMapTouchActive = false
         var isCameraMoving = false
+        var avoidanceRefreshPending = true
+        var avoidanceMoments: List<MapMoment>? = null
+        var avoidancePersonaVisible: Boolean? = null
+        var avoidanceLocation: SpurCoordinate? = null
+        var avoidanceImageRevision = -1L
+        var avoidanceStyleRevision = -1
+        var appliedAvoidanceLayout: MapMomentAvoidanceLayout? = null
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
         var holdStart = PointF()
         var manualLocationHold: Runnable? = null
@@ -364,6 +373,55 @@ internal fun MapSurface(
             }
         }
 
+        fun updateMapMomentAvoidance() {
+            val readyMap = map ?: return
+            val moments = currentMapMoments
+            val personaVisible =
+                currentManualLocation == null && currentSelectedTrackPoint == null
+            val location = if (
+                personaVisible &&
+                readyMap.locationComponent.isLocationComponentActivated &&
+                readyMap.locationComponent.isLocationComponentEnabled
+            ) {
+                readyMap.locationComponent.lastKnownLocation?.let {
+                    SpurCoordinate(latitude = it.latitude, longitude = it.longitude)
+                }
+            } else {
+                null
+            }
+            val inputsChanged =
+                moments !== avoidanceMoments ||
+                    personaVisible != avoidancePersonaVisible ||
+                    location != avoidanceLocation ||
+                    currentMomentImageRevision != avoidanceImageRevision ||
+                    mapStyleRevision != avoidanceStyleRevision
+            if (!avoidanceRefreshPending && !inputsChanged) return
+            if (moments.isNotEmpty() && readyMap.style?.getLayer(MapMomentLayer) == null) {
+                return
+            }
+            val layout = if (location == null) {
+                MapMomentAvoidanceLayout()
+            } else {
+                readyMap.calculateMapMomentAvoidanceLayout(
+                    location = location,
+                    moments = moments,
+                    density = context.resources.displayMetrics.density,
+                    mapWidth = mapView.width,
+                    mapHeight = mapView.height,
+                )
+            }
+            if (inputsChanged || layout != appliedAvoidanceLayout) {
+                readyMap.style?.showMapMomentAvoidanceLayout(moments, layout)
+            }
+            avoidanceMoments = moments
+            avoidancePersonaVisible = personaVisible
+            avoidanceLocation = location
+            avoidanceImageRevision = currentMomentImageRevision
+            avoidanceStyleRevision = mapStyleRevision
+            appliedAvoidanceLayout = layout
+            avoidanceRefreshPending = false
+        }
+
         val moveListener = MapLibreMap.OnCameraMoveListener {
             if (currentManualLocation != null) publishManualLocationPosition()
             if (pendingMapMoment != null) publishPendingMomentPosition()
@@ -385,10 +443,12 @@ internal fun MapSurface(
         }
         val idleListener = MapLibreMap.OnCameraIdleListener {
             isCameraMoving = false
+            avoidanceRefreshPending = true
             if (!isMapTouchActive) currentOnMapGestureActiveChanged(false)
             publishManualLocationPosition()
             publishPendingMomentPosition()
             publishSelectedTrackPointPosition()
+            updateMapMomentAvoidance()
             previewCameraPosition = map?.cameraPosition
             if (shouldStopFollowing(cameraMoveReason)) {
                 map?.cameraPosition?.zoom?.let(context::saveDefaultMapZoom)
@@ -396,6 +456,10 @@ internal fun MapSurface(
             cameraMoveReason =
                 MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
         }
+        val renderingFrameListener =
+            MapView.OnDidFinishRenderingFrameListener { fully, _, _ ->
+                if (fully) updateMapMomentAvoidance()
+            }
         val clickListener = MapLibreMap.OnMapClickListener { point ->
             val readyMap = map ?: return@OnMapClickListener false
             val screenPoint = readyMap.projection.toScreenLocation(point)
@@ -407,8 +471,12 @@ internal fun MapSurface(
                 val source = readyMap.style?.getSourceAs<GeoJsonSource>(MapMomentSource)
                     ?: return@OnMapClickListener false
                 val expansionZoom = source.getClusterExpansionZoom(cluster).toDouble()
+                val clusterPoint = cluster.geometry() as? Point
+                val clusterLocation = clusterPoint?.let {
+                    LatLng(it.latitude(), it.longitude())
+                } ?: point
                 readyMap.animateCamera(
-                    CameraUpdateFactory.newLatLngZoom(point, expansionZoom),
+                    CameraUpdateFactory.newLatLngZoom(clusterLocation, expansionZoom),
                     MapRotationAnimationMillis.toInt(),
                 )
                 return@OnMapClickListener true
@@ -498,6 +566,7 @@ internal fun MapSurface(
             readyMap.addOnCameraMoveListener(moveListener)
             readyMap.addOnCameraIdleListener(idleListener)
             readyMap.addOnMapClickListener(clickListener)
+            mapView.addOnDidFinishRenderingFrameListener(renderingFrameListener)
             publishManualLocationPosition()
             publishPendingMomentPosition()
             publishSelectedTrackPointPosition()
@@ -510,6 +579,7 @@ internal fun MapSurface(
             map?.removeOnCameraMoveListener(moveListener)
             map?.removeOnCameraIdleListener(idleListener)
             map?.removeOnMapClickListener(clickListener)
+            mapView.removeOnDidFinishRenderingFrameListener(renderingFrameListener)
         }
     }
 
@@ -848,4 +918,67 @@ internal fun MapSurface(
             }
         }
     }
+}
+
+private fun MapLibreMap.calculateMapMomentAvoidanceLayout(
+    location: SpurCoordinate,
+    moments: List<MapMoment>,
+    density: Float,
+    mapWidth: Int,
+    mapHeight: Int,
+): MapMomentAvoidanceLayout {
+    if (density <= 0f || mapWidth <= 0 || mapHeight <= 0) {
+        return MapMomentAvoidanceLayout()
+    }
+    val locationScreen = projection.toScreenLocation(
+        LatLng(location.latitude, location.longitude),
+    )
+    val locationPoint = Offset(locationScreen.x / density, locationScreen.y / density)
+    val baseMomentOffsets = overlappingMomentOffsets(moments)
+    val momentKeys = mutableMapOf<String, String>()
+    val clusterKeys = mutableMapOf<String, Long>()
+    val items = queryRenderedFeatures(
+        android.graphics.RectF(0f, 0f, mapWidth.toFloat(), mapHeight.toFloat()),
+        MapMomentLayer,
+        MapMomentClusterLayer,
+    ).mapNotNull { feature ->
+        val point = feature.geometry() as? Point ?: return@mapNotNull null
+        val anchorScreen = projection.toScreenLocation(
+            LatLng(point.latitude(), point.longitude()),
+        )
+        val anchor = Offset(anchorScreen.x / density, anchorScreen.y / density)
+        if (feature.hasProperty(MapMomentClusterIdProperty)) {
+            val clusterId = feature.getNumberProperty(MapMomentClusterIdProperty).toLong()
+            val key = "cluster-$clusterId"
+            clusterKeys[key] = clusterId
+            PersonaAvoidanceItem(
+                key = key,
+                anchor = anchor,
+                offset = Offset.Zero,
+                width = MomentClusterWidth.toFloat(),
+                height = MomentClusterHeight.toFloat(),
+            )
+        } else {
+            val momentId = feature.getStringProperty(MapMomentIdProperty)
+                ?: return@mapNotNull null
+            val key = "moment-$momentId"
+            momentKeys[key] = momentId
+            PersonaAvoidanceItem(
+                key = key,
+                anchor = anchor,
+                offset = baseMomentOffsets[momentId] ?: Offset.Zero,
+                width = MomentMarkerWidth.toFloat(),
+                height = MomentMarkerHeight.toFloat(),
+            )
+        }
+    }
+    val offsets = avoidPersonaOverlaps(locationPoint, items)
+    return MapMomentAvoidanceLayout(
+        momentOffsets = offsets.mapNotNull { (key, offset) ->
+            momentKeys[key]?.let { it to offset }
+        }.toMap(),
+        clusterOffsets = offsets.mapNotNull { (key, offset) ->
+            clusterKeys[key]?.let { it to offset }
+        }.toMap(),
+    )
 }

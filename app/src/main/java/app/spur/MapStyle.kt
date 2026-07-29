@@ -3,6 +3,7 @@ package app.spur
 import android.content.Context
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.selected
@@ -123,6 +124,11 @@ internal data class PreparedMapMoments(
     val features: List<Feature>,
 )
 
+internal data class MapMomentAvoidanceLayout(
+    val momentOffsets: Map<String, Offset> = emptyMap(),
+    val clusterOffsets: Map<Long, Offset> = emptyMap(),
+)
+
 internal fun prepareMapMoments(
     context: Context,
     moments: List<MapMoment>,
@@ -176,7 +182,7 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
         ).also(::addSource)
     source.setGeoJson(FeatureCollection.fromFeatures(features))
 
-    val momentOffset = momentOffsetExpression(moments)
+    val momentOffset = momentOffsetExpression(moments, emptyMap())
     val momentLayer = getLayerAs<SymbolLayer>(MapMomentLayer)
     if (momentLayer == null) {
         addLayer(
@@ -196,7 +202,10 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
                 ),
         )
     } else {
-        momentLayer.setProperties(iconOffset(momentOffset))
+        momentLayer.setProperties(
+            iconImage(Expression.get(MapMomentImageProperty)),
+            iconOffset(momentOffset),
+        )
     }
 
     val clusterImage = clusterMomentImageExpression(moments)
@@ -216,7 +225,10 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
                 ),
         )
     } else {
-        clusterLayer.setProperties(iconImage(clusterImage))
+        clusterLayer.setProperties(
+            iconImage(clusterImage),
+            iconOffset(Expression.literal(arrayOf(0f, 0f))),
+        )
     }
 
     if (getLayer(MapMomentClusterCountBadgeLayer) == null) {
@@ -266,6 +278,24 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
     }
 }
 
+internal fun Style.showMapMomentAvoidanceLayout(
+    moments: List<MapMoment>,
+    layout: MapMomentAvoidanceLayout,
+) {
+    getLayerAs<SymbolLayer>(MapMomentLayer)?.setProperties(
+        iconOffset(momentOffsetExpression(moments, layout.momentOffsets)),
+    )
+    getLayerAs<SymbolLayer>(MapMomentClusterLayer)?.setProperties(
+        iconOffset(clusterOffsetExpression(layout.clusterOffsets)),
+    )
+    getLayerAs<CircleLayer>(MapMomentClusterCountBadgeLayer)?.setProperties(
+        circleTranslate(clusterCountOffsetExpression(layout.clusterOffsets)),
+    )
+    getLayerAs<SymbolLayer>(MapMomentClusterCountLayer)?.setProperties(
+        textTranslate(clusterCountOffsetExpression(layout.clusterOffsets)),
+    )
+}
+
 private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression =
     Expression.switchCase(
         Expression.eq(
@@ -296,8 +326,11 @@ private fun representativeClusterImageExpression(
 private fun clusterMomentImageId(moment: MapMoment, stackSize: Int): String =
     "$MapMomentClusterImagePrefix$stackSize-${moment.id}"
 
-private fun momentOffsetExpression(moments: List<MapMoment>): Expression {
-    val offsets = overlappingMomentOffsets(moments)
+private fun momentOffsetExpression(
+    moments: List<MapMoment>,
+    avoidanceOffsets: Map<String, Offset>,
+): Expression {
+    val offsets = overlappingMomentOffsets(moments) + avoidanceOffsets
     val center = Expression.literal(arrayOf(0f, 0f))
     if (offsets.isEmpty()) return center
     val stops = offsets.map { (momentId, offset) ->
@@ -306,6 +339,48 @@ private fun momentOffsetExpression(moments: List<MapMoment>): Expression {
     return Expression.match(
         Expression.get(MapMomentIdProperty),
         center,
+        *stops,
+    )
+}
+
+private fun clusterOffsetExpression(offsets: Map<Long, Offset>): Expression {
+    val center = Expression.literal(arrayOf(0f, 0f))
+    if (offsets.isEmpty()) return center
+    val stops = offsets.map { (clusterId, offset) ->
+        Expression.stop(
+            clusterId,
+            Expression.literal(arrayOf(offset.x, offset.y)),
+        )
+    }.toTypedArray()
+    return Expression.match(
+        Expression.toNumber(Expression.get(MapMomentClusterIdProperty)),
+        center,
+        *stops,
+    )
+}
+
+private fun clusterCountOffsetExpression(offsets: Map<Long, Offset>): Expression {
+    val default = Expression.literal(
+        arrayOf(
+            MapMomentClusterCountPositionX,
+            MapMomentClusterCountPositionY,
+        ),
+    )
+    if (offsets.isEmpty()) return default
+    val stops = offsets.map { (clusterId, offset) ->
+        Expression.stop(
+            clusterId,
+            Expression.literal(
+                arrayOf(
+                    offset.x + MapMomentClusterCountPositionX,
+                    offset.y + MapMomentClusterCountPositionY,
+                ),
+            ),
+        )
+    }.toTypedArray()
+    return Expression.match(
+        Expression.toNumber(Expression.get(MapMomentClusterIdProperty)),
+        default,
         *stops,
     )
 }
