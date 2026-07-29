@@ -1,6 +1,7 @@
 package app.spur
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -75,7 +76,11 @@ class MapControlColorTest {
         val secondary = secondaryMapControlStyle(selected)
 
         assertEquals(selected.inverted, secondary.colors)
-        assertEquals(1.dp, secondary.border?.width)
+        assertEquals(2.dp, secondary.border?.width)
+        assertEquals(
+            selected.inverted.foreground.copy(alpha = 0.5f),
+            (secondary.border?.brush as SolidColor).value,
+        )
     }
 
     @Test

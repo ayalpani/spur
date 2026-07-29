@@ -21,7 +21,8 @@ boundaries, not behavior or state architecture.
 
 Map overlay controls share `MapIconButton`. Its secondary variant swaps the
 user-selected map-control foreground and background colors and uses the soft
-1 dp outline from `secondaryMapControlStyle`. The map-style switcher and
+2 dp outline from `secondaryMapControlStyle`, derived from the secondary font
+color at 50% opacity. The map-style switcher and
 inactive tour-start control use the same style. The location/follow control
 remains primary; the green secondary moment-add control sits immediately above
 it, while manual-location reset sits above the map-style switcher.
