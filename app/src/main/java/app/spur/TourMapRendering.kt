@@ -16,7 +16,6 @@ import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
-import org.maplibre.android.style.sources.GeoJsonOptions
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.geojson.Feature
@@ -66,10 +65,7 @@ internal fun Style.showTourRoute(
     colors: TrailColors,
 ) {
     val source = getSourceAs<GeoJsonSource>(TourRouteSource)
-        ?: GeoJsonSource(
-            TourRouteSource,
-            GeoJsonOptions().withMaxZoom(TourRouteSourceMaxZoom),
-        ).also(::addSource)
+        ?: GeoJsonSource(TourRouteSource).also(::addSource)
     val borderLayer = getLayerAs<LineLayer>(TourRouteBorderLayer)
     if (borderLayer == null) {
         val borderLayer = LineLayer(TourRouteBorderLayer, TourRouteSource).withProperties(

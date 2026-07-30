@@ -59,7 +59,6 @@ internal const val TourRouteWidthPixels = 6f
 internal const val TourRouteBorderPerSidePixels = 4f
 internal const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
-internal const val TourRouteSourceMaxZoom = 25
 internal const val TourWaypointRadiusPixels = 2f
 internal const val TrailStrokeAlpha = 0.5f
 internal const val LocationPulseAlpha = 0.48f
