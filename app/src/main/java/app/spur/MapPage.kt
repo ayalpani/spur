@@ -552,7 +552,6 @@ internal fun MapPage(
             TourModeHeader(
                 tour = tour,
                 active = isDisplayedActiveTour,
-                now = now,
                 pulseAlpha = locationSignalButtonAlpha(
                     selected = isDisplayedActiveTour,
                     pulseGeneration = requestedLocationPulseGeneration,

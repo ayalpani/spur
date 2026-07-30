@@ -12,10 +12,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,22 +24,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable
 internal fun TourModeHeader(
     tour: Tour?,
     active: Boolean,
-    now: Long,
     pulseAlpha: Float,
     visible: Boolean,
     onClose: () -> Unit,
@@ -65,14 +59,12 @@ internal fun TourModeHeader(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .heightIn(min = 64.dp)
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                    .height(60.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
+                        .size(60.dp)
                         .clickable(
                             onClickLabel = "Tour-Ansicht schließen",
                             onClick = onClose,
@@ -85,59 +77,29 @@ internal fun TourModeHeader(
                     PhotoCloseIcon()
                 }
                 if (tour != null) {
-                    Column(modifier = Modifier.padding(start = 8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (active) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(end = 8.dp)
-                                        .size(10.dp)
-                                        .alpha(pulseAlpha)
-                                        .background(FollowGreen, CircleShape),
-                                )
-                            }
-                            Text(
-                                text = if (active) "Laufende Tour" else "Archiv-Tour",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, end = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (active) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(end = 10.dp)
+                                    .size(10.dp)
+                                    .alpha(pulseAlpha)
+                                    .background(FollowGreen, CircleShape),
                             )
                         }
                         Text(
-                            text = tourHeaderMetadata(tour, now),
-                            color = Ink.copy(alpha = 0.62f),
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = if (active) "Laufende Tour" else "Archiv-Tour",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
                         )
                     }
                 }
             }
             HorizontalDivider(color = Ink.copy(alpha = 0.12f))
         }
-    }
-}
-
-internal fun tourHeaderMetadata(
-    tour: Tour,
-    now: Long,
-    zoneId: ZoneId = ZoneId.systemDefault(),
-): String {
-    val endedAt = tour.endedAt ?: now
-    val formatter = DateTimeFormatter.ofPattern("d. MMMM yyyy · HH:mm", Locale.GERMAN)
-    val started = Instant.ofEpochMilli(tour.startedAt).atZone(zoneId)
-    val endTime = Instant.ofEpochMilli(endedAt)
-        .atZone(zoneId)
-        .format(DateTimeFormatter.ofPattern("HH:mm", Locale.GERMAN))
-    return "${started.format(formatter)}–$endTime Uhr\n" +
-        "Dauer ${formatTourHeaderDuration(endedAt - tour.startedAt)}"
-}
-
-internal fun formatTourHeaderDuration(durationMillis: Long): String {
-    val totalSeconds = durationMillis.coerceAtLeast(0L) / 1_000L
-    val hours = totalSeconds / 3_600L
-    val minutes = totalSeconds % 3_600L / 60L
-    val seconds = totalSeconds % 60L
-    return buildString {
-        if (hours > 0L) append("$hours h ")
-        append("$minutes min $seconds s")
     }
 }
 
