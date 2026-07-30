@@ -36,15 +36,12 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -73,7 +70,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -606,28 +602,15 @@ internal fun PhotoDetailPage(
                     textAlign = TextAlign.Center,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Button(
+                SpurPrimaryButton(
+                    label = "Bild endgültig löschen",
                     onClick = { deleteAnimated(currentPhoto) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = StopRed,
-                        contentColor = Color.White,
-                    ),
-                    shape = CircleShape,
-                ) {
-                    Text(
-                        text = "Bild endgültig löschen",
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                TextButton(
+                    destructive = true,
+                )
+                SpurSecondaryButton(
+                    label = "Abbrechen",
                     onClick = { showDeletePhotoSheet = false },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Abbrechen", color = Ink)
-                }
+                )
             }
         }
     }

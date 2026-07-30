@@ -54,13 +54,13 @@ internal fun ColumnScope.AnimatedMediaConfirmationPanel(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     metadata?.invoke(this)
-                    SpurSecondaryButton(
-                        label = "Verwerfen",
-                        onClick = onDiscard,
-                    )
                     SpurPrimaryButton(
                         label = "Bestätigen",
                         onClick = onAccept,
+                    )
+                    SpurSecondaryButton(
+                        label = "Verwerfen",
+                        onClick = onDiscard,
                     )
                 }
             }

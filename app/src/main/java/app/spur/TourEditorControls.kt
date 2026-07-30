@@ -78,14 +78,14 @@ internal fun EditorDeleteSheet(
                 title = title,
                 modifier = Modifier.padding(bottom = 10.dp),
             )
-            SpurSecondaryButton(
-                label = "Abbrechen",
-                onClick = onDismiss,
-            )
             SpurPrimaryButton(
                 label = primaryLabel,
                 onClick = onConfirm,
                 destructive = true,
+            )
+            SpurSecondaryButton(
+                label = "Abbrechen",
+                onClick = onDismiss,
             )
         }
     }

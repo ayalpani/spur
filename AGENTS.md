@@ -30,6 +30,8 @@ confirming that the command preserves app data.
 - Use `SpurSecondaryButton` for secondary actions. It matches the primary
   button's 60 dp height and typography, with a transparent background and a
   1 dp black outline at 50% opacity.
+- In vertically stacked dialog and confirmation actions, place the primary or
+  confirming action above the secondary cancel/discard action.
 - Use `MapIconButton(secondary = true)` for secondary controls drawn over a
   map. All secondary map controls use `secondaryMapControlStyle`: it inverts
   the selected colors and adds the shared 3 dp outline using the secondary
