@@ -24,7 +24,6 @@ import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
-import org.maplibre.android.style.layers.PropertyFactory.lineRoundLimit
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.sources.GeoJsonSource
 import java.io.File
@@ -222,14 +221,12 @@ private suspend fun Context.createTourPreview(
                 lineWidth(TourRouteBorderWidthPixels),
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
-                lineRoundLimit(TourRouteRoundLimit),
             ),
             LineLayer(TourPreviewRouteLayer, TourPreviewSource).withProperties(
                 lineColor(colors.fill.toArgb()),
                 lineWidth(TourRouteWidthPixels),
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
-                lineRoundLimit(TourRouteRoundLimit),
             ),
             CircleLayer(TourPreviewWaypointLayer, TourPreviewSource).withProperties(
                 circleColor(colors.stroke.toArgb()),

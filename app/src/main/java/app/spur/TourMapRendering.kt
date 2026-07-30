@@ -15,8 +15,8 @@ import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
-import org.maplibre.android.style.layers.PropertyFactory.lineRoundLimit
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.sources.GeoJsonOptions
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.geojson.Feature
@@ -66,7 +66,10 @@ internal fun Style.showTourRoute(
     colors: TrailColors,
 ) {
     val source = getSourceAs<GeoJsonSource>(TourRouteSource)
-        ?: GeoJsonSource(TourRouteSource).also(::addSource)
+        ?: GeoJsonSource(
+            TourRouteSource,
+            GeoJsonOptions().withMaxZoom(TourRouteSourceMaxZoom),
+        ).also(::addSource)
     val borderLayer = getLayerAs<LineLayer>(TourRouteBorderLayer)
     if (borderLayer == null) {
         val borderLayer = LineLayer(TourRouteBorderLayer, TourRouteSource).withProperties(
@@ -74,7 +77,6 @@ internal fun Style.showTourRoute(
             lineWidth(TourRouteBorderWidthPixels),
             lineCap(Property.LINE_CAP_ROUND),
             lineJoin(Property.LINE_JOIN_ROUND),
-            lineRoundLimit(TourRouteRoundLimit),
         )
         if (getLayer(TourRouteLayer) == null) {
             addTourLayerBelowMarkers(borderLayer)
@@ -92,7 +94,6 @@ internal fun Style.showTourRoute(
                 lineWidth(TourRouteWidthPixels),
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
-                lineRoundLimit(TourRouteRoundLimit),
             ),
         )
     } else {
