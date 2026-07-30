@@ -53,6 +53,8 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
     var historyRevision by remember { mutableLongStateOf(0L) }
     var photoRevision by remember { mutableLongStateOf(0L) }
+    var historyPhotoDetail by remember { mutableStateOf<MapMoment?>(null) }
+    var historyPhotos by remember { mutableStateOf(emptyList<MapMoment>()) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var initialMapLoadingComplete by rememberSaveable { mutableStateOf(false) }
@@ -322,8 +324,46 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                     displayedTourRequest++
                                     isHistoryVisible = false
                                 },
+                                onOpenPhoto = { photo, photos ->
+                                    historyPhotos = photos
+                                    historyPhotoDetail = photo
+                                },
                             )
                         }
+                    }
+                    historyPhotoDetail?.let { photo ->
+                        PhotoDetailPage(
+                            photos = historyPhotos,
+                            initialPhotoId = photo.id,
+                            photoRevision = photoRevision,
+                            showFeedbackNotice = showFeedbackNotice,
+                            onPhotoChanged = { historyPhotoDetail = it },
+                            onPhotoRotated = {
+                                photoRevision++
+                                historyRevision++
+                            },
+                            onPhotoDeleted = { deletedPhoto ->
+                                scope.launch {
+                                    val updatedMoments = context.deleteMapMoment(
+                                        moment = deletedPhoto,
+                                        moments = context.loadMapMoments(),
+                                    )
+                                    if (updatedMoments == null) {
+                                        showFeedbackNotice(
+                                            FeedbackNoticeKind.ERROR,
+                                            "Das Bild konnte nicht gelöscht werden.",
+                                        )
+                                    } else {
+                                        photoRevision++
+                                        historyRevision++
+                                    }
+                                }
+                            },
+                            onDismiss = {
+                                historyPhotoDetail = null
+                                historyPhotos = emptyList()
+                            },
+                        )
                     }
                     FeedbackNoticeHost(
                         notice = feedbackNotice,

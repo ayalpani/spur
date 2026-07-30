@@ -55,6 +55,7 @@ private fun HistoryBottomSheetPreview() {
         store = TourStore(LocalContext.current),
         revision = 0,
         onOpenTour = {},
+        onOpenPhoto = { _, _ -> },
     )
 }
 

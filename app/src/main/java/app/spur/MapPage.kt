@@ -151,6 +151,9 @@ internal fun MapPage(
     var photoDetailPreview by remember { mutableStateOf<PhotoOpenPreview?>(null) }
     var focusedPhoto by remember { mutableStateOf<MapMoment?>(null) }
     var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
+    LaunchedEffect(photoRevision) {
+        mapMoments = context.loadMapMoments()
+    }
     val visibleMapMoments = remember(mapMoments, tour) {
         tour?.let { mapMomentsForTour(mapMoments, it) } ?: mapMoments
     }

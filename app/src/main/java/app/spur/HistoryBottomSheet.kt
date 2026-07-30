@@ -69,6 +69,7 @@ internal fun HistoryBottomSheet(
     store: TourStore,
     revision: Long,
     onOpenTour: (Long) -> Unit,
+    onOpenPhoto: (MapMoment, List<MapMoment>) -> Unit,
 ) {
     val context = LocalContext.current
     var items by remember { mutableStateOf(emptyList<HistoryTourItem>()) }
@@ -146,6 +147,12 @@ internal fun HistoryBottomSheet(
                             HistoryTourRow(
                                 item = item,
                                 onClick = { onOpenTour(item.tour.id) },
+                                onOpenPhoto = { photo ->
+                                    onOpenPhoto(
+                                        photo,
+                                        orderedPhotoMoments(item.moments),
+                                    )
+                                },
                             )
                             if (index < section.tours.lastIndex) {
                                 HorizontalDivider(
@@ -178,6 +185,7 @@ private fun HistorySectionHeader(label: String) {
 private fun HistoryTourRow(
     item: HistoryTourItem,
     onClick: () -> Unit,
+    onOpenPhoto: (MapMoment) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -220,7 +228,10 @@ private fun HistoryTourRow(
                     items = item.moments,
                     key = MapMoment::id,
                 ) { moment ->
-                    HistoryMomentThumbnail(moment)
+                    HistoryMomentThumbnail(
+                        moment = moment,
+                        onOpenPhoto = onOpenPhoto,
+                    )
                 }
             }
         }
@@ -255,7 +266,10 @@ private fun HistoryMapThumbnail(
 }
 
 @Composable
-private fun HistoryMomentThumbnail(moment: MapMoment) {
+private fun HistoryMomentThumbnail(
+    moment: MapMoment,
+    onOpenPhoto: (MapMoment) -> Unit,
+) {
     val context = LocalContext.current
     val previewFile = remember(moment.payload, moment.type) {
         if (moment.type == MomentType.VIDEO) {
@@ -280,7 +294,17 @@ private fun HistoryMomentThumbnail(moment: MapMoment) {
         contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(HistoryThumbnailSize)
-            .clip(RoundedCornerShape(10.dp)),
+            .clip(RoundedCornerShape(10.dp))
+            .then(
+                if (moment.type == MomentType.PHOTO) {
+                    Modifier.clickable(
+                        onClickLabel = "Foto öffnen",
+                        onClick = { onOpenPhoto(moment) },
+                    )
+                } else {
+                    Modifier
+                },
+            ),
     )
 }
 
