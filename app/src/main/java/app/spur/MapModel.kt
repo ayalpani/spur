@@ -33,6 +33,8 @@ internal const val MomentMarkerWidth = 62
 internal const val MomentMarkerHeight = 58
 internal const val MomentMarkerStroke = 3f
 internal const val MomentMarkerEdgeWidth = 2f
+internal const val MomentClusterStackStep = 5f
+internal const val MomentClusterMaximumOffset = MomentClusterStackStep * 2f
 internal const val MapPreviewPixels = 180
 internal const val LocationPulseWatchdogMillis = LocationSignalPeriodMillis * 10L
 internal const val LocationPuckHitTargetDp = 60f
@@ -225,9 +227,9 @@ internal fun canSelectHomeBuilding(mapZoom: Double): Boolean =
     mapZoom >= HomeBuildingMinimumSelectionZoom
 
 internal fun clusterStackOffsets(pointCount: Int): List<Float> = when {
-    pointCount <= 1 -> listOf(8f)
-    pointCount == 2 -> listOf(4f, 8f)
-    else -> listOf(0f, 4f, 8f)
+    pointCount <= 1 -> listOf(MomentClusterMaximumOffset)
+    pointCount == 2 -> listOf(MomentClusterStackStep, MomentClusterMaximumOffset)
+    else -> listOf(0f, MomentClusterStackStep, MomentClusterMaximumOffset)
 }
 
 internal fun overlappingMomentOffsets(moments: List<MapMoment>): Map<String, Offset> =

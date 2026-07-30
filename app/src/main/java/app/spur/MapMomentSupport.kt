@@ -217,8 +217,8 @@ internal fun createMomentClusterBitmap(
 ): android.graphics.Bitmap {
     val scale = context.resources.displayMetrics.density
     return android.graphics.Bitmap.createBitmap(
-        (70 * scale).toInt(),
-        (66 * scale).toInt(),
+        ((MomentMarkerWidth + MomentClusterMaximumOffset) * scale).toInt(),
+        ((MomentMarkerHeight + MomentClusterMaximumOffset) * scale).toInt(),
         android.graphics.Bitmap.Config.ARGB_8888,
     ).also { bitmap ->
         val canvas = android.graphics.Canvas(bitmap)
@@ -238,8 +238,8 @@ internal fun createPersonaClusterBitmap(
     val scale = context.resources.displayMetrics.density
     val offsets = clusterStackOffsets(stackSize)
     return android.graphics.Bitmap.createBitmap(
-        (70 * scale).toInt(),
-        (66 * scale).toInt(),
+        ((MomentMarkerWidth + MomentClusterMaximumOffset) * scale).toInt(),
+        ((MomentMarkerHeight + MomentClusterMaximumOffset) * scale).toInt(),
         android.graphics.Bitmap.Config.ARGB_8888,
     ).also { bitmap ->
         val canvas = android.graphics.Canvas(bitmap)

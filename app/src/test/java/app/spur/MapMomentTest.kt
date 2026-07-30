@@ -141,10 +141,10 @@ class MapMomentTest {
 
     @Test
     fun clusterStackShowsAtMostThreeMarkers() {
-        assertEquals(listOf(8f), clusterStackOffsets(1))
-        assertEquals(listOf(4f, 8f), clusterStackOffsets(2))
-        assertEquals(listOf(0f, 4f, 8f), clusterStackOffsets(3))
-        assertEquals(listOf(0f, 4f, 8f), clusterStackOffsets(12))
+        assertEquals(listOf(10f), clusterStackOffsets(1))
+        assertEquals(listOf(5f, 10f), clusterStackOffsets(2))
+        assertEquals(listOf(0f, 5f, 10f), clusterStackOffsets(3))
+        assertEquals(listOf(0f, 5f, 10f), clusterStackOffsets(12))
     }
 
     @Test

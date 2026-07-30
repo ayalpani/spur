@@ -1,7 +1,8 @@
 package app.spur
 
 import android.location.Location
-import android.view.SoundEffectConstants
+import android.media.AudioManager
+import android.media.ToneGenerator
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -47,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -133,7 +134,17 @@ internal fun WaypointRail(
         .coerceAtLeast(0)
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val scope = rememberCoroutineScope()
-    val view = LocalView.current
+    val tickTone = remember {
+        runCatching {
+            ToneGenerator(
+                AudioManager.STREAM_MUSIC,
+                WaypointTickVolumePercent,
+            )
+        }.getOrNull()
+    }
+    DisposableEffect(tickTone) {
+        onDispose { tickTone?.release() }
+    }
     var isProgrammaticScroll by remember { mutableStateOf(false) }
     var lastTickedIndex by remember(
         locations.first().point.id,
@@ -202,8 +213,12 @@ internal fun WaypointRail(
             .distinctUntilChanged()
             .collect { index ->
                 if (!isProgrammaticScroll) index?.let {
-                    if (state.isScrollInProgress && it != lastTickedIndex) {
-                        view.playSoundEffect(SoundEffectConstants.CLICK)
+                    if (it != lastTickedIndex) {
+                        tickTone?.stopTone()
+                        tickTone?.startTone(
+                            ToneGenerator.TONE_CDMA_PIP,
+                            WaypointTickDurationMillis,
+                        )
                     }
                     lastTickedIndex = it
                     locations.getOrNull(it)?.point?.id?.let(onSelected)
