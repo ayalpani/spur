@@ -94,7 +94,7 @@ internal class GpsStartGate(
     }
 }
 
-private fun coordinateDistanceMeters(
+internal fun coordinateDistanceMeters(
     fromLatitude: Double,
     fromLongitude: Double,
     toLatitude: Double,

@@ -157,12 +157,14 @@ internal fun MapPage(
         visibleMapMoments,
         routePoints,
         tour,
+        homeSettings,
     ) {
-        if (tour != null) {
+        val positionedMoments = if (tour != null) {
             momentsAttachedToTrackPoints(visibleMapMoments, routePoints)
         } else {
             visibleMapMoments
         }
+        normalizedHomeMoments(positionedMoments, homeSettings)
     }
     val editorLocations = remember(tour, routePoints, visibleMapMoments) {
         tour?.let {

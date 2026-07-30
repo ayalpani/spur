@@ -179,22 +179,33 @@ internal fun MapSurface(
             val callback = object : LocationCallback() {
                 override fun onLocationResult(result: LocationResult) {
                     val location = result.lastLocation ?: return
-                    personaLocation = SpurCoordinate(
-                        latitude = location.latitude,
-                        longitude = location.longitude,
+                    val normalizedCoordinate = normalizedHomeCoordinate(
+                        settings = context.loadHomeAutoStartSettings(),
+                        coordinate = SpurCoordinate(location.latitude, location.longitude),
                     )
+                    personaLocation = normalizedCoordinate
+                    mapView.getMapAsync { map ->
+                        if (map.locationComponent.isLocationComponentActivated) {
+                            map.locationComponent.forceLocationUpdate(
+                                android.location.Location(location).apply {
+                                    latitude = normalizedCoordinate.latitude
+                                    longitude = normalizedCoordinate.longitude
+                                },
+                            )
+                        }
+                    }
                 }
             }
             client.lastLocation.addOnSuccessListener { location ->
                 if (active && location != null) {
-                    personaLocation = SpurCoordinate(
-                        latitude = location.latitude,
-                        longitude = location.longitude,
+                    personaLocation = normalizedHomeCoordinate(
+                        settings = context.loadHomeAutoStartSettings(),
+                        coordinate = SpurCoordinate(location.latitude, location.longitude),
                     )
                 }
             }
             client.requestLocationUpdates(
-                LocationRequest.Builder(Priority.PRIORITY_PASSIVE, 1_000L)
+                LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1_000L)
                     .setMinUpdateIntervalMillis(1_000L)
                     .build(),
                 callback,

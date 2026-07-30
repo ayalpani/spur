@@ -95,7 +95,15 @@ class TrackingService : Service() {
     private fun recordLocation(location: Location) {
         if (applicationContext.loadManualLocation() != null) return
         val id = tourId ?: return
-        if (store.appendLocation(id, location)) {
+        val normalizedCoordinate = normalizedHomeCoordinate(
+            settings = applicationContext.loadHomeAutoStartSettings(),
+            coordinate = SpurCoordinate(location.latitude, location.longitude),
+        )
+        val normalizedLocation = Location(location).apply {
+            latitude = normalizedCoordinate.latitude
+            longitude = normalizedCoordinate.longitude
+        }
+        if (store.appendLocation(id, normalizedLocation)) {
             store.tour(id)?.let {
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, notification(it))

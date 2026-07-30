@@ -33,7 +33,7 @@ private const val HomeBuilding = "home-building"
 private const val StartLatitude = "start-latitude"
 private const val StartLongitude = "start-longitude"
 private const val HomeGeofenceId = "spur-home"
-private const val HomeRadiusMeters = 150f
+internal const val HomeRadiusMeters = 150f
 
 internal fun Context.loadHomeAutoStartSettings(): HomeAutoStartSettings {
     val preferences = getSharedPreferences(Preferences, Context.MODE_PRIVATE)
@@ -90,6 +90,21 @@ internal fun decodeHomeBuilding(value: String?): Feature? =
 
 internal fun automaticTourStartPoint(settings: HomeAutoStartSettings): SpurCoordinate? =
     settings.startPoint ?: settings.home
+
+internal fun normalizedHomeCoordinate(
+    settings: HomeAutoStartSettings,
+    coordinate: SpurCoordinate,
+): SpurCoordinate {
+    val home = settings.home ?: return coordinate
+    val startPoint = automaticTourStartPoint(settings) ?: return coordinate
+    val distanceFromHome = coordinateDistanceMeters(
+        fromLatitude = home.latitude,
+        fromLongitude = home.longitude,
+        toLatitude = coordinate.latitude,
+        toLongitude = coordinate.longitude,
+    )
+    return if (distanceFromHome <= HomeRadiusMeters) startPoint else coordinate
+}
 
 internal fun Context.hasBackgroundLocationPermission(): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||

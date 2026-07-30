@@ -46,7 +46,7 @@ internal fun enableLocationTracking(
     locationComponent.activateLocationComponent(
         LocationComponentActivationOptions.builder(context, style)
             .locationComponentOptions(options)
-            .useDefaultLocationEngine(true)
+            .useDefaultLocationEngine(false)
             .build(),
     )
     locationComponent.isLocationComponentEnabled = manualLocation == null
@@ -57,6 +57,14 @@ internal fun enableLocationTracking(
         context = context,
         manual = manualLocation,
     )
+    if (manualLocation == null && location != null) {
+        locationComponent.forceLocationUpdate(
+            Location("spur-home-normalized").apply {
+                latitude = location.latitude
+                longitude = location.longitude
+            },
+        )
+    }
     if (centerOnLocation && location != null) {
         map.moveCamera(
             CameraUpdateFactory.newCameraPosition(
@@ -165,8 +173,10 @@ internal fun MapLibreMap.currentSpurCoordinate(
         null
     } ?: context.bestLastKnownLocation()
     return resolveSpurCoordinate(
-        manual = null,
-        gps = gps?.toSpurCoordinate(),
+        manual = manual,
+        gps = gps?.toSpurCoordinate()?.let {
+            normalizedHomeCoordinate(context.loadHomeAutoStartSettings(), it)
+        },
     )
 }
 
