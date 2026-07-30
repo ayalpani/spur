@@ -123,6 +123,9 @@ internal fun MapPage(
     var isFollowingLocation by rememberSaveable { mutableStateOf(false) }
     var requestedLocationPulseGeneration by remember { mutableLongStateOf(0L) }
     var activeLocationPulseGeneration by remember { mutableStateOf<Long?>(null) }
+    var dismissedActiveTourHeaderId by rememberSaveable(activeTour?.id) {
+        mutableStateOf<Long?>(null)
+    }
     var isTourOverview by rememberSaveable { mutableStateOf(false) }
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
     var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -547,14 +550,23 @@ internal fun MapPage(
             }
 
             TourModeHeader(
+                tour = tour,
                 active = isDisplayedActiveTour,
-                archivedTour = archivedTour,
+                now = now,
                 pulseAlpha = locationSignalButtonAlpha(
                     selected = isDisplayedActiveTour,
                     pulseGeneration = requestedLocationPulseGeneration,
                 ),
-                visible = isMapReady && !isHomeSelectionMode,
-                onCloseArchive = onCloseDisplayedTour,
+                visible = isMapReady &&
+                    !isHomeSelectionMode &&
+                    (!isDisplayedActiveTour || dismissedActiveTourHeaderId != tour?.id),
+                onClose = {
+                    if (isDisplayedActiveTour) {
+                        dismissedActiveTourHeaderId = tour?.id
+                    } else {
+                        onCloseDisplayedTour()
+                    }
+                },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .zIndex(1f),
