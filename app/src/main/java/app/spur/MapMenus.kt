@@ -96,6 +96,7 @@ internal fun MainMenu(
 internal fun SettingsMenu(
     onBack: () -> Unit,
     onOpenTour: () -> Unit,
+    onOpenHome: () -> Unit,
     onOpenTheme: () -> Unit,
     onOpenDirection: () -> Unit,
 ) {
@@ -110,6 +111,11 @@ internal fun SettingsMenu(
             onBack = onBack,
         )
         SheetMenuItem(label = "Tour", onClick = onOpenTour)
+        SheetMenuItem(
+            label = "Zuhause",
+            leading = { HomeIcon() },
+            onClick = onOpenHome,
+        )
         SheetMenuItem(label = "Theme", onClick = onOpenTheme)
         SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
     }
@@ -156,7 +162,6 @@ internal fun TourMenu(
         }
         SheetMenuItem(
             label = "Startautomatik",
-            leading = { HomeIcon() },
             onClick = onOpenHomeAutoStart,
         )
     }

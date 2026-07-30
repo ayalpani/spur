@@ -12,14 +12,11 @@ import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import org.maplibre.geojson.Feature
-import kotlin.coroutines.resume
 
 internal data class HomeAutoStartSettings(
     val enabled: Boolean,
@@ -124,9 +121,7 @@ internal fun Context.registerHomeExitGeofence(): Boolean {
         LocationServices.getGeofencingClient(this)
             .addGeofences(request, homeGeofencePendingIntent())
             .addOnFailureListener {
-                saveHomeAutoStartSettings(
-                    HomeAutoStartSettings(enabled = false, home = null),
-                )
+                saveHomeAutoStartSettings(settings.copy(enabled = false))
             }
         true
     }.getOrDefault(false)
@@ -144,24 +139,6 @@ private fun Context.homeGeofencePendingIntent(): PendingIntent =
         Intent(this, HomeExitReceiver::class.java),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
     )
-
-internal suspend fun Context.currentSpurLocation(): SpurCoordinate? {
-    loadManualLocation()?.let { return it }
-    if (
-        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) !=
-        PackageManager.PERMISSION_GRANTED
-    ) return null
-    return suspendCancellableCoroutine { continuation ->
-        LocationServices.getFusedLocationProviderClient(this)
-            .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-            .addOnSuccessListener { location ->
-                continuation.resume(
-                    location?.let { SpurCoordinate(it.latitude, it.longitude) },
-                )
-            }
-            .addOnFailureListener { continuation.resume(null) }
-    }
-}
 
 class HomeExitReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {

@@ -84,6 +84,7 @@ internal fun MapSurface(
     trailColors: TrailColors,
     homeBuilding: Feature?,
     selectedBuilding: Feature?,
+    isBuildingSelectionMode: Boolean,
     selectedTrackPoint: TrackPoint?,
     selectedTrackPointRequest: Long,
     momentToPlace: PendingMapMoment?,
@@ -128,6 +129,7 @@ internal fun MapSurface(
     val currentTrailColors by rememberUpdatedState(trailColors)
     val currentHomeBuilding by rememberUpdatedState(homeBuilding)
     val currentSelectedBuilding by rememberUpdatedState(selectedBuilding)
+    val currentIsBuildingSelectionMode by rememberUpdatedState(isBuildingSelectionMode)
     val currentSelectedTrackPoint by rememberUpdatedState(selectedTrackPoint)
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
@@ -449,6 +451,25 @@ internal fun MapSurface(
         val clickListener = MapLibreMap.OnMapClickListener { point ->
             val readyMap = map ?: return@OnMapClickListener false
             val screenPoint = readyMap.projection.toScreenLocation(point)
+            if (currentIsBuildingSelectionMode) {
+                val building = readyMap.queryRenderedFeatures(
+                    screenPoint,
+                    MapBuildingLayer,
+                ).firstOrNull() ?: return@OnMapClickListener false
+                val coordinate = SpurCoordinate(
+                    latitude = point.latitude,
+                    longitude = point.longitude,
+                )
+                val selectedFeature = buildingFeatureAt(building, coordinate)
+                    ?: return@OnMapClickListener false
+                currentOnBuildingClick(
+                    SelectedBuilding(
+                        coordinate = coordinate,
+                        feature = selectedFeature,
+                    ),
+                )
+                return@OnMapClickListener true
+            }
             val cluster = readyMap.queryRenderedFeatures(
                 screenPoint,
                 MapPersonaClusterLayer,
@@ -531,6 +552,7 @@ internal fun MapSurface(
                     cancelManualLocationHold()
                     holdStart = PointF(event.x, event.y)
                     manualLocationHold = Runnable {
+                        if (currentIsBuildingSelectionMode) return@Runnable
                         val point = map?.projection?.fromScreenLocation(holdStart)
                             ?: return@Runnable
                         mapView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -765,6 +787,13 @@ internal fun MapSurface(
                 home = currentHomeBuilding,
                 selected = currentSelectedBuilding,
             )
+        }
+    }
+
+    LaunchedEffect(isBuildingSelectionMode, mapStyleRevision) {
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.style?.showSelectableHomeBuildings(isBuildingSelectionMode)
         }
     }
 

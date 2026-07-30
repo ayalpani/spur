@@ -9,144 +9,93 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Button
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 
 @Composable
 internal fun HomeAutoStartBottomSheet(
     onSettingsChanged: (HomeAutoStartSettings) -> Unit,
+    onChooseHome: () -> Unit,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     var settings by remember { mutableStateOf(context.loadHomeAutoStartSettings()) }
-    var setupRequested by rememberSaveable { mutableStateOf(false) }
-    var homeSearchOrigin by remember { mutableStateOf<SpurCoordinate?>(settings.home) }
-    var candidateHome by remember { mutableStateOf<SelectedBuilding?>(null) }
-    var candidateStartPoint by remember { mutableStateOf(settings.startPoint) }
-    var selectingStartPoint by rememberSaveable { mutableStateOf(false) }
-    var locating by remember { mutableStateOf(false) }
-    var needsBackgroundPermission by remember { mutableStateOf(false) }
-    var message by rememberSaveable { mutableStateOf<String?>(null) }
+    var awaitingBackgroundPermission by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
 
-    fun disable() {
-        context.removeHomeExitGeofence()
-        settings = HomeAutoStartSettings(enabled = false, home = null)
+    fun updateEnabled(enabled: Boolean) {
+        if (!enabled) context.removeHomeExitGeofence()
+        settings = settings.copy(enabled = enabled)
         context.saveHomeAutoStartSettings(settings)
+        if (enabled) context.registerHomeExitGeofence()
         onSettingsChanged(settings)
-        setupRequested = false
-        homeSearchOrigin = null
-        candidateHome = null
-        candidateStartPoint = null
-        selectingStartPoint = false
-        needsBackgroundPermission = false
-        message = null
-    }
-
-    fun activate(home: SelectedBuilding, startPoint: SpurCoordinate) {
-        settings = HomeAutoStartSettings(
-            enabled = true,
-            home = home.coordinate,
-            homeBuilding = home.feature,
-            startPoint = startPoint,
-        )
-        context.saveHomeAutoStartSettings(settings)
-        onSettingsChanged(settings)
-        context.registerHomeExitGeofence()
-        setupRequested = false
-        selectingStartPoint = false
-        needsBackgroundPermission = false
-        message = "Startautomatik ist aktiv."
+        message = if (enabled) {
+            "Spur startet deine Tour beim Verlassen deines Zuhauses."
+        } else {
+            "Die Startautomatik ist ausgeschaltet."
+        }
     }
 
     val backgroundPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
+        awaitingBackgroundPermission = false
         if (granted) {
-            val home = candidateHome
-            val startPoint = candidateStartPoint
-            if (home != null && startPoint != null) activate(home, startPoint)
+            updateEnabled(true)
         } else {
-            locating = false
-            setupRequested = false
-            homeSearchOrigin = null
-            candidateHome = null
-            candidateStartPoint = null
-            selectingStartPoint = false
-            needsBackgroundPermission = false
-            message = "Ohne Hintergrundstandort bleibt die Einstellung aus."
+            message = "Ohne Hintergrundstandort bleibt die Startautomatik aus."
         }
     }
 
-    fun requestBackgroundLocation() {
-        needsBackgroundPermission = true
-    }
-
-    LaunchedEffect(needsBackgroundPermission) {
-        if (!needsBackgroundPermission) return@LaunchedEffect
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.startActivity(
-                Intent(
-                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:${context.packageName}"),
-                ),
-            )
+    fun enable() {
+        if (context.hasBackgroundLocationPermission()) {
+            updateEnabled(true)
         } else {
-            backgroundPermissionLauncher.launch(
-                Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-            )
+            awaitingBackgroundPermission = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.startActivity(
+                    Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:${context.packageName}"),
+                    ),
+                )
+            } else {
+                backgroundPermissionLauncher.launch(
+                    Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+                )
+            }
         }
     }
 
-    val currentNeedsBackgroundPermission by rememberUpdatedState(needsBackgroundPermission)
-    val currentCandidateHome by rememberUpdatedState(candidateHome)
-    val currentCandidateStartPoint by rememberUpdatedState(candidateStartPoint)
+    val currentAwaitingPermission by rememberUpdatedState(awaitingBackgroundPermission)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME && currentNeedsBackgroundPermission) {
+            if (event == Lifecycle.Event.ON_RESUME && currentAwaitingPermission) {
+                awaitingBackgroundPermission = false
                 if (context.hasBackgroundLocationPermission()) {
-                    val home = currentCandidateHome
-                    val startPoint = currentCandidateStartPoint
-                    if (home != null && startPoint != null) activate(home, startPoint)
+                    updateEnabled(true)
                 } else {
-                    locating = false
-                    setupRequested = false
-                    homeSearchOrigin = null
-                    candidateHome = null
-                    candidateStartPoint = null
-                    selectingStartPoint = false
-                    needsBackgroundPermission = false
-                    message = "Ohne Hintergrundstandort bleibt die Einstellung aus."
+                    message = "Ohne Hintergrundstandort bleibt die Startautomatik aus."
                 }
             }
         }
@@ -165,151 +114,102 @@ internal fun HomeAutoStartBottomSheet(
             title = "Startautomatik",
             onBack = onBack,
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Text(
+            text = "Tour automatisch beim Verlassen deines Zuhauses starten.",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        if (settings.homeBuilding == null || settings.home == null) {
             Text(
-                text = "Startautomatik",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
+                text = "Lege zuerst dein Zuhause auf der Karte fest.",
+                color = Ink.copy(alpha = 0.68f),
+                style = MaterialTheme.typography.bodyLarge,
             )
-            Switch(
-                checked = settings.enabled || setupRequested,
-                onCheckedChange = { enabled ->
-                    if (!enabled) {
-                        disable()
-                    } else {
-                        setupRequested = true
-                        locating = true
-                        message = null
-                        scope.launch {
-                            val currentLocation = context.currentSpurLocation()
-                            homeSearchOrigin = currentLocation
-                            candidateHome = null
-                            candidateStartPoint = null
-                            selectingStartPoint = false
-                            locating = false
-                            if (currentLocation == null) {
-                                setupRequested = false
-                                message = "Dein aktueller Standort konnte nicht bestimmt werden."
-                            }
-                        }
-                    }
+            SpurPrimaryButton(
+                label = "Zuhause festlegen",
+                onClick = onChooseHome,
+            )
+        } else {
+            Text(
+                text = if (settings.enabled) {
+                    "Die Startautomatik ist aktiv."
+                } else {
+                    "Dein Zuhause ist gespeichert. Die Startautomatik ist aus."
+                },
+                color = Ink.copy(alpha = 0.68f),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            SpurPrimaryButton(
+                label = if (settings.enabled) {
+                    "Startautomatik ausschalten"
+                } else {
+                    "Startautomatik einschalten"
+                },
+                onClick = {
+                    if (settings.enabled) updateEnabled(false) else enable()
                 },
             )
-        }
-
-        val shownHomeOrigin = settings.home ?: homeSearchOrigin
-        if (shownHomeOrigin != null) {
-            HomeBuildingSelector(
-                origin = shownHomeOrigin,
-                initialBuilding = settings.homeBuilding,
-                initialStartPoint = candidateStartPoint,
-                selectionEnabled = !settings.enabled && !selectingStartPoint,
-                startPointSelection = selectingStartPoint,
-                onBuildingSelected = { selected ->
-                    candidateHome = selected
-                    candidateStartPoint = selected.coordinate
-                },
-                onStartPointChanged = { candidateStartPoint = it },
+            SpurSecondaryButton(
+                label = "Zuhause ändern",
+                onClick = onChooseHome,
             )
         }
-
-        when {
-            locating -> Text("Aktueller Standort wird bestimmt.")
-            settings.enabled -> Text("Spur startet eine Tour, wenn du diesen Bereich verlässt.")
-            selectingStartPoint && candidateHome != null -> {
-                Text(
-                    text = "Startpunkt vor dem Haus festlegen",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text("Verschiebe die Karte, bis das Fadenkreuz auf dem Startpunkt liegt.")
-                if (!context.hasBackgroundLocationPermission()) {
-                    Text(
-                        text = "Danach öffnen sich die Android-Einstellungen. " +
-                            "Wähle dort Berechtigungen → Standort → Immer zulassen.",
-                    )
-                }
-                Button(
-                    onClick = {
-                        val home = candidateHome ?: return@Button
-                        val startPoint = candidateStartPoint ?: return@Button
-                        if (context.hasBackgroundLocationPermission()) {
-                            activate(home, startPoint)
-                        } else {
-                            requestBackgroundLocation()
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = CircleShape,
-                    enabled = candidateStartPoint != null,
-                ) {
-                    Text("Startpunkt übernehmen", fontWeight = FontWeight.Bold)
-                }
-                OutlinedButton(
-                    onClick = {
-                        selectingStartPoint = false
-                        candidateStartPoint = candidateHome?.coordinate
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = CircleShape,
-                ) {
-                    Text("Gebäude ändern")
-                }
-            }
-            candidateHome != null -> {
-                Text(
-                    text = "Bist du gerade zu Hause?",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                Button(
-                    onClick = {
-                        val home = candidateHome ?: return@Button
-                        candidateStartPoint = home.coordinate
-                        selectingStartPoint = true
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = CircleShape,
-                ) {
-                    Text("Ja, hier ist mein Zuhause", fontWeight = FontWeight.Bold)
-                }
-                OutlinedButton(
-                    onClick = {
-                        setupRequested = false
-                        homeSearchOrigin = null
-                        candidateHome = null
-                        candidateStartPoint = null
-                        selectingStartPoint = false
-                        message = "Komm später wieder, wenn du zu Hause bist."
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = CircleShape,
-                ) {
-                    Text("Nein")
-                }
-            }
-            homeSearchOrigin != null -> Text("Passendes Gebäude wird gesucht.")
-        }
-
         message?.let {
             Text(
                 text = it,
                 color = Ink.copy(alpha = 0.68f),
                 style = MaterialTheme.typography.bodyLarge,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun HomeSelectionPanel(
+    selectedHome: SelectedBuilding?,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = SheetBackground,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        shadowElevation = 16.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = if (selectedHome == null) {
+                    "Tippe auf der Karte auf das Gebäude, in dem du wohnst."
+                } else {
+                    "Ist das markierte Gebäude dein Zuhause?"
+                },
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = if (selectedHome == null) {
+                    "Du kannst die Karte verschieben und zoomen."
+                } else {
+                    "Dein Zuhause bleibt anschließend auf der Karte markiert."
+                },
+                color = Ink.copy(alpha = 0.68f),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            if (selectedHome != null) {
+                SpurPrimaryButton(
+                    label = "Das ist mein Zuhause",
+                    onClick = onConfirm,
+                )
+            }
+            SpurSecondaryButton(
+                label = "Abbrechen",
+                onClick = onCancel,
             )
         }
     }

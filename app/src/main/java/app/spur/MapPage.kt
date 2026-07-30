@@ -98,11 +98,14 @@ internal fun MapPage(
     onInitialLoadingComplete: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    var isHomeSelectionMode by rememberSaveable { mutableStateOf(false) }
+    var homeSelectionCandidate by remember { mutableStateOf<SelectedBuilding?>(null) }
     val isTourActive = activeTour != null
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
     )
-    val isWaypointRailVisible = tour != null || activeTour != null
+    val isWaypointRailVisible =
+        !isHomeSelectionMode && (tour != null || activeTour != null)
     val mapActionsBottomPadding =
         (if (isWaypointRailVisible) WaypointRailHeight else 0.dp) +
             MapControlVerticalPadding +
@@ -134,8 +137,8 @@ internal fun MapPage(
     }
     var editorFocusRequest by remember { mutableLongStateOf(0L) }
     var selectedBuilding by remember { mutableStateOf<SelectedBuilding?>(null) }
-    var homeBuilding by remember {
-        mutableStateOf(context.loadHomeAutoStartSettings().homeBuilding)
+    var homeSettings by remember {
+        mutableStateOf(context.loadHomeAutoStartSettings())
     }
     var pendingMoment by remember { mutableStateOf<PendingMapMoment?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
@@ -192,14 +195,15 @@ internal fun MapPage(
     var mapInitializationStarted by remember { mutableStateOf(false) }
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
     var isMapGestureActive by remember { mutableStateOf(false) }
-    val areMapControlsVisible = isMapReady && !isMapGestureActive
+    val areMapControlsVisible =
+        isMapReady && !isMapGestureActive && !isHomeSelectionMode
     val startTourBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val settingsMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val tourMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val homeAutoStartBottomSheetState =
-        rememberModalBottomSheetState(skipPartiallyExpanded = false)
+        rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val directionBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val aboutBottomSheetState =
@@ -221,6 +225,17 @@ internal fun MapPage(
         editorFocusRequest = 0L
         followRequest++
     }
+    val closeHomeSelection: () -> Unit = {
+        isHomeSelectionMode = false
+        homeSelectionCandidate = null
+    }
+    val openHomeSelection: () -> Unit = {
+        selectedBuilding = null
+        homeSelectionCandidate = null
+        isHomeSelectionMode = true
+        followOwnLocation()
+    }
+    BackHandler(enabled = isHomeSelectionMode, onBack = closeHomeSelection)
     LaunchedEffect(tour?.id, editorLocations.size) {
         editorFocusRequest = 0L
         if (editorLocations.none { it.point.id == selectedEditorPointId }) {
@@ -400,8 +415,13 @@ internal fun MapPage(
                 momentImageRevision = photoRevision,
                 routePoints = routePoints,
                 trailColors = trailColors,
-                homeBuilding = homeBuilding,
-                selectedBuilding = selectedBuilding?.feature,
+                homeBuilding = homeSettings.homeBuilding,
+                selectedBuilding = if (isHomeSelectionMode) {
+                    homeSelectionCandidate?.feature
+                } else {
+                    selectedBuilding?.feature
+                },
+                isBuildingSelectionMode = isHomeSelectionMode,
                 selectedTrackPoint = selectedEditorLocation?.point?.takeIf {
                     editorFocusRequest > 0L
                 },
@@ -448,7 +468,13 @@ internal fun MapPage(
                     }
                 },
                 onLocationClick = followOwnLocation,
-                onBuildingClick = { selectedBuilding = it },
+                onBuildingClick = {
+                    if (isHomeSelectionMode) {
+                        homeSelectionCandidate = it
+                    } else {
+                        selectedBuilding = it
+                    }
+                },
                 onManualLocationChanged = { location ->
                     context.saveManualLocation(location)
                     manualLocation = location
@@ -806,7 +832,33 @@ internal fun MapPage(
                 }
             }
 
-            selectedBuilding?.let { building ->
+            if (isHomeSelectionMode) {
+                HomeSelectionPanel(
+                    selectedHome = homeSelectionCandidate,
+                    onConfirm = {
+                        val selectedHome = homeSelectionCandidate
+                            ?: return@HomeSelectionPanel
+                        val updatedSettings = homeSettings.copy(
+                            home = selectedHome.coordinate,
+                            homeBuilding = selectedHome.feature,
+                            startPoint = selectedHome.coordinate,
+                        )
+                        context.saveHomeAutoStartSettings(updatedSettings)
+                        if (updatedSettings.enabled) {
+                            context.removeHomeExitGeofence()
+                            context.registerHomeExitGeofence()
+                        }
+                        homeSettings = updatedSettings
+                        closeHomeSelection()
+                    },
+                    onCancel = closeHomeSelection,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .zIndex(3f),
+                )
+            }
+
+            selectedBuilding?.takeUnless { isHomeSelectionMode }?.let { building ->
                 val closeBuildingDetails: () -> Unit = {
                     selectedBuilding = null
                 }
@@ -906,6 +958,13 @@ internal fun MapPage(
                         showNext = { showTourMenu = true },
                         hideCurrent = { showSettingsMenu = false },
                     )
+                },
+                onOpenHome = {
+                    scope.launch {
+                        settingsMenuState.hide()
+                        showSettingsMenu = false
+                        openHomeSelection()
+                    }
                 },
                 onOpenTheme = {
                     showThemePicker = true
@@ -1038,7 +1097,14 @@ internal fun MapPage(
             sheetState = homeAutoStartBottomSheetState,
         ) {
             HomeAutoStartBottomSheet(
-                onSettingsChanged = { homeBuilding = it.homeBuilding },
+                onSettingsChanged = { homeSettings = it },
+                onChooseHome = {
+                    scope.launch {
+                        homeAutoStartBottomSheetState.hide()
+                        showHomeAutoStartBottomSheet = false
+                        openHomeSelection()
+                    }
+                },
                 onBack = {
                     swapBottomSheets(
                         currentState = homeAutoStartBottomSheetState,
