@@ -1,9 +1,11 @@
 package app.spur
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.graphics.PointF
 import android.os.Looper
-import android.view.HapticFeedbackConstants
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import androidx.compose.animation.AnimatedVisibility
@@ -576,7 +578,7 @@ internal fun MapSurface(
                         if (currentIsBuildingSelectionMode) return@Runnable
                         val point = map?.projection?.fromScreenLocation(holdStart)
                             ?: return@Runnable
-                        mapView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        context.vibrateManualWaypoint()
                         currentOnManualLocationChanged(
                             SpurCoordinate(
                                 latitude = point.latitude,
@@ -992,4 +994,15 @@ internal fun MapSurface(
             }
         }
     }
+}
+
+private fun Context.vibrateManualWaypoint() {
+    val vibrator = getSystemService(Vibrator::class.java) ?: return
+    if (!vibrator.hasVibrator()) return
+    vibrator.vibrate(
+        VibrationEffect.createOneShot(
+            ManualWaypointVibrationMillis,
+            VibrationEffect.DEFAULT_AMPLITUDE,
+        ),
+    )
 }

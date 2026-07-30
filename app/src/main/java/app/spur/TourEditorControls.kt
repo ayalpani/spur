@@ -1,6 +1,7 @@
 package app.spur
 
 import android.location.Location
+import android.view.SoundEffectConstants
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,6 +37,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -45,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -130,7 +133,15 @@ internal fun WaypointRail(
         .coerceAtLeast(0)
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val scope = rememberCoroutineScope()
+    val view = LocalView.current
     var isProgrammaticScroll by remember { mutableStateOf(false) }
+    var lastTickedIndex by remember(
+        locations.first().point.id,
+        locations.last().point.id,
+        locations.size,
+    ) {
+        mutableIntStateOf(initialIndex)
+    }
     val fling = rememberSnapFlingBehavior(
         lazyListState = state,
         snapPosition = SnapPosition.Center,
@@ -191,6 +202,10 @@ internal fun WaypointRail(
             .distinctUntilChanged()
             .collect { index ->
                 if (!isProgrammaticScroll) index?.let {
+                    if (state.isScrollInProgress && it != lastTickedIndex) {
+                        view.playSoundEffect(SoundEffectConstants.CLICK)
+                    }
+                    lastTickedIndex = it
                     locations.getOrNull(it)?.point?.id?.let(onSelected)
                 }
             }

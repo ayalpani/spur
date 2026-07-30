@@ -1,5 +1,6 @@
 package app.spur
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.LinearEasing
@@ -10,25 +11,32 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -36,6 +44,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
 @Composable
 internal fun SelectedTrackPointPuck(modifier: Modifier = Modifier) {
@@ -53,6 +64,25 @@ internal fun PendingMomentMarker(
     val markerColor = momentMarkerColor(moment.type)
     val bounceScale = remember(moment.id) {
         Animatable(if (moment.type == MomentType.EMOJI) 0.25f else 1f)
+    }
+    var preview by remember(moment.id) {
+        mutableStateOf<android.graphics.Bitmap?>(null)
+    }
+    LaunchedEffect(moment.id) {
+        preview = withContext(Dispatchers.IO) {
+            when (moment.type) {
+                MomentType.PHOTO -> decodeMarkerPhoto(moment.payload)
+                MomentType.VIDEO -> ensureVideoThumbnail(File(moment.payload))
+                    ?.let { decodeMarkerPhoto(it.absolutePath) }
+                MomentType.VOICE,
+                MomentType.EMOJI,
+                -> null
+            }
+        }
+    }
+    DisposableEffect(preview) {
+        val bitmap = preview
+        onDispose { bitmap?.recycle() }
     }
     LaunchedEffect(moment.id) {
         if (moment.type == MomentType.EMOJI) {
@@ -157,18 +187,40 @@ internal fun PendingMomentMarker(
                 fontSize = 28.sp,
             )
         } else {
-            RotatingAsterisk(
-                modifier = Modifier
-                    .padding(top = 15.dp)
-                    .size(24.dp),
-                color = momentMarkerContentColor(moment.type),
-                contentDescription = when (moment.type) {
-                    MomentType.PHOTO -> "Foto wird geladen"
-                    MomentType.VIDEO -> "Video wird geladen"
-                    MomentType.VOICE -> "Sprache wird geladen"
-                    MomentType.EMOJI -> "Moment wird geladen"
-                },
-            )
+            Crossfade(
+                targetState = preview,
+                animationSpec = tween(MotionDurationDefaultMillis),
+                label = "Moment preview",
+            ) { bitmap ->
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = when (moment.type) {
+                            MomentType.PHOTO -> "Foto wird eingeblendet"
+                            MomentType.VIDEO -> "Video wird eingeblendet"
+                            else -> null
+                        },
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .padding(top = 7.dp)
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(5.dp)),
+                    )
+                } else {
+                    RotatingAsterisk(
+                        modifier = Modifier
+                            .padding(top = 15.dp)
+                            .size(24.dp),
+                        color = momentMarkerContentColor(moment.type),
+                        contentDescription = when (moment.type) {
+                            MomentType.PHOTO -> "Foto wird geladen"
+                            MomentType.VIDEO -> "Video wird geladen"
+                            MomentType.VOICE -> "Sprache wird geladen"
+                            MomentType.EMOJI -> "Moment wird geladen"
+                        },
+                    )
+                }
+            }
         }
     }
 }

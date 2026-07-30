@@ -38,6 +38,7 @@ internal val MapRotationOptionGap = 16.dp
 internal val FilterChipVisualInset = 8.dp
 internal const val MotionDurationDefaultMillis = 200
 internal const val EditorPointTransitionDurationMillis = 50
+internal const val ManualWaypointVibrationMillis = 40L
 internal const val FeedbackNoticeDurationMillis = 2_500L
 internal const val PendingPhotoRevealDelayMillis = 1_000L
 internal const val MinimumSystemSplashDurationMillis = 3_000L
