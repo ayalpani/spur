@@ -89,6 +89,7 @@ internal fun MapPage(
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
     onDeleteTour: (Long) -> Unit,
+    onDeleteWaypoint: suspend (Long, Set<Long>) -> Boolean,
     showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
     photoRevision: Long = 0L,
     onPhotoRotated: () -> Unit = {},
@@ -127,6 +128,7 @@ internal fun MapPage(
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
     var tourToDelete by remember { mutableStateOf<Tour?>(null) }
+    var waypointToDelete by remember { mutableStateOf<TrackPoint?>(null) }
     var selectedEditorPointId by rememberSaveable(tour?.id) {
         mutableStateOf<Long?>(null)
     }
@@ -495,12 +497,21 @@ internal fun MapPage(
                     ) {
                         MenuIcon()
                     }
+                    if (selectedEditorLocation != null && routePoints.size > 1) {
+                        MapIconButton(
+                            contentDescription = "GPS-Punkt löschen",
+                            onClick = { waypointToDelete = selectedEditorLocation.point },
+                            secondary = true,
+                        ) {
+                            PhotoDeleteIcon()
+                        }
+                    }
+                    val focusedWaypoint = selectedEditorLocation?.takeIf {
+                        editorFocusRequest > 0L
+                    }
                     MapIconButton(
                         contentDescription = "Moment hinzufügen",
                         onClick = {
-                            val focusedWaypoint = selectedEditorLocation?.takeIf {
-                                editorFocusRequest > 0L
-                            }
                             momentTarget = if (focusedWaypoint != null && tour != null) {
                                 MomentPlacementTarget.RecordedLocation(
                                     tourId = tour.id,
@@ -922,6 +933,49 @@ internal fun MapPage(
             onConfirm = {
                 tourToDelete = null
                 onDeleteTour(selectedTour.id)
+            },
+        )
+    }
+
+    waypointToDelete?.let { selectedPoint ->
+        EditorDeleteSheet(
+            title = "GPS-Punkt löschen?",
+            primaryLabel = "GPS-Punkt löschen",
+            onDismiss = { waypointToDelete = null },
+            onConfirm = {
+                waypointToDelete = null
+                val deletedIndex = routePoints.indexOfFirst { it.id == selectedPoint.id }
+                if (deletedIndex < 0 || tour == null) return@EditorDeleteSheet
+                val retained = routePoints.filterNot { it.id == selectedPoint.id }
+                scope.launch {
+                    if (!onDeleteWaypoint(tour.id, retained.mapTo(mutableSetOf(), TrackPoint::id))) {
+                        showFeedbackNotice(
+                            FeedbackNoticeKind.ERROR,
+                            "GPS-Punkt konnte nicht gelöscht werden.",
+                        )
+                        return@launch
+                    }
+                    val updatedMoments = mapMoments.map { moment ->
+                        if (moment.trackPointId != selectedPoint.id) {
+                            moment
+                        } else {
+                            moment.copy(
+                                trackPointId = nearestTrackPoint(
+                                    retained,
+                                    moment.latitude,
+                                    moment.longitude,
+                                )?.id,
+                            )
+                        }
+                    }
+                    withContext(Dispatchers.IO) {
+                        context.saveMapMoments(updatedMoments)
+                    }
+                    mapMoments = updatedMoments
+                    selectedEditorPointId = retained.getOrNull(
+                        deletedIndex.coerceAtMost(retained.lastIndex),
+                    )?.id
+                }
             },
         )
     }

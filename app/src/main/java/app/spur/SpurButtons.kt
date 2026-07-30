@@ -24,6 +24,7 @@ internal fun SpurPrimaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     leadingIcon: (@Composable () -> Unit)? = null,
+    destructive: Boolean = false,
 ) {
     val colors = LocalMapControlColors.current
     Button(
@@ -33,8 +34,8 @@ internal fun SpurPrimaryButton(
             .height(60.dp),
         shape = CircleShape,
         colors = ButtonDefaults.buttonColors(
-            containerColor = colors.background,
-            contentColor = colors.foreground,
+            containerColor = if (destructive) StopRed else colors.background,
+            contentColor = if (destructive) Color.White else colors.foreground,
         ),
     ) {
         leadingIcon?.let {

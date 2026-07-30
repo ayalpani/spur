@@ -19,6 +19,7 @@ private fun MapPagePreview() {
         onEndTour = {},
         onOpenHistory = {},
         onDeleteTour = {},
+        onDeleteWaypoint = { _, _ -> true },
     )
 }
 
@@ -43,6 +44,7 @@ private fun ActiveTourPagePreview() {
         onEndTour = {},
         onOpenHistory = {},
         onDeleteTour = {},
+        onDeleteWaypoint = { _, _ -> true },
     )
 }
 

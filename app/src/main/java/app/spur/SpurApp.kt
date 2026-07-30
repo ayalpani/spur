@@ -275,6 +275,22 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                     isHistoryVisible = true
                                 },
                                 onDeleteTour = deleteTour,
+                                onDeleteWaypoint = { tourId, retainedIds ->
+                                    runCatching {
+                                        val result = withContext(Dispatchers.IO) {
+                                            store.updateTourPoints(tourId, retainedIds)
+                                            store.tour(tourId) to store.points(tourId)
+                                        }
+                                        if (displayedTourId == tourId) {
+                                            displayedTour = result.first
+                                            routePoints = result.second
+                                        }
+                                        if (activeTour?.id == tourId) {
+                                            activeTour = result.first
+                                        }
+                                        historyRevision++
+                                    }.isSuccess
+                                },
                                 showFeedbackNotice = showFeedbackNotice,
                                 photoRevision = photoRevision,
                                 onPhotoRotated = { photoRevision++ },

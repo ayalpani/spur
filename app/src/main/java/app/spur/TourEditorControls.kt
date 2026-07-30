@@ -26,11 +26,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -81,28 +78,15 @@ internal fun EditorDeleteSheet(
                 title = title,
                 modifier = Modifier.padding(bottom = 10.dp),
             )
-            OutlinedButton(
+            SpurSecondaryButton(
+                label = "Abbrechen",
                 onClick = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = CircleShape,
-            ) {
-                Text("Abbrechen", color = Ink)
-            }
-            Button(
+            )
+            SpurPrimaryButton(
+                label = primaryLabel,
                 onClick = onConfirm,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Ink,
-                    contentColor = Color.White,
-                ),
-            ) {
-                Text(primaryLabel)
-            }
+                destructive = true,
+            )
         }
     }
 }
