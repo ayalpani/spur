@@ -32,13 +32,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -124,6 +130,7 @@ internal fun WaypointRail(
         .coerceAtLeast(0)
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val scope = rememberCoroutineScope()
+    var isProgrammaticScroll by remember { mutableStateOf(false) }
     val fling = rememberSnapFlingBehavior(
         lazyListState = state,
         snapPosition = SnapPosition.Center,
@@ -155,6 +162,19 @@ internal fun WaypointRail(
         }
     }
 
+    fun selectAndCenter(index: Int) {
+        val pointId = locations.getOrNull(index)?.point?.id ?: return
+        isProgrammaticScroll = true
+        onSelected(pointId)
+        scope.launch {
+            try {
+                centerVisibleItem(index, animated = true)
+            } finally {
+                isProgrammaticScroll = false
+            }
+        }
+    }
+
     LaunchedEffect(state, locations.size) {
         centerVisibleItem(initialIndex, animated = false)
     }
@@ -170,7 +190,7 @@ internal fun WaypointRail(
         }
             .distinctUntilChanged()
             .collect { index ->
-                index?.let {
+                if (!isProgrammaticScroll) index?.let {
                     locations.getOrNull(it)?.point?.id?.let(onSelected)
                 }
             }
@@ -187,6 +207,17 @@ internal fun WaypointRail(
         }.coerceAtLeast(0)
         val itemWidth = 10.dp
         val edgePadding = (maxWidth - itemWidth) / 2
+        val density = LocalDensity.current
+        val endpointCenters by remember(state, locations.size) {
+            derivedStateOf {
+                val visibleItems = state.layoutInfo.visibleItemsInfo
+                val start = visibleItems.firstOrNull { it.index == 0 }
+                    ?.let { it.offset + it.size / 2 }
+                val end = visibleItems.firstOrNull { it.index == locations.lastIndex }
+                    ?.let { it.offset + it.size / 2 }
+                start to end
+            }
+        }
         Text(
             text = "${selectedIndex + 1} von ${locations.size}",
             modifier = Modifier
@@ -215,7 +246,7 @@ internal fun WaypointRail(
                         .width(itemWidth)
                         .fillMaxHeight()
                         .clickable {
-                            scope.launch { centerVisibleItem(index, animated = true) }
+                            selectAndCenter(index)
                         }
                         .semantics {
                             contentDescription =
@@ -223,24 +254,6 @@ internal fun WaypointRail(
                         },
                     contentAlignment = Alignment.BottomCenter,
                 ) {
-                    if (index == 0) {
-                        WaypointEndpointLabel(
-                            label = "Start",
-                            timestamp = location.point.recordedAt,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .offset(x = (-33).dp, y = (-2).dp),
-                        )
-                    }
-                    if (index == locations.lastIndex) {
-                        WaypointEndpointLabel(
-                            label = "Ende",
-                            timestamp = location.point.recordedAt,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .offset(x = 33.dp, y = (-2).dp),
-                        )
-                    }
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -263,6 +276,32 @@ internal fun WaypointRail(
                 }
             }
         }
+        endpointCenters.first?.let { center ->
+            WaypointEndpointLabel(
+                label = "Start",
+                timestamp = locations.first().point.recordedAt,
+                onClick = { selectAndCenter(0) },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(
+                        x = edgePadding + with(density) { center.toDp() } - 69.dp,
+                        y = (-2).dp,
+                    ),
+            )
+        }
+        endpointCenters.second?.let { center ->
+            WaypointEndpointLabel(
+                label = "Ende",
+                timestamp = locations.last().point.recordedAt,
+                onClick = { selectAndCenter(locations.lastIndex) },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(
+                        x = edgePadding + with(density) { center.toDp() } - 3.dp,
+                        y = (-2).dp,
+                    ),
+            )
+        }
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -278,11 +317,17 @@ internal fun WaypointRail(
 private fun WaypointEndpointLabel(
     label: String,
     timestamp: Long,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.requiredWidth(56.dp),
+        modifier = modifier
+            .requiredWidth(72.dp)
+            .height(48.dp)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "$label der Tour" },
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
         Text(
             text = label,

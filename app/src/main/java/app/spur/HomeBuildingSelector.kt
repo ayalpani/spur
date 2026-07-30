@@ -93,8 +93,8 @@ internal fun Style.showSelectableHomeBuildings(visible: Boolean = true) {
         ?: LineLayer(SelectableHomeBuildingsLayer, buildings.sourceId)
             .withSourceLayer(sourceLayer)
             .withProperties(
-                lineColor(Ink.copy(alpha = 0.28f).toArgb()),
-                lineWidth(1.25f),
+                lineColor(Ink.copy(alpha = 0.42f).toArgb()),
+                lineWidth(1.75f),
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
             )
