@@ -30,7 +30,7 @@ internal const val SatelliteTileUrl =
 internal const val SatelliteMapStyleJson =
     """{"version":8,"glyphs":"https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf","sources":{"satellite-source":{"type":"raster","tiles":["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],"tileSize":256,"attribution":"Esri, Maxar, Earthstar Geographics, and the GIS User Community"}},"layers":[{"id":"satellite-layer","type":"raster","source":"satellite-source"}]}"""
 internal const val MomentMarkerWidth = 62
-internal const val MomentMarkerHeight = 58
+internal const val MomentMarkerHeight = 60
 internal const val MomentMarkerStroke = 3f
 internal const val MomentMarkerEdgeWidth = 2f
 internal const val MomentClusterStackStep = 5f

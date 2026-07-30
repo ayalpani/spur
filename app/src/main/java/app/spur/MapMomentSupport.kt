@@ -1,7 +1,6 @@
 package app.spur
 
 import android.content.Context
-import android.graphics.RectF
 import android.os.Build
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.height
@@ -10,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.semantics.selected
@@ -108,10 +108,10 @@ internal fun createMomentMarkerBitmap(
             val scale = context.resources.displayMetrics.density
             val canvas = android.graphics.Canvas(bitmap)
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-            paint.color = momentMarkerColor(moment.type).toArgb()
-            paint.style = android.graphics.Paint.Style.FILL
 
             if (selected) {
+                paint.color = momentMarkerColor(moment.type).toArgb()
+                paint.style = android.graphics.Paint.Style.FILL
                 canvas.drawRoundRect(
                     3 * scale,
                     0f,
@@ -129,15 +129,12 @@ internal fun createMomentMarkerBitmap(
                 56 * scale,
                 52 * scale,
             )
-            canvas.drawRoundRect(flag, 10 * scale, 10 * scale, paint)
-            canvas.drawPath(
-                android.graphics.Path().apply {
-                    moveTo(26 * scale, 50 * scale)
-                    lineTo(36 * scale, 50 * scale)
-                    lineTo(31 * scale, 57 * scale)
-                    close()
-                },
-                paint,
+            drawMomentMarkerShape(
+                canvas = canvas,
+                paint = paint,
+                scale = scale,
+                fillColor = momentMarkerColor(moment.type),
+                outlineColor = Color.White,
             )
             val content = android.graphics.RectF(flag).apply {
                 inset(MomentMarkerStroke * scale, MomentMarkerStroke * scale)
@@ -202,12 +199,6 @@ internal fun createMomentMarkerBitmap(
                 drawMomentGlyph(canvas, paint, content, scale, moment.type)
             }
 
-            val edge = createMomentMarkerEdgeBitmap(
-                bitmap,
-                MomentMarkerEdgeWidth * scale,
-            )
-            canvas.drawBitmap(edge, 0f, 0f, null)
-            edge.recycle()
         }
 
 internal fun createMomentClusterBitmap(
@@ -263,24 +254,14 @@ internal fun createPersonaMarkerBitmap(
     ).also { bitmap ->
         val canvas = android.graphics.Canvas(bitmap)
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            color = colors.background.toArgb()
-            style = android.graphics.Paint.Style.FILL
+            strokeJoin = android.graphics.Paint.Join.ROUND
         }
-        val flag = RectF(
-            6 * scale,
-            2 * scale,
-            56 * scale,
-            52 * scale,
-        )
-        canvas.drawRoundRect(flag, 10 * scale, 10 * scale, paint)
-        canvas.drawPath(
-            android.graphics.Path().apply {
-                moveTo(26 * scale, 50 * scale)
-                lineTo(36 * scale, 50 * scale)
-                lineTo(31 * scale, 57 * scale)
-                close()
-            },
-            paint,
+        drawMomentMarkerShape(
+            canvas = canvas,
+            paint = paint,
+            scale = scale,
+            fillColor = colors.background,
+            outlineColor = colors.foreground,
         )
         ContextCompat.getDrawable(context, R.drawable.ic_footprints_location)
             ?.mutate()
@@ -294,50 +275,70 @@ internal fun createPersonaMarkerBitmap(
                 )
                 draw(canvas)
             }
-        val edge = createMomentMarkerEdgeBitmap(
-            marker = bitmap,
-            edgeWidth = MomentMarkerEdgeWidth * scale,
-            color = colors.foreground,
-        )
-        canvas.drawBitmap(edge, 0f, 0f, null)
-        edge.recycle()
     }
 }
 
-private fun createMomentMarkerEdgeBitmap(
-    marker: android.graphics.Bitmap,
-    edgeWidth: Float,
-    color: Color = Color.White,
-): android.graphics.Bitmap =
-    android.graphics.Bitmap.createBitmap(
-        marker.width,
-        marker.height,
-        android.graphics.Bitmap.Config.ARGB_8888,
-    ).also { edge ->
-        val canvas = android.graphics.Canvas(edge)
-        val whitePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            colorFilter = android.graphics.PorterDuffColorFilter(
-                color.toArgb(),
-                android.graphics.PorterDuff.Mode.SRC_IN,
-            )
-        }
-        val erasePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_OUT)
-        }
-        for (horizontalDirection in -1..1) {
-            for (verticalDirection in -1..1) {
-                if (horizontalDirection != 0 || verticalDirection != 0) {
-                    canvas.drawBitmap(
-                        marker,
-                        horizontalDirection * edgeWidth,
-                        verticalDirection * edgeWidth,
-                        whitePaint,
-                    )
-                }
-            }
-        }
-        canvas.drawBitmap(marker, 0f, 0f, erasePaint)
-    }
+private fun drawMomentMarkerShape(
+    canvas: android.graphics.Canvas,
+    paint: android.graphics.Paint,
+    scale: Float,
+    fillColor: Color,
+    outlineColor: Color,
+) {
+    val path = momentMarkerPath(scale).asAndroidPath()
+    paint.style = android.graphics.Paint.Style.STROKE
+    paint.strokeWidth = MomentMarkerEdgeWidth * 2f * scale
+    paint.strokeJoin = android.graphics.Paint.Join.ROUND
+    paint.color = outlineColor.toArgb()
+    canvas.drawPath(path, paint)
+    paint.style = android.graphics.Paint.Style.FILL
+    paint.color = fillColor.toArgb()
+    canvas.drawPath(path, paint)
+}
+
+internal fun momentMarkerPath(scale: Float): Path = Path().apply {
+    moveTo(16f * scale, 2f * scale)
+    lineTo(46f * scale, 2f * scale)
+    cubicTo(
+        51.5f * scale,
+        2f * scale,
+        56f * scale,
+        6.5f * scale,
+        56f * scale,
+        12f * scale,
+    )
+    lineTo(56f * scale, 42f * scale)
+    cubicTo(
+        56f * scale,
+        47.5f * scale,
+        51.5f * scale,
+        52f * scale,
+        46f * scale,
+        52f * scale,
+    )
+    lineTo(34.5f * scale, 52f * scale)
+    lineTo(31f * scale, 57f * scale)
+    lineTo(27.5f * scale, 52f * scale)
+    lineTo(16f * scale, 52f * scale)
+    cubicTo(
+        10.5f * scale,
+        52f * scale,
+        6f * scale,
+        47.5f * scale,
+        6f * scale,
+        42f * scale,
+    )
+    lineTo(6f * scale, 12f * scale)
+    cubicTo(
+        6f * scale,
+        6.5f * scale,
+        10.5f * scale,
+        2f * scale,
+        16f * scale,
+        2f * scale,
+    )
+    close()
+}
 
 internal fun decodeMarkerPhoto(path: String): android.graphics.Bitmap? =
     runCatching {
