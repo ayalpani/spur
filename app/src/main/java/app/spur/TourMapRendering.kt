@@ -73,7 +73,7 @@ internal fun Style.showTourRoute(
             lineWidth(TourRouteBorderWidthPixels),
             lineCap(Property.LINE_CAP_ROUND),
             lineJoin(Property.LINE_JOIN_ROUND),
-        )
+        ).withFilter(Expression.eq(Expression.geometryType(), "LineString"))
         if (getLayer(TourRouteLayer) == null) {
             addTourLayerBelowMarkers(borderLayer)
         } else {
@@ -90,7 +90,7 @@ internal fun Style.showTourRoute(
                 lineWidth(TourRouteWidthPixels),
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
-            ),
+            ).withFilter(Expression.eq(Expression.geometryType(), "LineString")),
         )
     } else {
         routeLayer.setProperties(lineColor(colors.fill.toArgb()))
@@ -101,7 +101,7 @@ internal fun Style.showTourRoute(
             CircleLayer(TourWaypointLayer, TourRouteSource).withProperties(
                 circleColor(colors.stroke.toArgb()),
                 circleRadius(TourWaypointRadiusPixels),
-            ),
+            ).withFilter(Expression.eq(Expression.geometryType(), "Point")),
             TourRouteLayer,
         )
     } else {
