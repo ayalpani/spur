@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 internal fun TourModeHeader(
     tour: Tour?,
     active: Boolean,
+    now: Long,
     pulseAlpha: Float,
     visible: Boolean,
     onClose: () -> Unit,
@@ -78,7 +80,9 @@ internal fun TourModeHeader(
                 }
                 if (tour != null) {
                     Row(
-                        modifier = Modifier.padding(start = 12.dp, end = 18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 12.dp, end = 18.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (active) {
@@ -95,6 +99,15 @@ internal fun TourModeHeader(
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
                         )
+                        if (!active) {
+                            Spacer(modifier = Modifier.weight(1f))
+                            Text(
+                                text = historySectionLabel(tour.startedAt, now),
+                                color = Ink.copy(alpha = 0.62f),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
                     }
                 }
             }
