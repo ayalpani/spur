@@ -146,6 +146,7 @@ internal fun MapPage(
         mutableStateOf<Long?>(null)
     }
     var editorFocusRequest by remember { mutableLongStateOf(0L) }
+    var waypointRailFocusRequest by remember { mutableLongStateOf(0L) }
     var selectedBuilding by remember { mutableStateOf<SelectedBuilding?>(null) }
     var homeSettings by remember {
         mutableStateOf(context.loadHomeAutoStartSettings())
@@ -239,6 +240,10 @@ internal fun MapPage(
         isTourOverview = false
         isFollowingLocation = true
         editorFocusRequest = 0L
+        if (isDisplayedActiveTour) {
+            selectedEditorPointId = editorLocations.lastOrNull()?.point?.id
+            waypointRailFocusRequest++
+        }
         followRequest++
     }
     val closeHomeSelection: () -> Unit = {
@@ -827,6 +832,7 @@ internal fun MapPage(
                     WaypointRail(
                         locations = editorLocations,
                         selectedPointId = selectedEditorPointId,
+                        focusRequest = waypointRailFocusRequest,
                         emptyText = waypointEmptyText(
                             hasActiveTour = activeTour != null,
                             hasDisplayedTour = tour != null,

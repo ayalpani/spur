@@ -105,6 +105,7 @@ internal fun EditorDeleteSheet(
 internal fun WaypointRail(
     locations: List<EditorLocation>,
     selectedPointId: Long?,
+    focusRequest: Long = 0L,
     emptyText: String = "Keine Wegpunkte aufgezeichnet.",
     onSelected: (Long) -> Unit,
 ) {
@@ -199,6 +200,19 @@ internal fun WaypointRail(
 
     LaunchedEffect(state, locations.size) {
         centerVisibleItem(initialIndex, animated = false)
+    }
+
+    LaunchedEffect(state, focusRequest) {
+        if (focusRequest == 0L) return@LaunchedEffect
+        val index = locations.indexOfFirst {
+            it.point.id == selectedPointId
+        }.takeIf { it >= 0 } ?: return@LaunchedEffect
+        isProgrammaticScroll = true
+        try {
+            centerVisibleItem(index, animated = true)
+        } finally {
+            isProgrammaticScroll = false
+        }
     }
 
     LaunchedEffect(state, locations) {
