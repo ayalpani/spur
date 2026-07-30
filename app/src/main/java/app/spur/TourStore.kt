@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.location.Location
+import android.os.SystemClock
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -77,39 +78,19 @@ internal data class GpsStartFix(
     val accuracyMeters: Float,
 )
 
-internal class GpsStartStabilizer(
-    private val requiredFixes: Int = 3,
-    private val maximumAccuracyMeters: Float = 12f,
-    private val maximumClusterRadiusMeters: Double = 20.0,
+internal class GpsStartGate(
+    private val immediateAccuracyMeters: Float = 12f,
+    private val fallbackAccuracyMeters: Float = 40f,
+    private val fallbackDelayMillis: Long = 10_000L,
 ) {
-    private var anchor: GpsStartFix? = null
-    private var consecutiveFixes = 0
+    private var firstFixObservedAtMillis: Long? = null
 
-    fun isReady(fix: GpsStartFix): Boolean {
-        if (fix.accuracyMeters > maximumAccuracyMeters) {
-            reset()
-            return false
-        }
-        if (
-            anchor?.let {
-                coordinateDistanceMeters(
-                    fromLatitude = it.latitude,
-                    fromLongitude = it.longitude,
-                    toLatitude = fix.latitude,
-                    toLongitude = fix.longitude,
-                ) > maximumClusterRadiusMeters
-            } == true
-        ) {
-            reset()
-        }
-        if (anchor == null) anchor = fix
-        consecutiveFixes++
-        return consecutiveFixes >= requiredFixes
-    }
-
-    private fun reset() {
-        anchor = null
-        consecutiveFixes = 0
+    fun isReady(fix: GpsStartFix, observedAtMillis: Long): Boolean {
+        val firstObservedAt = firstFixObservedAtMillis
+            ?: observedAtMillis.also { firstFixObservedAtMillis = it }
+        if (fix.accuracyMeters <= immediateAccuracyMeters) return true
+        return fix.accuracyMeters <= fallbackAccuracyMeters &&
+            observedAtMillis - firstObservedAt >= fallbackDelayMillis
     }
 }
 
@@ -185,7 +166,7 @@ private data class ActiveTourTail(val point: StoredTrackPoint?)
 
 class TourStore(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "spur.db", null, 4) {
-    private val gpsStartStabilizers = mutableMapOf<Long, GpsStartStabilizer>()
+    private val gpsStartGates = mutableMapOf<Long, GpsStartGate>()
     private val stationaryExitFixes = mutableMapOf<Long, MutableList<Location>>()
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -232,7 +213,7 @@ class TourStore(context: Context) :
     fun startTour(
         now: Long = System.currentTimeMillis(),
     ): Long {
-        gpsStartStabilizers.clear()
+        gpsStartGates.clear()
         stationaryExitFixes.clear()
         writableDatabase.execSQL(
             "UPDATE tours SET ended_at = ? WHERE ended_at IS NULL",
@@ -249,7 +230,7 @@ class TourStore(context: Context) :
 
     @Synchronized
     fun finishTour(id: Long, now: Long = System.currentTimeMillis()) {
-        gpsStartStabilizers.remove(id)
+        gpsStartGates.remove(id)
         stationaryExitFixes.remove(id)
         writableDatabase.update(
             "tours",
@@ -273,16 +254,17 @@ class TourStore(context: Context) :
         } else {
             Float.POSITIVE_INFINITY
         }
-        if (previousLocation != null) gpsStartStabilizers.remove(tourId)
+        if (previousLocation != null) gpsStartGates.remove(tourId)
         if (
             previousLocation == null &&
             !allowFastMovement &&
-            !gpsStartStabilizers.getOrPut(tourId) { GpsStartStabilizer() }.isReady(
+            !gpsStartGates.getOrPut(tourId) { GpsStartGate() }.isReady(
                 GpsStartFix(
                     latitude = location.latitude,
                     longitude = location.longitude,
                     accuracyMeters = accuracyMeters,
                 ),
+                observedAtMillis = SystemClock.elapsedRealtime(),
             )
         ) {
             return false
@@ -321,7 +303,7 @@ class TourStore(context: Context) :
             locations = listOf(Location(location)),
             previous = previousLocation,
         )
-        gpsStartStabilizers.remove(tourId)
+        gpsStartGates.remove(tourId)
         stationaryExitFixes.remove(tourId)
         if (!allowFastMovement) collapseStationaryWindow(db, tourId, location.time)
         return true
@@ -679,7 +661,7 @@ class TourStore(context: Context) :
 
     @Synchronized
     fun deleteTour(id: Long) {
-        gpsStartStabilizers.remove(id)
+        gpsStartGates.remove(id)
         stationaryExitFixes.remove(id)
         val db = writableDatabase
         db.beginTransaction()
