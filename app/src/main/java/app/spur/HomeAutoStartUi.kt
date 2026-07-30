@@ -48,10 +48,10 @@ internal fun HomeAutoStartBottomSheet(
     var message by remember { mutableStateOf<String?>(null) }
 
     fun updateEnabled(enabled: Boolean) {
-        if (!enabled) context.removeHomeExitGeofence()
+        if (!enabled) context.removeHomeAutoStart()
         settings = settings.copy(enabled = enabled)
         context.saveHomeAutoStartSettings(settings)
-        if (enabled) context.registerHomeExitGeofence()
+        if (enabled) context.registerHomeAutoStart()
         onSettingsChanged(settings)
         message = if (enabled) {
             "Spur startet deine Tour beim Verlassen deines Zuhauses."

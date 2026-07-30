@@ -333,7 +333,7 @@ class TourStore(context: Context) :
             FROM tours t
             LEFT JOIN track_points p ON p.tour_id = t.id
             WHERE t.id = ?
-            ORDER BY p.id DESC
+            ORDER BY p.recorded_at DESC, p.id DESC
             LIMIT 1
             """.trimIndent(),
             arrayOf(tourId.toString()),
@@ -509,7 +509,7 @@ class TourStore(context: Context) :
             SELECT id, latitude, longitude, recorded_at
             FROM track_points
             WHERE tour_id = ?
-            ORDER BY id DESC
+            ORDER BY recorded_at DESC, id DESC
             """.trimIndent(),
             arrayOf(tourId.toString()),
         ).use { cursor ->
@@ -542,11 +542,16 @@ class TourStore(context: Context) :
             """
             SELECT latitude, longitude, recorded_at
             FROM track_points
-            WHERE tour_id = ? AND id < ?
-            ORDER BY id DESC
+            WHERE tour_id = ? AND (recorded_at < ? OR (recorded_at = ? AND id < ?))
+            ORDER BY recorded_at DESC, id DESC
             LIMIT 1
             """.trimIndent(),
-            arrayOf(tourId.toString(), clusterPoint.id.toString()),
+            arrayOf(
+                tourId.toString(),
+                clusterPoint.recordedAt.toString(),
+                clusterPoint.recordedAt.toString(),
+                clusterPoint.id.toString(),
+            ),
         ).use { cursor ->
             if (!cursor.moveToFirst()) null else Location("stored").apply {
                 this.latitude = cursor.getDouble(0)
@@ -605,6 +610,106 @@ class TourStore(context: Context) :
     )
 
     @Synchronized
+    internal fun mergeAutomaticStartLocations(
+        tourId: Long,
+        startPoint: SpurCoordinate,
+        locations: List<BufferedHomeLocation>,
+        exitAt: Long,
+    ) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val existing = points(db, tourId)
+            val earliestAt = locations.firstOrNull()?.recordedAt ?: exitAt
+            val storedStart = existing.firstOrNull {
+                coordinateDistanceMeters(
+                    it.latitude,
+                    it.longitude,
+                    startPoint.latitude,
+                    startPoint.longitude,
+                ) < 0.5
+            }
+            if (storedStart == null) {
+                insertRawLocation(
+                    db = db,
+                    tourId = tourId,
+                    latitude = startPoint.latitude,
+                    longitude = startPoint.longitude,
+                    recordedAt = earliestAt,
+                    accuracyMeters = 3f,
+                )
+            } else if (earliestAt < storedStart.recordedAt) {
+                db.update(
+                    "track_points",
+                    ContentValues().apply { put("recorded_at", earliestAt) },
+                    "tour_id = ? AND id = ?",
+                    arrayOf(tourId.toString(), storedStart.id.toString()),
+                )
+            }
+            val known = points(db, tourId).toMutableList()
+            locations.forEach { location ->
+                val duplicate = known.any {
+                    kotlin.math.abs(it.recordedAt - location.recordedAt) <= 1_000L &&
+                        coordinateDistanceMeters(
+                            it.latitude,
+                            it.longitude,
+                            location.latitude,
+                            location.longitude,
+                        ) <= 2.0
+                }
+                if (!duplicate) {
+                    val id = insertRawLocation(
+                        db = db,
+                        tourId = tourId,
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        recordedAt = location.recordedAt,
+                        accuracyMeters = location.accuracyMeters,
+                    )
+                    known += TrackPoint(
+                        id = id,
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        recordedAt = location.recordedAt,
+                    )
+                }
+            }
+            val ordered = points(db, tourId)
+            db.update(
+                "tours",
+                ContentValues().apply {
+                    put("started_at", ordered.firstOrNull()?.recordedAt ?: exitAt)
+                    put("distance_meters", trackDistanceMeters(ordered))
+                },
+                "id = ?",
+                arrayOf(tourId.toString()),
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    private fun insertRawLocation(
+        db: SQLiteDatabase,
+        tourId: Long,
+        latitude: Double,
+        longitude: Double,
+        recordedAt: Long,
+        accuracyMeters: Float,
+    ): Long = db.insertOrThrow(
+        "track_points",
+        null,
+        ContentValues().apply {
+            put("tour_id", tourId)
+            put("latitude", latitude)
+            put("longitude", longitude)
+            put("recorded_at", recordedAt)
+            put("accuracy_meters", accuracyMeters)
+        },
+    )
+
+    @Synchronized
     fun activeTour(): Tour? =
         queryTours(where = "t.ended_at IS NULL", tail = "ORDER BY t.started_at DESC LIMIT 1")
             .firstOrNull()
@@ -619,12 +724,15 @@ class TourStore(context: Context) :
 
     @Synchronized
     fun points(tourId: Long): List<TrackPoint> =
-        readableDatabase.rawQuery(
+        points(readableDatabase, tourId)
+
+    private fun points(db: SQLiteDatabase, tourId: Long): List<TrackPoint> =
+        db.rawQuery(
             """
             SELECT id, latitude, longitude, recorded_at
             FROM track_points
             WHERE tour_id = ?
-            ORDER BY id
+            ORDER BY recorded_at, id
             """.trimIndent(),
             arrayOf(tourId.toString()),
         ).use { cursor ->

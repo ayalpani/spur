@@ -137,6 +137,54 @@ class HomeBuildingSelectionTest {
     }
 
     @Test
+    fun batchedLocationsKeepTheirOriginalTimestampsAndOrder() {
+        val locations = listOf(
+            BufferedHomeLocation(52.002, 13.0, recordedAt = 30_000L, accuracyMeters = 8f),
+            BufferedHomeLocation(52.001, 13.0, recordedAt = 20_000L, accuracyMeters = 7f),
+        )
+
+        val restored = decodeBufferedHomeLocations(encodeBufferedHomeLocations(locations))
+
+        assertEquals(locations, restored)
+    }
+
+    @Test
+    fun departureDropsStationaryHomeSamplesButKeepsMeasuredRoute() {
+        val settings = HomeAutoStartSettings(
+            enabled = true,
+            home = SpurCoordinate(52.0, 13.0),
+            startPoint = SpurCoordinate(52.0001, 13.0),
+        )
+        val locations = listOf(
+            BufferedHomeLocation(52.0, 13.0, 1_000L, 8f),
+            BufferedHomeLocation(52.0001, 13.0, 2_000L, 8f),
+            BufferedHomeLocation(52.0005, 13.0, 3_000L, 8f),
+            BufferedHomeLocation(52.0010, 13.0, 4_000L, 8f),
+            BufferedHomeLocation(52.0016, 13.0, 5_000L, 8f),
+        )
+
+        val departure = departureLocations(locations, settings, exitAt = 5_000L)
+
+        assertEquals(listOf(3_000L, 4_000L, 5_000L), departure.map { it.recordedAt })
+    }
+
+    @Test
+    fun rollingBufferSortsDeduplicatesAndExpiresOldSamples() {
+        val point = BufferedHomeLocation(52.0, 13.0, 10_000L, 8f)
+
+        val merged = mergeBufferedHomeLocations(
+            existing = listOf(point),
+            incoming = listOf(
+                BufferedHomeLocation(52.001, 13.0, 20_000L, 8f),
+                point,
+            ),
+            now = 20_000L,
+        )
+
+        assertEquals(listOf(10_000L, 20_000L), merged.map { it.recordedAt })
+    }
+
+    @Test
     fun existingMapMomentsNearHomeRenderAtTheChosenStartPoint() {
         val startPoint = SpurCoordinate(latitude = 52.0002, longitude = 13.0003)
         val moment = MapMoment(

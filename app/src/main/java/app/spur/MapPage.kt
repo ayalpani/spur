@@ -303,7 +303,7 @@ internal fun MapPage(
     }
     LaunchedEffect(Unit) {
         if (context.loadHomeAutoStartSettings().enabled) {
-            context.registerHomeExitGeofence()
+            context.registerHomeAutoStart()
         }
     }
     DisposableEffect(activeVoiceMoment?.id) {
@@ -930,8 +930,8 @@ internal fun MapPage(
                         )
                         context.saveHomeAutoStartSettings(updatedSettings)
                         if (updatedSettings.enabled) {
-                            context.removeHomeExitGeofence()
-                            context.registerHomeExitGeofence()
+                            context.removeHomeAutoStart()
+                            context.registerHomeAutoStart()
                         }
                         homeSettings = updatedSettings
                         closeHomeSelection()
