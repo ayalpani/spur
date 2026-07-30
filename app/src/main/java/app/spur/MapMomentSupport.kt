@@ -204,13 +204,7 @@ internal fun createMomentMarkerBitmap(
 
             val edge = createMomentMarkerEdgeBitmap(
                 bitmap,
-                (
-                    if (moment.type == MomentType.PHOTO || moment.type == MomentType.VIDEO) {
-                        MomentMediaMarkerEdgeWidth
-                    } else {
-                        MomentMarkerEdgeWidth
-                    }
-                ) * scale,
+                MomentMarkerEdgeWidth * scale,
             )
             canvas.drawBitmap(edge, 0f, 0f, null)
             edge.recycle()
