@@ -142,7 +142,7 @@ internal fun MapSurface(
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
     val currentLocationPulseGeneration by rememberUpdatedState(locationPulseGeneration)
-    val personaColors = LocalMapControlColors.current.inverted
+    val personaColors = LocalMapControlColors.current
     val signalColor = LocalSignalColor.current
     val currentLocationPulseColor by rememberUpdatedState(signalColor)
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)

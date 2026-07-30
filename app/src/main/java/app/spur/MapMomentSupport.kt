@@ -266,12 +266,15 @@ internal fun createPersonaMarkerBitmap(
         ContextCompat.getDrawable(context, R.drawable.ic_footprints_location)
             ?.mutate()
             ?.apply {
+                val iconHalfSize = MapControlIconSizeDp / 2f
+                val iconCenterX = MomentMarkerWidth / 2f
+                val iconCenterY = 27f + MomentMarkerVerticalOffset
                 setTint(colors.foreground.toArgb())
                 setBounds(
-                    (19 * scale).roundToInt(),
-                    ((15f + MomentMarkerVerticalOffset) * scale).roundToInt(),
-                    (43 * scale).roundToInt(),
-                    ((39f + MomentMarkerVerticalOffset) * scale).roundToInt(),
+                    ((iconCenterX - iconHalfSize) * scale).roundToInt(),
+                    ((iconCenterY - iconHalfSize) * scale).roundToInt(),
+                    ((iconCenterX + iconHalfSize) * scale).roundToInt(),
+                    ((iconCenterY + iconHalfSize) * scale).roundToInt(),
                 )
                 draw(canvas)
             }

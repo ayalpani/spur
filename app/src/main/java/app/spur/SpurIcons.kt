@@ -245,7 +245,7 @@ internal fun LucideLocateOffIcon() = LucideIcon(
 internal fun LucideIcon(
     paths: List<String>,
     color: Color = LocalContentColor.current,
-    modifier: Modifier = Modifier.size(32.dp),
+    modifier: Modifier = Modifier.size(MapControlIconSize),
     strokeWidth: Float = LocalLucideStrokeWidth.current,
 ) {
     val parsedPaths = paths.map { path ->
