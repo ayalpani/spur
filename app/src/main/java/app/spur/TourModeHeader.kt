@@ -117,3 +117,6 @@ internal fun archiveTourMetadata(tour: Tour): String {
     return "${formatDate(tour.startedAt)} · ${formatClock(tour.startedAt)}–" +
         "${formatClock(endedAt)} · ${formatDuration(endedAt - tour.startedAt)}"
 }
+
+internal fun isDisplayedActiveTour(tour: Tour?, activeTour: Tour?): Boolean =
+    tour != null && activeTour != null && tour.id == activeTour.id && tour.endedAt == null

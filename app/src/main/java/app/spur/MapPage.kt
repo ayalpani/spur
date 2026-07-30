@@ -106,8 +106,7 @@ internal fun MapPage(
     var homeSelectionCandidate by remember { mutableStateOf<SelectedBuilding?>(null) }
     var homeStartPoint by remember { mutableStateOf<SpurCoordinate?>(null) }
     val isTourActive = activeTour != null
-    val isDisplayedActiveTour =
-        tour?.id == activeTour?.id && tour?.endedAt == null
+    val isDisplayedActiveTour = isDisplayedActiveTour(tour, activeTour)
     val archivedTour = tour?.takeIf { it.endedAt != null }
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
