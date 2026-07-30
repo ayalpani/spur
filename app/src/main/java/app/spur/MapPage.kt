@@ -88,6 +88,7 @@ internal fun MapPage(
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
     onOpenHistory: () -> Unit,
+    onCloseDisplayedTour: () -> Unit,
     onDeleteTour: (Long) -> Unit,
     onDeleteWaypoint: suspend (Long, Set<Long>) -> Boolean,
     showFeedbackNotice: ShowFeedbackNotice = { _, _ -> },
@@ -105,6 +106,9 @@ internal fun MapPage(
     var homeSelectionCandidate by remember { mutableStateOf<SelectedBuilding?>(null) }
     var homeStartPoint by remember { mutableStateOf<SpurCoordinate?>(null) }
     val isTourActive = activeTour != null
+    val isDisplayedActiveTour =
+        tour?.id == activeTour?.id && tour?.endedAt == null
+    val archivedTour = tour?.takeIf { it.endedAt != null }
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
     )
@@ -397,7 +401,22 @@ internal fun MapPage(
         }
     }
     BackHandler(
+        enabled = archivedTour != null &&
+            !showStartTourBottomSheet &&
+            !showMainMenu &&
+            !showSettingsMenu &&
+            !showTourMenu &&
+            !showHomeAutoStartBottomSheet &&
+            !showThemePicker &&
+            !showDirectionBottomSheet &&
+            !showAboutBottomSheet &&
+            photoDetail == null &&
+            mediaDetail == null,
+        onBack = onCloseDisplayedTour,
+    )
+    BackHandler(
         enabled = isTourOverview &&
+            archivedTour == null &&
             !showStartTourBottomSheet &&
             !showMainMenu &&
             !showSettingsMenu &&
@@ -527,6 +546,20 @@ internal fun MapPage(
                 onMapGestureActiveChanged = { isMapGestureActive = it },
             )
             }
+
+            TourModeHeader(
+                active = isDisplayedActiveTour,
+                archivedTour = archivedTour,
+                pulseAlpha = locationSignalButtonAlpha(
+                    selected = isDisplayedActiveTour,
+                    pulseGeneration = requestedLocationPulseGeneration,
+                ),
+                visible = isMapReady && !isHomeSelectionMode,
+                onCloseArchive = onCloseDisplayedTour,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .zIndex(1f),
+            )
 
             AnimatedVisibility(
                 visible = areMapControlsVisible,

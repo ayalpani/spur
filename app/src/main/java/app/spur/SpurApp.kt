@@ -276,6 +276,13 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 onOpenHistory = {
                                     isHistoryVisible = true
                                 },
+                                onCloseDisplayedTour = {
+                                    val currentActiveTour = activeTour
+                                    displayedTour = currentActiveTour
+                                    displayedTourId = currentActiveTour?.id
+                                    displayedTourRequest++
+                                    routePoints = emptyList()
+                                },
                                 onDeleteTour = deleteTour,
                                 onDeleteWaypoint = { tourId, retainedIds ->
                                     runCatching {

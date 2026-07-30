@@ -18,6 +18,7 @@ private fun MapPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
+        onCloseDisplayedTour = {},
         onDeleteTour = {},
         onDeleteWaypoint = { _, _ -> true },
     )
@@ -43,6 +44,7 @@ private fun ActiveTourPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
+        onCloseDisplayedTour = {},
         onDeleteTour = {},
         onDeleteWaypoint = { _, _ -> true },
     )

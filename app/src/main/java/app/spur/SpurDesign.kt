@@ -11,7 +11,7 @@ import java.io.File
 internal val Sand = Color(0xFFF7F5F0)
 internal val Ink = Color(0xFF18201C)
 internal val Moss = Color(0xFF23614A)
-private val FollowGreen = Color(0xFF43A873)
+internal val FollowGreen = Color(0xFF43A873)
 internal val StopRed = Color(0xFFE53935)
 internal val MapPinRed = Color(0xFFEA4335)
 private val MomentMarkerGreen = Color(0xFF43A047)
