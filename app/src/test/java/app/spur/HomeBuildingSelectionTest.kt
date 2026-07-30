@@ -119,6 +119,24 @@ class HomeBuildingSelectionTest {
     }
 
     @Test
+    fun automaticTourBeginsAtChosenStartPointBeforeFirstOutsideFix() {
+        val startPoint = SpurCoordinate(latitude = 52.0002, longitude = 13.0003)
+        val firstOutsideFix = SpurCoordinate(latitude = 52.002, longitude = 13.0)
+        val settings = HomeAutoStartSettings(
+            enabled = true,
+            home = SpurCoordinate(latitude = 52.0, longitude = 13.0),
+            startPoint = startPoint,
+        )
+
+        val points = listOf(
+            requireNotNull(automaticTourStartPoint(settings)),
+            normalizedHomeCoordinate(settings, firstOutsideFix),
+        )
+
+        assertEquals(listOf(startPoint, firstOutsideFix), points)
+    }
+
+    @Test
     fun existingMapMomentsNearHomeRenderAtTheChosenStartPoint() {
         val startPoint = SpurCoordinate(latitude = 52.0002, longitude = 13.0003)
         val moment = MapMoment(

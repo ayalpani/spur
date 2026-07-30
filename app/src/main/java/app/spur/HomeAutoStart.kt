@@ -173,8 +173,9 @@ class HomeExitReceiver : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 val store = TourStore(context)
-                if (store.activeTour() != null) return@launch
-                val tourId = store.startTour()
+                val start = store.activeTourOrStart()
+                if (!start.created) return@launch
+                val tourId = start.id
                 automaticTourStartPoint(settings)?.let {
                     store.appendSimulatedLocation(tourId, it)
                 }

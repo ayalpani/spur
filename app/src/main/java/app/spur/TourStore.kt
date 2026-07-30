@@ -27,6 +27,11 @@ data class TrackPoint(
     val recordedAt: Long,
 )
 
+internal data class TourStartResult(
+    val id: Long,
+    val created: Boolean,
+)
+
 internal data class StationaryCluster(
     val latitude: Double,
     val longitude: Double,
@@ -226,6 +231,14 @@ class TourStore(context: Context) :
                 put("started_at", now)
             },
         )
+    }
+
+    @Synchronized
+    internal fun activeTourOrStart(
+        now: Long = System.currentTimeMillis(),
+    ): TourStartResult {
+        activeTour()?.let { return TourStartResult(id = it.id, created = false) }
+        return TourStartResult(id = startTour(now), created = true)
     }
 
     @Synchronized

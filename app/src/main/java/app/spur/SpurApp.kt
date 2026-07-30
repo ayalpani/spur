@@ -75,18 +75,27 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         hasLocationPermission = context.hasLocationPermission()
     }
 
-    LaunchedEffect(hasLocationPermission) {
-        if (!hasLocationPermission) return@LaunchedEffect
-        val restored = withContext(Dispatchers.IO) { store.activeTour() }
-        activeTour = restored
-        if (restored != null) {
-            displayedTour = restored
-            displayedTourId = restored.id
+    LaunchedEffect(hasLocationPermission, activeTour?.id, displayedTourId) {
+        if (!hasLocationPermission || activeTour != null) return@LaunchedEffect
+        while (true) {
+            val restored = withContext(Dispatchers.IO) { store.activeTour() }
+            if (restored == null) {
+                delay(1_000L)
+                continue
+            }
+            activeTour = restored
+            if (displayedTourId == null) {
+                displayedTour = restored
+                displayedTourId = restored.id
+                displayedTourRequest++
+            }
+            historyRevision++
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, TrackingService::class.java)
                     .putExtra(TrackingService.EXTRA_TOUR_ID, restored.id),
             )
+            break
         }
     }
 
@@ -209,14 +218,16 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 onStartTour = {
                                     scope.launch {
                                         val id = withContext(Dispatchers.IO) {
-                                            val startedId = store.startTour()
-                                            context.loadManualLocation()?.let { coordinate ->
-                                                store.appendSimulatedLocation(
-                                                    startedId,
-                                                    coordinate,
-                                                )
+                                            val start = store.activeTourOrStart()
+                                            if (start.created) {
+                                                context.loadManualLocation()?.let { coordinate ->
+                                                    store.appendSimulatedLocation(
+                                                        start.id,
+                                                        coordinate,
+                                                    )
+                                                }
                                             }
-                                            startedId
+                                            start.id
                                         }
                                         ContextCompat.startForegroundService(
                                             context,
