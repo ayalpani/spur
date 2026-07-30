@@ -36,6 +36,7 @@ internal val SheetMenuTextSize = 24.sp
 internal val StopSwipeHandleSize = 52.dp
 internal val MapRotationOptionGap = 16.dp
 internal val FilterChipVisualInset = 8.dp
+internal const val MapOutlineWidthDp = 3f
 internal const val MotionDurationDefaultMillis = 200
 internal const val EditorPointTransitionDurationMillis = 50
 internal const val ManualWaypointVibrationMillis = 40L

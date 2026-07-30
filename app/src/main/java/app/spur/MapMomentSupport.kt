@@ -114,9 +114,9 @@ internal fun createMomentMarkerBitmap(
                 paint.style = android.graphics.Paint.Style.FILL
                 canvas.drawRoundRect(
                     3 * scale,
-                    0f,
+                    MomentMarkerVerticalOffset * scale,
                     59 * scale,
-                    57 * scale,
+                    (57f + MomentMarkerVerticalOffset) * scale,
                     12 * scale,
                     12 * scale,
                     paint,
@@ -125,9 +125,9 @@ internal fun createMomentMarkerBitmap(
 
             val flag = android.graphics.RectF(
                 6 * scale,
-                2 * scale,
+                (2f + MomentMarkerVerticalOffset) * scale,
                 56 * scale,
-                52 * scale,
+                (52f + MomentMarkerVerticalOffset) * scale,
             )
             drawMomentMarkerShape(
                 canvas = canvas,
@@ -269,9 +269,9 @@ internal fun createPersonaMarkerBitmap(
                 setTint(colors.foreground.toArgb())
                 setBounds(
                     (19 * scale).roundToInt(),
-                    (15 * scale).roundToInt(),
+                    ((15f + MomentMarkerVerticalOffset) * scale).roundToInt(),
                     (43 * scale).roundToInt(),
-                    (39 * scale).roundToInt(),
+                    ((39f + MomentMarkerVerticalOffset) * scale).roundToInt(),
                 )
                 draw(canvas)
             }
@@ -297,45 +297,46 @@ private fun drawMomentMarkerShape(
 }
 
 internal fun momentMarkerPath(scale: Float): Path = Path().apply {
-    moveTo(16f * scale, 2f * scale)
-    lineTo(46f * scale, 2f * scale)
+    val verticalOffset = MomentMarkerVerticalOffset
+    moveTo(16f * scale, (2f + verticalOffset) * scale)
+    lineTo(46f * scale, (2f + verticalOffset) * scale)
     cubicTo(
         51.5f * scale,
-        2f * scale,
+        (2f + verticalOffset) * scale,
         56f * scale,
-        6.5f * scale,
+        (6.5f + verticalOffset) * scale,
         56f * scale,
-        12f * scale,
+        (12f + verticalOffset) * scale,
     )
-    lineTo(56f * scale, 42f * scale)
+    lineTo(56f * scale, (42f + verticalOffset) * scale)
     cubicTo(
         56f * scale,
-        47.5f * scale,
+        (47.5f + verticalOffset) * scale,
         51.5f * scale,
-        52f * scale,
+        (52f + verticalOffset) * scale,
         46f * scale,
-        52f * scale,
+        (52f + verticalOffset) * scale,
     )
-    lineTo(34.5f * scale, 52f * scale)
-    lineTo(31f * scale, 57f * scale)
-    lineTo(27.5f * scale, 52f * scale)
-    lineTo(16f * scale, 52f * scale)
+    lineTo(34.5f * scale, (52f + verticalOffset) * scale)
+    lineTo(31f * scale, (57f + verticalOffset) * scale)
+    lineTo(27.5f * scale, (52f + verticalOffset) * scale)
+    lineTo(16f * scale, (52f + verticalOffset) * scale)
     cubicTo(
         10.5f * scale,
-        52f * scale,
+        (52f + verticalOffset) * scale,
         6f * scale,
-        47.5f * scale,
+        (47.5f + verticalOffset) * scale,
         6f * scale,
-        42f * scale,
+        (42f + verticalOffset) * scale,
     )
-    lineTo(6f * scale, 12f * scale)
+    lineTo(6f * scale, (12f + verticalOffset) * scale)
     cubicTo(
         6f * scale,
-        6.5f * scale,
+        (6.5f + verticalOffset) * scale,
         10.5f * scale,
-        2f * scale,
+        (2f + verticalOffset) * scale,
         16f * scale,
-        2f * scale,
+        (2f + verticalOffset) * scale,
     )
     close()
 }

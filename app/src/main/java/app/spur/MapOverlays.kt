@@ -123,7 +123,7 @@ internal fun PendingMomentMarker(
             Text(
                 text = moment.payload,
                 modifier = Modifier
-                    .padding(top = 10.dp)
+                    .padding(top = (10f + MomentMarkerVerticalOffset).dp)
                     .semantics {
                         contentDescription = "Emoji ${moment.payload} wird abgelegt"
                     },
@@ -145,14 +145,14 @@ internal fun PendingMomentMarker(
                         },
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
-                            .padding(top = 7.dp)
+                            .padding(top = (7f + MomentMarkerVerticalOffset).dp)
                             .size(40.dp)
                             .clip(RoundedCornerShape(5.dp)),
                     )
                 } else {
                     RotatingAsterisk(
                         modifier = Modifier
-                            .padding(top = 15.dp)
+                            .padding(top = (15f + MomentMarkerVerticalOffset).dp)
                             .size(24.dp),
                         color = momentMarkerContentColor(moment.type),
                         contentDescription = when (moment.type) {

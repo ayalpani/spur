@@ -136,7 +136,7 @@ internal fun secondaryMapControlStyle(
     return MapControlButtonStyle(
         colors = inverted,
         border = BorderStroke(
-            width = 3.dp,
+            width = MapOutlineWidthDp.dp,
             color = inverted.foreground.copy(alpha = 0.25f),
         ),
     )
