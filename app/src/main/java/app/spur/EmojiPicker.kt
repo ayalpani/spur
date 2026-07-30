@@ -189,7 +189,6 @@ internal fun EmojiPickerBottomSheet(
                             onDragCancel = settleSheet,
                         )
                     },
-                    onBack = { hideTo(onBack) },
                     onEmojiPicked = { emoji ->
                         hideTo { onEmojiPicked(emoji) }
                     },
@@ -223,7 +222,6 @@ internal fun SpurModalBottomSheet(
 @OptIn(ExperimentalMaterial3Api::class)
 private fun EmojiPickerSheet(
     headerModifier: Modifier,
-    onBack: () -> Unit,
     onEmojiPicked: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -247,10 +245,7 @@ private fun EmojiPickerSheet(
             ) {
                 BottomSheetDefaults.DragHandle()
             }
-            BottomSheetHeader(
-                title = "Emoji wählen",
-                onBack = onBack,
-            )
+            BottomSheetHeader(title = "Emoji wählen")
         }
         AndroidView(
             factory = { viewContext ->

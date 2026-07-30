@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -29,8 +28,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -94,9 +91,9 @@ internal fun MainMenu(
 
 @Composable
 internal fun SettingsMenu(
-    onBack: () -> Unit,
-    onOpenTour: () -> Unit,
+    onOpenTour: (() -> Unit)?,
     onOpenHome: () -> Unit,
+    onOpenHomeAutoStart: () -> Unit,
     onOpenTheme: () -> Unit,
     onOpenDirection: () -> Unit,
 ) {
@@ -108,13 +105,18 @@ internal fun SettingsMenu(
         BottomSheetHeader(
             title = "Settings",
             modifier = Modifier.padding(horizontal = 24.dp),
-            onBack = onBack,
         )
-        SheetMenuItem(label = "Tour", onClick = onOpenTour)
+        onOpenTour?.let {
+            SheetMenuItem(label = "Tour", onClick = it)
+        }
         SheetMenuItem(
             label = "Zuhause",
             leading = { HomeIcon() },
             onClick = onOpenHome,
+        )
+        SheetMenuItem(
+            label = "Startautomatik",
+            onClick = onOpenHomeAutoStart,
         )
         SheetMenuItem(label = "Theme", onClick = onOpenTheme)
         SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
@@ -123,8 +125,6 @@ internal fun SettingsMenu(
 
 @Composable
 internal fun TourMenu(
-    onBack: () -> Unit,
-    onOpenHomeAutoStart: () -> Unit,
     onShareTour: (() -> Unit)?,
     onDeleteTour: (() -> Unit)?,
 ) {
@@ -136,7 +136,6 @@ internal fun TourMenu(
         BottomSheetHeader(
             title = "Tour",
             modifier = Modifier.padding(horizontal = 24.dp),
-            onBack = onBack,
         )
         if (onDeleteTour != null || onShareTour != null) {
             onDeleteTour?.let {
@@ -160,10 +159,6 @@ internal fun TourMenu(
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
         }
-        SheetMenuItem(
-            label = "Startautomatik",
-            onClick = onOpenHomeAutoStart,
-        )
     }
 }
 
@@ -171,7 +166,6 @@ internal fun TourMenu(
 internal fun BottomSheetHeader(
     title: String,
     modifier: Modifier = Modifier,
-    onBack: (() -> Unit)? = null,
 ) {
     Box(
         modifier = modifier
@@ -179,16 +173,6 @@ internal fun BottomSheetHeader(
             .height(56.dp),
         contentAlignment = Alignment.Center,
     ) {
-        if (onBack != null) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .semantics { contentDescription = "Schließen" },
-            ) {
-                PhotoCloseIcon()
-            }
-        }
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
@@ -201,7 +185,6 @@ internal fun BottomSheetHeader(
 @Composable
 internal fun BuildingDetailsBottomSheet(
     coordinate: SpurCoordinate,
-    onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     var address by remember(coordinate) { mutableStateOf<String?>(null) }
@@ -221,10 +204,7 @@ internal fun BuildingDetailsBottomSheet(
             .padding(horizontal = 24.dp)
             .padding(bottom = 24.dp),
     ) {
-        BottomSheetHeader(
-            title = "Gebäude",
-            onBack = onBack,
-        )
+        BottomSheetHeader(title = "Gebäude")
         Text(
             text = "Adresse",
             style = MaterialTheme.typography.titleMedium,

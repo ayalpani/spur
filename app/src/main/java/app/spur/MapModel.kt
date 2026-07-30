@@ -77,6 +77,8 @@ internal const val SelectedBuildingSource = "selected-building-source"
 internal const val SelectedBuildingFillLayer = "selected-building-fill-layer"
 internal const val SelectedBuildingOutlineLayer = "selected-building-outline-layer"
 internal const val SelectableHomeBuildingsLayer = "selectable-home-buildings-layer"
+internal const val HomeBuildingSelectionZoom = 18.5
+internal const val HomeBuildingMinimumSelectionZoom = 15.14
 internal const val MapMomentIdProperty = "moment-id"
 internal const val MapMomentImageProperty = "moment-image"
 internal const val MapMomentRepresentativeProperty = "moment-representative"
@@ -218,6 +220,9 @@ internal fun stopSwipePromptAlpha(offset: Float, maximum: Float): Float {
     val progress = stopSwipeProgress(offset, maximum)
     return ((0.82f - progress) / 0.22f).coerceIn(0f, 1f)
 }
+
+internal fun canSelectHomeBuilding(mapZoom: Double): Boolean =
+    mapZoom >= HomeBuildingMinimumSelectionZoom
 
 internal fun clusterStackOffsets(pointCount: Int): List<Float> = when {
     pointCount <= 1 -> listOf(8f)

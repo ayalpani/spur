@@ -14,15 +14,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -73,7 +69,6 @@ internal fun HistoryBottomSheet(
     store: TourStore,
     revision: Long,
     onOpenTour: (Long) -> Unit,
-    onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     var items by remember { mutableStateOf(emptyList<HistoryTourItem>()) }
@@ -138,7 +133,7 @@ internal fun HistoryBottomSheet(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentPadding = PaddingValues(bottom = 96.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp),
                 ) {
                     sections.forEach { section ->
                         stickyHeader(key = "section-${section.label}") {
@@ -162,10 +157,6 @@ internal fun HistoryBottomSheet(
                 }
             }
         }
-        HistoryCloseButton(
-            onDismiss = onDismiss,
-            modifier = Modifier.align(Alignment.BottomEnd),
-        )
     }
 }
 
@@ -291,36 +282,6 @@ private fun HistoryMomentThumbnail(moment: MapMoment) {
             .size(HistoryThumbnailSize)
             .clip(RoundedCornerShape(10.dp)),
     )
-}
-
-@Composable
-private fun HistoryCloseButton(
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.padding(horizontal = 18.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.End,
-    ) {
-        val colors = LocalMapControlColors.current
-        Button(
-            onClick = onDismiss,
-            modifier = Modifier.height(60.dp),
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = colors.background,
-                contentColor = colors.foreground,
-            ),
-        ) {
-            PhotoCloseIcon()
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = "Schließen",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-    }
 }
 
 private fun historySections(

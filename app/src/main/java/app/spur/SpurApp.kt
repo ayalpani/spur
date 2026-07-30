@@ -322,7 +322,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                     displayedTourRequest++
                                     isHistoryVisible = false
                                 },
-                                onDismiss = { isHistoryVisible = false },
                             )
                         }
                     }

@@ -1,6 +1,8 @@
 package app.spur
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.MultiPolygon
@@ -8,6 +10,12 @@ import org.maplibre.geojson.Point
 import org.maplibre.geojson.Polygon
 
 class HomeBuildingSelectionTest {
+    @Test
+    fun buildingsBecomeSelectableAtConfiguredZoom() {
+        assertFalse(canSelectHomeBuilding(HomeBuildingMinimumSelectionZoom - 0.01))
+        assertTrue(canSelectHomeBuilding(HomeBuildingMinimumSelectionZoom))
+    }
+
     @Test
     fun selectedHomeUsesTheCenterOfTheBuildingShape() {
         val building = Feature.fromGeometry(

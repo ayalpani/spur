@@ -85,6 +85,8 @@ internal fun MapSurface(
     homeBuilding: Feature?,
     selectedBuilding: Feature?,
     isBuildingSelectionMode: Boolean,
+    isHomeStartPointSelection: Boolean,
+    homeStartPointFocus: SpurCoordinate?,
     selectedTrackPoint: TrackPoint?,
     selectedTrackPointRequest: Long,
     momentToPlace: PendingMapMoment?,
@@ -98,6 +100,7 @@ internal fun MapSurface(
     onMomentClick: (MapMoment, Offset) -> Unit,
     onLocationClick: () -> Unit,
     onBuildingClick: (SelectedBuilding) -> Unit,
+    onHomeStartPointChanged: (SpurCoordinate) -> Unit,
     onManualLocationChanged: (SpurCoordinate) -> Unit,
     onFollowingInterrupted: () -> Unit,
     onLocationPulseStarted: (Long) -> Unit,
@@ -112,6 +115,7 @@ internal fun MapSurface(
     val currentOnMomentClick by rememberUpdatedState(onMomentClick)
     val currentOnLocationClick by rememberUpdatedState(onLocationClick)
     val currentOnBuildingClick by rememberUpdatedState(onBuildingClick)
+    val currentOnHomeStartPointChanged by rememberUpdatedState(onHomeStartPointChanged)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentOnFollowingInterrupted by rememberUpdatedState(onFollowingInterrupted)
     val currentOnLocationPulseStarted by rememberUpdatedState(onLocationPulseStarted)
@@ -130,6 +134,7 @@ internal fun MapSurface(
     val currentHomeBuilding by rememberUpdatedState(homeBuilding)
     val currentSelectedBuilding by rememberUpdatedState(selectedBuilding)
     val currentIsBuildingSelectionMode by rememberUpdatedState(isBuildingSelectionMode)
+    val currentIsHomeStartPointSelection by rememberUpdatedState(isHomeStartPointSelection)
     val currentSelectedTrackPoint by rememberUpdatedState(selectedTrackPoint)
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
@@ -415,6 +420,17 @@ internal fun MapSurface(
             }
         }
 
+        fun publishHomeStartPoint() {
+            if (!currentIsHomeStartPointSelection) return
+            val target = map?.cameraPosition?.target ?: return
+            currentOnHomeStartPointChanged(
+                SpurCoordinate(
+                    latitude = target.latitude,
+                    longitude = target.longitude,
+                ),
+            )
+        }
+
         val moveListener = MapLibreMap.OnCameraMoveListener {
             if (currentManualLocation != null) publishManualLocationPosition()
             if (pendingMapMoment != null) publishPendingMomentPosition()
@@ -441,6 +457,7 @@ internal fun MapSurface(
             if (!isMapTouchActive) currentOnMapGestureActiveChanged(false)
             publishManualLocationPosition()
             publishPendingMomentPosition()
+            publishHomeStartPoint()
             previewCameraPosition = map?.cameraPosition
             if (shouldStopFollowing(cameraMoveReason)) {
                 map?.cameraPosition?.zoom?.let(context::saveDefaultMapZoom)
@@ -452,6 +469,9 @@ internal fun MapSurface(
             val readyMap = map ?: return@OnMapClickListener false
             val screenPoint = readyMap.projection.toScreenLocation(point)
             if (currentIsBuildingSelectionMode) {
+                if (!canSelectHomeBuilding(readyMap.cameraPosition.zoom)) {
+                    return@OnMapClickListener false
+                }
                 val building = readyMap.queryRenderedFeatures(
                     screenPoint,
                     MapBuildingLayer,
@@ -464,12 +484,13 @@ internal fun MapSurface(
                     ?: return@OnMapClickListener false
                 currentOnBuildingClick(
                     SelectedBuilding(
-                        coordinate = coordinate,
+                        coordinate = homeCoordinate(selectedFeature) ?: coordinate,
                         feature = selectedFeature,
                     ),
                 )
                 return@OnMapClickListener true
             }
+            if (currentIsHomeStartPointSelection) return@OnMapClickListener true
             val cluster = readyMap.queryRenderedFeatures(
                 screenPoint,
                 MapPersonaClusterLayer,
@@ -797,6 +818,20 @@ internal fun MapSurface(
         }
     }
 
+    LaunchedEffect(isHomeStartPointSelection, homeStartPointFocus) {
+        if (!isHomeStartPointSelection) return@LaunchedEffect
+        val focus = homeStartPointFocus ?: return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    LatLng(focus.latitude, focus.longitude),
+                    HomeBuildingSelectionZoom,
+                ),
+                MapRotationAnimationMillis.toInt(),
+            )
+        }
+    }
+
     val voiceProgressFrame =
         (voicePlaybackProgress.coerceIn(0f, 1f) * 100f).roundToInt() / 100f
     LaunchedEffect(
@@ -923,6 +958,10 @@ internal fun MapSurface(
             ) {
                 SelectedTrackPointPuck()
             }
+        }
+
+        if (isHomeStartPointSelection) {
+            HomeStartPointCrosshair(modifier = Modifier.align(Alignment.Center))
         }
 
         val manualPuckSizePx = with(density) { 52.dp.roundToPx() }

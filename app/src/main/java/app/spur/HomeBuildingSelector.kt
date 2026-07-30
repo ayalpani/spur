@@ -98,7 +98,10 @@ internal fun Style.showSelectableHomeBuildings(visible: Boolean = true) {
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
             )
-            .also { addLayerAbove(it, MapBuildingLayer) }
+            .also {
+                it.minZoom = HomeBuildingMinimumSelectionZoom.toFloat()
+                addLayerAbove(it, MapBuildingLayer)
+            }
     layer.setProperties(visibility(if (visible) Property.VISIBLE else Property.NONE))
 }
 
