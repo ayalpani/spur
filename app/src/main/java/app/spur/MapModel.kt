@@ -90,7 +90,7 @@ internal const val MapPersonaImage = "map-persona-image"
 internal const val MapMomentImagePrefix = "map-moment-"
 internal const val MapMomentClusterImagePrefix = "map-moment-cluster-"
 internal const val MapPersonaClusterImagePrefix = "map-persona-cluster-"
-internal const val MapMomentClusterMaxZoom = 24
+internal const val MapMomentClusterMaxZoom = 23
 internal const val MapMomentClusterRadius = MomentMarkerHeight / 2 - 1
 
 internal enum class MapRotation(val label: String, val bearing: Double) {

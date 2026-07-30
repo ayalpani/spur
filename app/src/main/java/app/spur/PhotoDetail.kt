@@ -165,6 +165,7 @@ internal fun PhotoDetailPage(
     photos: List<MapMoment>,
     initialPhotoId: String,
     openOrigin: Offset? = null,
+    openPreview: PhotoOpenPreview? = null,
     photoRevision: Long = 0L,
     showFeedbackNotice: ShowFeedbackNotice,
     onPhotoChanged: (MapMoment) -> Unit = {},
@@ -193,8 +194,12 @@ internal fun PhotoDetailPage(
     val openProgress = remember(openOrigin) {
         Animatable(if (openOrigin == null) 1f else 0f)
     }
-    var openingPhotoAspectRatio by remember(openOrigin) { mutableFloatStateOf(1f) }
-    var openingThumbnail by remember(openOrigin) { mutableStateOf<ImageBitmap?>(null) }
+    var openingPhotoAspectRatio by remember(openOrigin, openPreview) {
+        mutableFloatStateOf(openPreview?.aspectRatio ?: 1f)
+    }
+    var openingThumbnail by remember(openOrigin, openPreview) {
+        mutableStateOf(openPreview?.image)
+    }
     var isVisible by remember { mutableStateOf(false) }
     var isClosing by remember { mutableStateOf(false) }
     var showPhotoActionsSheet by remember { mutableStateOf(false) }
@@ -308,14 +313,19 @@ internal fun PhotoDetailPage(
         }
     }
 
-    LaunchedEffect(openOrigin) {
+    LaunchedEffect(openOrigin, openPreview) {
         if (openOrigin == null) return@LaunchedEffect
-        val photo = File(photos[initialPage].payload)
-        val (aspectRatio, thumbnail) = withContext(Dispatchers.IO) {
-            photoAspectRatio(photo) to decodeMarkerPhoto(photo.absolutePath)?.asImageBitmap()
+        if (openPreview == null) {
+            launch {
+                val photo = File(photos[initialPage].payload)
+                val (aspectRatio, thumbnail) = withContext(Dispatchers.IO) {
+                    photoAspectRatio(photo) to
+                        decodeMarkerPhoto(photo.absolutePath)?.asImageBitmap()
+                }
+                openingPhotoAspectRatio = aspectRatio
+                openingThumbnail = thumbnail
+            }
         }
-        openingPhotoAspectRatio = aspectRatio
-        openingThumbnail = thumbnail
         openProgress.animateTo(
             targetValue = 1f,
             animationSpec = tween(
@@ -615,6 +625,11 @@ internal fun PhotoDetailPage(
         }
     }
 }
+
+internal data class PhotoOpenPreview(
+    val image: ImageBitmap,
+    val aspectRatio: Float,
+)
 
 @Composable
 private fun PhotoActionButton(

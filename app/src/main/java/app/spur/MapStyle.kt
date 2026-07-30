@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.selected
+import java.io.File
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
@@ -122,7 +123,13 @@ internal fun Style.showOutlinedBuildings() {
 internal data class PreparedMapMoments(
     val moments: List<MapMoment>,
     val images: HashMap<String, android.graphics.Bitmap>,
+    val photoPreviews: Map<String, PreparedPhotoPreview>,
     val features: List<Feature>,
+)
+
+internal data class PreparedPhotoPreview(
+    val bitmap: android.graphics.Bitmap,
+    val aspectRatio: Float,
 )
 
 internal fun prepareMapMoments(
@@ -131,11 +138,22 @@ internal fun prepareMapMoments(
     personaColors: MapControlColors,
 ): PreparedMapMoments {
     val images = HashMap<String, android.graphics.Bitmap>(moments.size * 5 + 1)
+    val photoPreviews = HashMap<String, PreparedPhotoPreview>()
     val personaMarker = createPersonaMarkerBitmap(context, personaColors)
     images[MapPersonaImage] = personaMarker
     val features = moments.mapIndexed { index, moment ->
         val imageId = MapMomentImagePrefix + moment.id
-        val marker = createMomentMarkerBitmap(context, moment, selected = false)
+        val marker = createMomentMarkerBitmap(
+            context = context,
+            moment = moment,
+            selected = false,
+            onPhotoDecoded = { bitmap ->
+                photoPreviews[moment.id] = PreparedPhotoPreview(
+                    bitmap = bitmap,
+                    aspectRatio = photoAspectRatio(File(moment.payload)),
+                )
+            },
+        )
         images[imageId] = marker
         listOf(2, 3).forEach { stackSize ->
             images[clusterMomentImageId(moment, stackSize)] =
@@ -160,6 +178,7 @@ internal fun prepareMapMoments(
     return PreparedMapMoments(
         moments = moments,
         images = images,
+        photoPreviews = photoPreviews,
         features = features,
     )
 }

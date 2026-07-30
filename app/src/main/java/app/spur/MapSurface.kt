@@ -99,7 +99,7 @@ internal fun MapSurface(
     onAlternateMapPreviewLoadingChanged: (Boolean) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onMomentPlacementFailed: (PendingMapMoment) -> Unit,
-    onMomentClick: (MapMoment, Offset) -> Unit,
+    onMomentClick: (MapMoment, Offset, PhotoOpenPreview?) -> Unit,
     onLocationClick: () -> Unit,
     onBuildingClick: (SelectedBuilding) -> Unit,
     onHomeStartPointChanged: (SpurCoordinate) -> Unit,
@@ -410,6 +410,9 @@ internal fun MapSurface(
         var isCameraMoving = false
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
         var holdStart = PointF()
+        var isTapCandidate = false
+        var immediatePhotoId: String? = null
+        var immediatePhotoExpiresAt = 0L
         var manualLocationHold: Runnable? = null
         fun cancelManualLocationHold() {
             manualLocationHold?.let(mapView::removeCallbacks)
@@ -441,6 +444,30 @@ internal fun MapSurface(
                     latitude = target.latitude,
                     longitude = target.longitude,
                 ),
+            )
+        }
+
+        fun momentAt(readyMap: MapLibreMap, screenPoint: PointF): MapMoment? {
+            val momentId = readyMap.queryRenderedFeatures(
+                screenPoint,
+                MapMomentLayer,
+            ).firstOrNull()?.getStringProperty(MapMomentIdProperty)
+            return currentMapMoments.firstOrNull { it.id == momentId }
+        }
+
+        fun dispatchMomentClick(moment: MapMoment, screenPoint: PointF) {
+            currentOnMomentClick(
+                moment,
+                Offset(screenPoint.x, screenPoint.y),
+                preparedMapMoments
+                    ?.photoPreviews
+                    ?.get(moment.id)
+                    ?.let {
+                        PhotoOpenPreview(
+                            image = it.bitmap.asImageBitmap(),
+                            aspectRatio = it.aspectRatio,
+                        )
+                    },
             )
         }
 
@@ -546,16 +573,12 @@ internal fun MapSurface(
                 currentOnLocationClick()
                 return@OnMapClickListener true
             }
-            val momentId = readyMap.queryRenderedFeatures(
-                screenPoint,
-                MapMomentLayer,
-            ).firstOrNull()?.getStringProperty(MapMomentIdProperty)
-            val moment = currentMapMoments.firstOrNull { it.id == momentId }
+            val moment = momentAt(readyMap, screenPoint)
             if (moment != null) {
-                currentOnMomentClick(
-                    moment,
-                    Offset(screenPoint.x, screenPoint.y),
-                )
+                val now = android.os.SystemClock.uptimeMillis()
+                if (moment.id != immediatePhotoId || now > immediatePhotoExpiresAt) {
+                    dispatchMomentClick(moment, screenPoint)
+                }
                 return@OnMapClickListener true
             }
             val building = readyMap.queryRenderedFeatures(
@@ -583,10 +606,12 @@ internal fun MapSurface(
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     isMapTouchActive = true
+                    isTapCandidate = true
                     cancelManualLocationHold()
                     holdStart = PointF(event.x, event.y)
                     manualLocationHold = Runnable {
                         if (currentIsBuildingSelectionMode) return@Runnable
+                        isTapCandidate = false
                         val point = map?.projection?.fromScreenLocation(holdStart)
                             ?: return@Runnable
                         context.vibrateManualWaypoint()
@@ -610,15 +635,38 @@ internal fun MapSurface(
                     val deltaX = event.x - holdStart.x
                     val deltaY = event.y - holdStart.y
                     if (deltaX * deltaX + deltaY * deltaY > touchSlop * touchSlop) {
+                        isTapCandidate = false
                         cancelManualLocationHold()
                     }
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> {
+                    isTapCandidate = false
                     cancelManualLocationHold()
                 }
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL,
-                -> {
+                MotionEvent.ACTION_UP -> {
+                    cancelManualLocationHold()
+                    if (
+                        isTapCandidate &&
+                        !currentIsBuildingSelectionMode &&
+                        !currentIsHomeStartPointSelection
+                    ) {
+                        val screenPoint = PointF(event.x, event.y)
+                        val photo = map?.let { momentAt(it, screenPoint) }
+                            ?.takeIf { it.type == MomentType.PHOTO }
+                        if (photo != null) {
+                            immediatePhotoId = photo.id
+                            immediatePhotoExpiresAt =
+                                android.os.SystemClock.uptimeMillis() +
+                                    ViewConfiguration.getDoubleTapTimeout() * 2L
+                            dispatchMomentClick(photo, screenPoint)
+                        }
+                    }
+                    isTapCandidate = false
+                    isMapTouchActive = false
+                    if (!isCameraMoving) currentOnMapGestureActiveChanged(false)
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    isTapCandidate = false
                     cancelManualLocationHold()
                     isMapTouchActive = false
                     if (!isCameraMoving) currentOnMapGestureActiveChanged(false)

@@ -99,6 +99,7 @@ internal fun createMomentMarkerBitmap(
     moment: MapMoment,
     selected: Boolean,
     voiceProgress: Float? = null,
+    onPhotoDecoded: ((android.graphics.Bitmap) -> Unit)? = null,
 ) =
     android.graphics.Bitmap.createBitmap(
             (MomentMarkerWidth * context.resources.displayMetrics.density).toInt(),
@@ -170,6 +171,7 @@ internal fun createMomentMarkerBitmap(
                 else -> null
             }
             if (preview != null) {
+                if (moment.type == MomentType.PHOTO) onPhotoDecoded?.invoke(preview)
                 val photoSide = (40 * scale).roundToInt().toFloat()
                 val photoContentLeft =
                     (flag.centerX() - photoSide / 2f).roundToInt().toFloat()
@@ -182,7 +184,9 @@ internal fun createMomentMarkerBitmap(
                     photoContentTop + photoSide,
                 )
                 drawMarkerPhoto(canvas, paint, photoContent, preview, scale)
-                preview.recycle()
+                if (moment.type != MomentType.PHOTO || onPhotoDecoded == null) {
+                    preview.recycle()
+                }
                 if (moment.type == MomentType.VIDEO) {
                     drawVideoPlayOverlay(canvas, paint, photoContent, scale)
                 }

@@ -148,6 +148,7 @@ internal fun MapPage(
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var mediaDetail by remember { mutableStateOf<MapMoment?>(null) }
     var photoDetailOrigin by remember { mutableStateOf<Offset?>(null) }
+    var photoDetailPreview by remember { mutableStateOf<PhotoOpenPreview?>(null) }
     var focusedPhoto by remember { mutableStateOf<MapMoment?>(null) }
     var mapMoments by remember { mutableStateOf(context.loadMapMoments()) }
     val visibleMapMoments = remember(mapMoments, tour) {
@@ -473,13 +474,14 @@ internal fun MapPage(
                         "Der Standort ist noch nicht verfügbar.",
                     )
                 },
-                onMomentClick = { moment, origin ->
+                onMomentClick = { moment, origin, preview ->
                     isFollowingLocation = false
                     isTourOverview = false
                     when (moment.type) {
                         MomentType.PHOTO -> {
                             activeVoiceMoment = null
                             photoDetailOrigin = origin
+                            photoDetailPreview = preview
                             photoDetail = moment
                         }
                         MomentType.VIDEO -> {
@@ -1303,6 +1305,7 @@ internal fun MapPage(
             photos = photos,
             initialPhotoId = moment.id,
             openOrigin = photoDetailOrigin,
+            openPreview = photoDetailPreview,
             photoRevision = photoRevision,
             onPhotoChanged = {
                 photoDetail = it
@@ -1325,6 +1328,7 @@ internal fun MapPage(
                         mapMoments = updatedMoments
                         photoDetail = null
                         photoDetailOrigin = null
+                        photoDetailPreview = null
                         focusedPhoto = null
                     }
                 }
@@ -1332,6 +1336,7 @@ internal fun MapPage(
             onDismiss = {
                 photoDetail = null
                 photoDetailOrigin = null
+                photoDetailPreview = null
                 focusedPhoto = null
             },
         )
