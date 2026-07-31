@@ -30,14 +30,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SheetState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -63,6 +60,8 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
@@ -83,11 +82,15 @@ internal fun MapPage(
     activeTour: Tour?,
     tourDisplayRequest: Long,
     routePoints: List<TrackPoint>,
+    roadHistoryStore: TourStore? = null,
+    roadHistoryFingerprint: RoadHistoryFingerprint = RoadHistoryFingerprint(),
+    roadTraversalFingerprint: RoadHistoryFingerprint? = null,
     now: Long,
     onStartTour: () -> Unit,
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
-    onOpenHistory: () -> Unit,
+    onRenameTour: suspend (Long, String) -> Boolean,
+    onOpenHome: () -> Unit,
     onCloseDisplayedTour: () -> Unit,
     onDeleteTour: (Long) -> Unit,
     onDeleteWaypoint: suspend (Long, Set<Long>) -> Boolean,
@@ -99,6 +102,7 @@ internal fun MapPage(
     onInitialLoadingComplete: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     var isHomeSelectionMode by rememberSaveable { mutableStateOf(false) }
     var homeSelectionStep by rememberSaveable {
         mutableStateOf(HomeSelectionStep.BUILDING)
@@ -121,6 +125,7 @@ internal fun MapPage(
     var followRequest by rememberSaveable { mutableStateOf(0) }
     var tourOverviewRequest by rememberSaveable { mutableStateOf(0) }
     var isFollowingLocation by rememberSaveable { mutableStateOf(false) }
+    var isUserMoving by remember { mutableStateOf(false) }
     var requestedLocationPulseGeneration by remember { mutableLongStateOf(0L) }
     var activeLocationPulseGeneration by remember { mutableStateOf<Long?>(null) }
     var dismissedActiveTourHeaderId by rememberSaveable(activeTour?.id) {
@@ -128,18 +133,25 @@ internal fun MapPage(
     }
     var isTourOverview by rememberSaveable { mutableStateOf(false) }
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
+    var mapViewport by remember { mutableStateOf<MapViewport?>(null) }
     var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
     var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
+    var isWaypointRailScrolling by remember { mutableStateOf(false) }
+    var isZoomControlInteracting by remember { mutableStateOf(false) }
     var showStartTourBottomSheet by rememberSaveable { mutableStateOf(false) }
     var isStartingTour by rememberSaveable { mutableStateOf(false) }
     var momentTarget by remember { mutableStateOf<MomentPlacementTarget?>(null) }
+    ActiveTourNavigationBar(active = isDisplayedActiveTour)
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
     var showSettingsMenu by rememberSaveable { mutableStateOf(false) }
-    var showTourMenu by rememberSaveable { mutableStateOf(false) }
     var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showThemePicker by rememberSaveable { mutableStateOf(false) }
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var tourTitleEditor by remember(tour?.id) {
+        mutableStateOf<TextFieldValue?>(null)
+    }
+    var isSavingTourTitle by remember(tour?.id) { mutableStateOf(false) }
     var tourToDelete by remember { mutableStateOf<Tour?>(null) }
     var waypointToDelete by remember { mutableStateOf<TrackPoint?>(null) }
     var selectedEditorPointId by rememberSaveable(tour?.id) {
@@ -195,7 +207,16 @@ internal fun MapPage(
     var voiceProgress by remember { mutableFloatStateOf(0f) }
     var manualLocation by remember { mutableStateOf(context.loadManualLocation()) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val initialMapZoom = remember { context.loadDefaultMapZoom() }
+    var defaultMapZoom by remember {
+        mutableStateOf(
+            context.loadDefaultMapZoom().coerceIn(MapZoomMinimum, MapZoomMaximum),
+        )
+    }
+    var displayedMapZoom by remember {
+        mutableStateOf(defaultMapZoom)
+    }
+    var mapZoomRequestId by remember { mutableLongStateOf(0L) }
+    var mapZoomRequest by remember { mutableStateOf<MapZoomRequest?>(null) }
     var defaultMapRotation by remember {
         mutableStateOf(context.loadDefaultMapRotation())
     }
@@ -211,6 +232,10 @@ internal fun MapPage(
     }
     var mapInitializationStarted by remember { mutableStateOf(false) }
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
+    val isTourModeHeaderVisible = tour != null &&
+        isMapReady &&
+        !isHomeSelectionMode &&
+        (!isDisplayedActiveTour || dismissedActiveTourHeaderId != tour?.id)
     var isMapGestureActive by remember { mutableStateOf(false) }
     val areMapControlsVisible =
         isMapReady && !isMapGestureActive && !isHomeSelectionMode
@@ -218,24 +243,14 @@ internal fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val settingsMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val tourMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val homeAutoStartBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val directionBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val aboutBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    fun swapBottomSheets(
-        currentState: SheetState,
-        showNext: () -> Unit,
-        hideCurrent: () -> Unit,
-    ) {
-        showNext()
-        scope.launch {
-            currentState.hide()
-            hideCurrent()
-        }
-    }
+    val tourDeleteSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val followOwnLocation: () -> Unit = {
         isTourOverview = false
         isFollowingLocation = true
@@ -245,6 +260,16 @@ internal fun MapPage(
             waypointRailFocusRequest++
         }
         followRequest++
+    }
+    val requestMapZoom: (Double, Boolean) -> Unit = { zoom, animated ->
+        val target = zoom.coerceIn(MapZoomMinimum, MapZoomMaximum)
+        displayedMapZoom = target
+        mapZoomRequestId++
+        mapZoomRequest = MapZoomRequest(
+            id = mapZoomRequestId,
+            zoom = target,
+            animated = animated,
+        )
     }
     val closeHomeSelection: () -> Unit = {
         isHomeSelectionMode = false
@@ -270,7 +295,10 @@ internal fun MapPage(
     }
     LaunchedEffect(tour?.id, editorLocations.size) {
         editorFocusRequest = 0L
-        if (editorLocations.none { it.point.id == selectedEditorPointId }) {
+        if (
+            isFollowingLocation ||
+            editorLocations.none { it.point.id == selectedEditorPointId }
+        ) {
             selectedEditorPointId = editorLocations.lastOrNull()?.point?.id
         }
     }
@@ -412,7 +440,6 @@ internal fun MapPage(
             !showStartTourBottomSheet &&
             !showMainMenu &&
             !showSettingsMenu &&
-            !showTourMenu &&
             !showHomeAutoStartBottomSheet &&
             !showThemePicker &&
             !showDirectionBottomSheet &&
@@ -427,7 +454,6 @@ internal fun MapPage(
             !showStartTourBottomSheet &&
             !showMainMenu &&
             !showSettingsMenu &&
-            !showTourMenu &&
             !showHomeAutoStartBottomSheet &&
             !showThemePicker &&
             !showDirectionBottomSheet &&
@@ -441,13 +467,20 @@ internal fun MapPage(
     CompositionLocalProvider(
         LocalMapControlColors provides mapControlColors,
         LocalAccentColor provides colorTheme.accent.color,
-        LocalSignalColor provides trailColors.fill,
+        LocalLocationMarkerColors provides colorTheme.locationMarkerColors,
         LocalTrailColors provides trailColors,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (mapInitializationStarted) {
             MapSurface(
                 tourId = tour?.id,
+                activeTourId = activeTour?.id,
+                isTourActive = isTourActive,
+                showTourEndpoints = !isDisplayedActiveTour,
+                deferAlternateMapPreview = isWaypointRailScrolling ||
+                    isMapGestureActive ||
+                    isZoomControlInteracting,
+                isZoomControlInteracting = isZoomControlInteracting,
                 tourDisplayRequest = tourDisplayRequest,
                 followRequest = followRequest,
                 tourOverviewRequest = tourOverviewRequest,
@@ -455,12 +488,16 @@ internal fun MapPage(
                 locationPulseGeneration = requestedLocationPulseGeneration,
                 isSatelliteView = isSatelliteView,
                 manualLocation = manualLocation,
-                initialMapZoom = initialMapZoom,
+                defaultMapZoom = defaultMapZoom,
+                zoomRequest = mapZoomRequest,
                 defaultMapBearing = defaultMapRotation.bearing,
                 mapSettingsVisible = showDirectionBottomSheet,
                 mapMoments = renderedMapMoments,
                 momentImageRevision = photoRevision,
                 routePoints = routePoints,
+                roadHistoryStore = roadHistoryStore,
+                roadHistoryFingerprint = roadHistoryFingerprint,
+                roadTraversalFingerprint = roadTraversalFingerprint,
                 trailColors = trailColors,
                 homeBuilding = homeSettings.homeBuilding,
                 selectedBuilding = if (isHomeSelectionMode) {
@@ -486,6 +523,10 @@ internal fun MapPage(
                 onAlternateMapPreviewChanged = { alternateMapPreview = it },
                 onAlternateMapPreviewLoadingChanged = {
                     isAlternateMapPreviewLoading = it
+                },
+                onViewportChanged = {
+                    mapViewport = it
+                    displayedMapZoom = it.zoom.coerceIn(MapZoomMinimum, MapZoomMaximum)
                 },
                 onMomentPlaced = { moment ->
                     val updatedMoments = mapMoments + moment.copy(
@@ -549,6 +590,7 @@ internal fun MapPage(
                     if (isFollowingLocation) activeLocationPulseGeneration = null
                     requestedLocationPulseGeneration++
                 },
+                onMovementChanged = { isUserMoving = it },
                 onMapReadyChanged = { isMapRendered = it },
                 onMapGestureActiveChanged = { isMapGestureActive = it },
             )
@@ -558,13 +600,9 @@ internal fun MapPage(
                 tour = tour,
                 active = isDisplayedActiveTour,
                 now = now,
-                pulseAlpha = locationSignalButtonAlpha(
-                    selected = isDisplayedActiveTour,
-                    pulseGeneration = requestedLocationPulseGeneration,
-                ),
-                visible = isMapReady &&
-                    !isHomeSelectionMode &&
-                    (!isDisplayedActiveTour || dismissedActiveTourHeaderId != tour?.id),
+                visible = isTourModeHeaderVisible,
+                titleEditor = tourTitleEditor,
+                titleSaving = isSavingTourTitle,
                 onClose = {
                     if (isDisplayedActiveTour) {
                         dismissedActiveTourHeaderId = tour?.id
@@ -572,10 +610,80 @@ internal fun MapPage(
                         onCloseDisplayedTour()
                     }
                 },
+                onOpenMenu = { showMainMenu = true },
+                onTitleChange = { tourTitleEditor = it },
+                onSaveTitle = {
+                    val displayed = tour ?: return@TourModeHeader
+                    val draft = tourTitleEditor ?: return@TourModeHeader
+                    if (isSavingTourTitle) return@TourModeHeader
+                    isSavingTourTitle = true
+                    scope.launch {
+                        val saved = onRenameTour(displayed.id, draft.text)
+                        isSavingTourTitle = false
+                        if (saved) {
+                            tourTitleEditor = null
+                        } else {
+                            showFeedbackNotice(
+                                FeedbackNoticeKind.ERROR,
+                                "Tourname konnte nicht gespeichert werden.",
+                            )
+                        }
+                    }
+                },
+                onCancelTitleEdit = {
+                    isSavingTourTitle = false
+                    tourTitleEditor = null
+                },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .zIndex(1f),
             )
+
+            AnimatedVisibility(
+                visible = areMapControlsVisible && tour == null && activeTour == null,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(
+                        top = MapControlVerticalPadding,
+                        end = MapControlHorizontalPadding,
+                    ),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
+            ) {
+                MapIconButton(
+                    contentDescription = "Hauptmenü öffnen",
+                    onClick = { showMainMenu = true },
+                    secondary = true,
+                ) {
+                    MenuIcon()
+                }
+            }
+
+            AnimatedVisibility(
+                visible = areMapControlsVisible,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(
+                        start = MapControlHorizontalPadding,
+                        top = MapControlVerticalPadding +
+                            if (isTourModeHeaderVisible) 60.dp else 0.dp,
+                    ),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
+            ) {
+                MapIconButton(
+                    contentDescription = "Home öffnen",
+                    onClick = {
+                        activeVoiceMoment = null
+                        onOpenHome()
+                    },
+                    secondary = true,
+                ) {
+                    HomeAsteriskIcon(isMoving = isUserMoving)
+                }
+            }
 
             AnimatedVisibility(
                 visible = areMapControlsVisible,
@@ -597,16 +705,9 @@ internal fun MapPage(
                         selected = isFollowingLocation,
                         pulseGeneration = activeLocationPulseGeneration,
                     )
-                    MapIconButton(
-                        contentDescription = "Hauptmenü öffnen",
-                        onClick = { showMainMenu = true },
-                        secondary = true,
-                    ) {
-                        MenuIcon()
-                    }
                     if (selectedEditorLocation != null && routePoints.size > 1) {
                         MapIconButton(
-                            contentDescription = "GPS-Punkt löschen",
+                            contentDescription = "Wegpunkt löschen",
                             onClick = { waypointToDelete = selectedEditorLocation.point },
                             secondary = true,
                         ) {
@@ -620,6 +721,9 @@ internal fun MapPage(
                         contentDescription = "Moment hinzufügen",
                         onClick = {
                             momentTarget = if (focusedWaypoint != null && tour != null) {
+                                isFollowingLocation = false
+                                isTourOverview = false
+                                editorFocusRequest++
                                 MomentPlacementTarget.RecordedLocation(
                                     tourId = tour.id,
                                     trackPointId = focusedWaypoint.point.id,
@@ -629,14 +733,32 @@ internal fun MapPage(
                                     ),
                                 )
                             } else {
+                                followOwnLocation()
                                 MomentPlacementTarget.CurrentLocation
                             }
                         },
                         secondary = true,
-                        contentColor = LocalAccentColor.current,
+                        contentColor = MapControlColor.BLACK.color,
                     ) {
                         PlusIcon()
                     }
+                    MapZoomControl(
+                        zoom = displayedMapZoom,
+                        defaultZoom = defaultMapZoom,
+                        isInteractionActive = isZoomControlInteracting,
+                        onZoomChange = requestMapZoom,
+                        onDefaultZoomSelected = { zoom ->
+                            defaultMapZoom = zoom
+                            context.saveDefaultMapZoom(zoom)
+                            showFeedbackNotice(
+                                FeedbackNoticeKind.PLACEHOLDER,
+                                "Default Zoom gespeichert",
+                            )
+                        },
+                        onInteractionActiveChanged = {
+                            isZoomControlInteracting = it
+                        },
+                    )
                     MapIconButton(
                         contentDescription = when {
                             isTourOverview -> "Zur Standortverfolgung zurückkehren"
@@ -662,7 +784,9 @@ internal fun MapPage(
                             alpha = signalButtonAlpha
                         },
                     ) {
-                        FollowLocationIcon(selected = isFollowingLocation)
+                        FollowLocationIcon(
+                            selected = isFollowingLocation,
+                        )
                     }
                 }
             }
@@ -698,7 +822,7 @@ internal fun MapPage(
                     if (activeTour != null) {
                         TourPlayer(
                             tour = activeTour,
-                            now = now,
+                            routePoints = routePoints,
                             onStop = onEndTour,
                             modifier = modifier,
                         )
@@ -777,16 +901,6 @@ internal fun MapPage(
                                     LucideLocateOffIcon()
                                 }
                             }
-                            MapIconButton(
-                                contentDescription = "Letzte Touren öffnen",
-                                onClick = {
-                                    activeVoiceMoment = null
-                                    onOpenHistory()
-                                },
-                                secondary = true,
-                            ) {
-                                HistoryIcon()
-                            }
                             mapStyleControl()
                         }
                         val focusedWaypoint = selectedEditorLocation?.takeIf {
@@ -826,20 +940,38 @@ internal fun MapPage(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White)
+                        .background(
+                            if (isDisplayedActiveTour) GameRoadSurface else Color.White,
+                        )
                         .navigationBarsPadding(),
                 ) {
                     WaypointRail(
                         locations = editorLocations,
                         selectedPointId = selectedEditorPointId,
                         focusRequest = waypointRailFocusRequest,
+                        followLatest = isFollowingLocation,
                         emptyText = waypointEmptyText(
                             hasActiveTour = activeTour != null,
                             hasDisplayedTour = tour != null,
                         ),
+                        backgroundColor = if (isDisplayedActiveTour) {
+                            GameRoadSurface
+                        } else {
+                            Color.White
+                        },
+                        onScrollInProgressChanged = { isScrolling ->
+                            isWaypointRailScrolling = isScrolling
+                            if (isScrolling) isAlternateMapPreviewLoading = true
+                        },
                         onSelected = { pointId ->
                             if (pointId != selectedEditorPointId) {
                                 selectedEditorPointId = pointId
+                                if (
+                                    isFollowingLocation &&
+                                    pointId == editorLocations.lastOrNull()?.point?.id
+                                ) {
+                                    return@WaypointRail
+                                }
                                 editorFocusRequest++
                                 isFollowingLocation = false
                                 isTourOverview = false
@@ -858,7 +990,7 @@ internal fun MapPage(
                     .fillMaxSize()
                     .zIndex(2f),
                 enter = fadeIn(tween(MotionDurationDefaultMillis / 2)),
-                exit = fadeOut(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(InitialLoaderExitDurationMillis)),
             ) {
                 Box(
                     modifier = Modifier
@@ -952,29 +1084,6 @@ internal fun MapPage(
                         .zIndex(3f),
                 )
             }
-
-            selectedBuilding?.takeUnless { isHomeSelectionMode }?.let { building ->
-                val closeBuildingDetails: () -> Unit = {
-                    selectedBuilding = null
-                }
-                BackHandler(onBack = closeBuildingDetails)
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .zIndex(3f),
-                    shape = RoundedCornerShape(
-                        topStart = 28.dp,
-                        topEnd = 28.dp,
-                    ),
-                    color = SheetBackground,
-                    shadowElevation = 16.dp,
-                ) {
-                    BuildingDetailsBottomSheet(
-                        coordinate = building.coordinate,
-                    )
-                }
-            }
         }
     }
 
@@ -1006,18 +1115,80 @@ internal fun MapPage(
         ) {
             MainMenu(
                 onOpenSettings = {
-                    swapBottomSheets(
+                    scope.swapBottomSheets(
                         currentState = mainMenuState,
+                        nextState = settingsMenuState,
                         showNext = { showSettingsMenu = true },
                         hideCurrent = { showMainMenu = false },
                     )
                 },
+                onOpenGoogleMaps = {
+                    val viewport = mapViewport
+                    if (viewport == null) {
+                        showFeedbackNotice(
+                            FeedbackNoticeKind.ERROR,
+                            "Der Kartenausschnitt ist noch nicht bereit.",
+                        )
+                    } else {
+                        showMainMenu = false
+                        runCatching { uriHandler.openUri(googleMapsViewUrl(viewport)) }
+                            .onFailure {
+                                showFeedbackNotice(
+                                    FeedbackNoticeKind.ERROR,
+                                    "Google Maps konnte nicht geöffnet werden.",
+                                )
+                            }
+                    }
+                },
+                onRenameTour = archivedTour?.let { visibleTour ->
+                    {
+                        scope.launch {
+                            mainMenuState.hide()
+                            showMainMenu = false
+                            val initialTitle = visibleTour.title ?: "Archiv-Tour"
+                            tourTitleEditor = TextFieldValue(
+                                text = initialTitle,
+                                selection = TextRange(initialTitle.length),
+                            )
+                        }
+                    }
+                },
                 onOpenAbout = {
-                    swapBottomSheets(
+                    scope.swapBottomSheets(
                         currentState = mainMenuState,
+                        nextState = aboutBottomSheetState,
                         showNext = { showAboutBottomSheet = true },
                         hideCurrent = { showMainMenu = false },
                     )
+                },
+                onShareTour = if (isDisplayedActiveTour) {
+                    {
+                        scope.launch {
+                            mainMenuState.hide()
+                            showMainMenu = false
+                            shareActiveTour(context)
+                        }
+                    }
+                } else {
+                    null
+                },
+                onStopTour = if (isDisplayedActiveTour) {
+                    {
+                        showMainMenu = false
+                        onEndTour()
+                    }
+                } else {
+                    null
+                },
+                onDeleteTour = tour?.let { visibleTour ->
+                    {
+                        scope.swapBottomSheets(
+                            currentState = mainMenuState,
+                            nextState = tourDeleteSheetState,
+                            showNext = { tourToDelete = visibleTour },
+                            hideCurrent = { showMainMenu = false },
+                        )
+                    }
                 },
             )
         }
@@ -1025,17 +1196,15 @@ internal fun MapPage(
 
     if (showSettingsMenu) {
         val closeSettingsMenu: () -> Unit = {
-            swapBottomSheets(
+            scope.swapBottomSheets(
                 currentState = settingsMenuState,
+                nextState = mainMenuState,
                 showNext = { showMainMenu = true },
                 hideCurrent = { showSettingsMenu = false },
             )
         }
         SpurModalBottomSheet(
-            onDismissRequest = {
-                showMainMenu = true
-                showSettingsMenu = false
-            },
+            onDismissRequest = { showSettingsMenu = false },
             sheetState = settingsMenuState,
             scrimColor = if (showThemePicker) {
                 Color.Transparent
@@ -1045,17 +1214,6 @@ internal fun MapPage(
         ) {
             BackHandler(onBack = closeSettingsMenu)
             SettingsMenu(
-                onOpenTour = if (isTourActive || tour != null) {
-                    {
-                        swapBottomSheets(
-                            currentState = settingsMenuState,
-                            showNext = { showTourMenu = true },
-                            hideCurrent = { showSettingsMenu = false },
-                        )
-                    }
-                } else {
-                    null
-                },
                 onOpenHome = {
                     scope.launch {
                         settingsMenuState.hide()
@@ -1064,8 +1222,9 @@ internal fun MapPage(
                     }
                 },
                 onOpenHomeAutoStart = {
-                    swapBottomSheets(
+                    scope.swapBottomSheets(
                         currentState = settingsMenuState,
+                        nextState = homeAutoStartBottomSheetState,
                         showNext = { showHomeAutoStartBottomSheet = true },
                         hideCurrent = { showSettingsMenu = false },
                     )
@@ -1078,8 +1237,9 @@ internal fun MapPage(
                     }
                 },
                 onOpenDirection = {
-                    swapBottomSheets(
+                    scope.swapBottomSheets(
                         currentState = settingsMenuState,
+                        nextState = directionBottomSheetState,
                         showNext = { showDirectionBottomSheet = true },
                         hideCurrent = { showSettingsMenu = false },
                     )
@@ -1092,6 +1252,7 @@ internal fun MapPage(
         EditorDeleteSheet(
             title = "Tour löschen?",
             primaryLabel = "Tour löschen",
+            sheetState = tourDeleteSheetState,
             onDismiss = { tourToDelete = null },
             onConfirm = {
                 tourToDelete = null
@@ -1102,8 +1263,8 @@ internal fun MapPage(
 
     waypointToDelete?.let { selectedPoint ->
         EditorDeleteSheet(
-            title = "GPS-Punkt löschen?",
-            primaryLabel = "GPS-Punkt löschen",
+            title = "Wegpunkt löschen?",
+            primaryLabel = "Wegpunkt löschen",
             onDismiss = { waypointToDelete = null },
             onConfirm = {
                 waypointToDelete = null
@@ -1114,7 +1275,7 @@ internal fun MapPage(
                     if (!onDeleteWaypoint(tour.id, retained.mapTo(mutableSetOf(), TrackPoint::id))) {
                         showFeedbackNotice(
                             FeedbackNoticeKind.ERROR,
-                            "GPS-Punkt konnte nicht gelöscht werden.",
+                            "Wegpunkt konnte nicht gelöscht werden.",
                         )
                         return@launch
                     }
@@ -1143,55 +1304,20 @@ internal fun MapPage(
         )
     }
 
-    if (showTourMenu) {
-        val closeTourMenu: () -> Unit = {
-            swapBottomSheets(
-                currentState = tourMenuState,
-                showNext = { showSettingsMenu = true },
-                hideCurrent = { showTourMenu = false },
-            )
-        }
-        SpurModalBottomSheet(
-            onDismissRequest = {
-                showSettingsMenu = true
-                showTourMenu = false
-            },
-            sheetState = tourMenuState,
-        ) {
-            BackHandler(onBack = closeTourMenu)
-            TourMenu(
-                onShareTour = if (isTourActive) {
-                    {
-                        scope.launch {
-                            tourMenuState.hide()
-                            showTourMenu = false
-                            shareActiveTour(context)
-                        }
-                    }
-                } else {
-                    null
-                },
-                onDeleteTour = tour?.let { visibleTour ->
-                    {
-                        swapBottomSheets(
-                            currentState = tourMenuState,
-                            showNext = { tourToDelete = visibleTour },
-                            hideCurrent = { showTourMenu = false },
-                        )
-                    }
-                },
-            )
-        }
-    }
-
     if (showHomeAutoStartBottomSheet) {
+        val closeHomeAutoStart: () -> Unit = {
+            scope.swapBottomSheets(
+                currentState = homeAutoStartBottomSheetState,
+                nextState = settingsMenuState,
+                showNext = { showSettingsMenu = true },
+                hideCurrent = { showHomeAutoStartBottomSheet = false },
+            )
+        }
         SpurModalBottomSheet(
-            onDismissRequest = {
-                showSettingsMenu = true
-                showHomeAutoStartBottomSheet = false
-            },
+            onDismissRequest = { showHomeAutoStartBottomSheet = false },
             sheetState = homeAutoStartBottomSheetState,
         ) {
+            BackHandler(onBack = closeHomeAutoStart)
             HomeAutoStartBottomSheet(
                 onSettingsChanged = { homeSettings = it },
                 onChooseHome = {
@@ -1206,6 +1332,14 @@ internal fun MapPage(
     }
 
     if (showDirectionBottomSheet) {
+        val closeDirection: () -> Unit = {
+            scope.swapBottomSheets(
+                currentState = directionBottomSheetState,
+                nextState = settingsMenuState,
+                showNext = { showSettingsMenu = true },
+                hideCurrent = { showDirectionBottomSheet = false },
+            )
+        }
         val compassRotation = remember {
             Animatable(-defaultMapRotation.bearing.toFloat())
         }
@@ -1223,12 +1357,10 @@ internal fun MapPage(
             context.saveDefaultMapRotation(it)
         }
         SpurModalBottomSheet(
-            onDismissRequest = {
-                showSettingsMenu = true
-                showDirectionBottomSheet = false
-            },
+            onDismissRequest = { showDirectionBottomSheet = false },
             sheetState = directionBottomSheetState,
         ) {
+            BackHandler(onBack = closeDirection)
             Column(
                 modifier = Modifier
                     .navigationBarsPadding()
@@ -1249,14 +1381,19 @@ internal fun MapPage(
     }
 
     if (showAboutBottomSheet) {
-        val uriHandler = LocalUriHandler.current
+        val closeAbout: () -> Unit = {
+            scope.swapBottomSheets(
+                currentState = aboutBottomSheetState,
+                nextState = mainMenuState,
+                showNext = { showMainMenu = true },
+                hideCurrent = { showAboutBottomSheet = false },
+            )
+        }
         SpurModalBottomSheet(
-            onDismissRequest = {
-                showMainMenu = true
-                showAboutBottomSheet = false
-            },
+            onDismissRequest = { showAboutBottomSheet = false },
             sheetState = aboutBottomSheetState,
         ) {
+            BackHandler(onBack = closeAbout)
             Column(
                 modifier = Modifier
                     .navigationBarsPadding()
@@ -1301,7 +1438,7 @@ internal fun MapPage(
                     ) {
                         Text(
                             text = "Arash Yalpani.",
-                            color = Ink,
+                            color = Ink.copy(alpha = IconTextLabelAlpha),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                         )
@@ -1401,4 +1538,9 @@ internal fun MapPage(
             onDismiss = { mediaDetail = null },
         )
     }
+}
+
+@Composable
+private fun ActiveTourNavigationBar(active: Boolean) {
+    if (active) ActivityNavigationBar(backgroundColor = GameRoadSurface)
 }

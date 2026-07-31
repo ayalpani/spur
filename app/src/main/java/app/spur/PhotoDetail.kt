@@ -212,6 +212,7 @@ internal fun PhotoDetailPage(
         mutableStateOf(false)
     }
     val resolvedImageKeys = remember { mutableStateMapOf<String, Boolean>() }
+    val successfullyLoadedImageKeys = remember { mutableStateMapOf<String, Boolean>() }
 
     fun dismissAnimated() {
         if (isClosing) return
@@ -422,7 +423,10 @@ internal fun PhotoDetailPage(
                             .diskCachePolicy(CachePolicy.DISABLED)
                             .listener(
                                 onError = { _, _ -> resolvedImageKeys[imageKey] = true },
-                                onSuccess = { _, _ -> resolvedImageKeys[imageKey] = true },
+                                onSuccess = { _, _ ->
+                                    resolvedImageKeys[imageKey] = true
+                                    successfullyLoadedImageKeys[imageKey] = true
+                                },
                             )
                             .let { builder ->
                                 if (openOrigin == null) {
@@ -445,7 +449,7 @@ internal fun PhotoDetailPage(
                     )
                 }
                 val thumbnail = openingThumbnail
-                if (openOrigin != null && thumbnail != null && progress < 1f) {
+                if (openOrigin != null && thumbnail != null) {
                     val density = LocalDensity.current
                     val availableWidth = constraints.maxWidth.toFloat()
                     val availableHeight = constraints.maxHeight.toFloat()
@@ -457,33 +461,47 @@ internal fun PhotoDetailPage(
                     val sourceSize = with(density) { 40.dp.toPx() }
                     val targetLeft = (availableWidth - targetWidth) / 2f
                     val targetTop = (availableHeight - targetHeight) / 2f
-                    Image(
-                        bitmap = thumbnail,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .offset {
-                                IntOffset(
-                                    targetLeft.roundToInt(),
-                                    targetTop.roundToInt(),
+                    AnimatedVisibility(
+                        visible = shouldShowOpeningPhotoPreview(
+                            animationProgress = progress,
+                            openingPhotoId = photos[initialPage].id,
+                            selectedPhotoId = selectedPhoto.id,
+                            fullImageLoaded =
+                                successfullyLoadedImageKeys[selectedImageKey] == true,
+                        ),
+                        enter = EnterTransition.None,
+                        exit = fadeOut(tween(MotionDurationDefaultMillis)),
+                    ) {
+                        Image(
+                            bitmap = thumbnail,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .offset {
+                                    IntOffset(
+                                        targetLeft.roundToInt(),
+                                        targetTop.roundToInt(),
+                                    )
+                                }
+                                .size(
+                                    with(density) { targetWidth.toDp() },
+                                    with(density) { targetHeight.toDp() },
                                 )
-                            }
-                            .size(
-                                with(density) { targetWidth.toDp() },
-                                with(density) { targetHeight.toDp() },
-                            )
-                            .graphicsLayer {
-                                scaleX = sourceSize / targetWidth +
-                                    (1f - sourceSize / targetWidth) * progress
-                                scaleY = sourceSize / targetHeight +
-                                    (1f - sourceSize / targetHeight) * progress
-                                translationX =
-                                    (openOrigin.x - availableWidth / 2f) * (1f - progress)
-                                translationY =
-                                    (openOrigin.y - availableHeight / 2f) * (1f - progress)
-                            }
-                            .clip(RoundedCornerShape(7.dp)),
-                    )
+                                .graphicsLayer {
+                                    scaleX = sourceSize / targetWidth +
+                                        (1f - sourceSize / targetWidth) * progress
+                                    scaleY = sourceSize / targetHeight +
+                                        (1f - sourceSize / targetHeight) * progress
+                                    translationX =
+                                        (openOrigin.x - availableWidth / 2f) *
+                                            (1f - progress)
+                                    translationY =
+                                        (openOrigin.y - availableHeight / 2f) *
+                                            (1f - progress)
+                                }
+                                .clip(RoundedCornerShape(7.dp)),
+                        )
+                    }
                 }
                 AnimatedVisibility(
                     visible = controlsVisible,
@@ -550,10 +568,9 @@ internal fun PhotoDetailPage(
                     title = "Bildaktionen",
                     modifier = Modifier.padding(horizontal = 24.dp),
                 )
-                SheetMenuItem(
+                SheetMenuActionItem(
                     label = "Teilen",
-                    trailing = false,
-                    leading = { ShareIcon() },
+                    icon = { ShareIcon() },
                     onClick = {
                         scope.launch {
                             photoActionsSheetState.hide()
@@ -562,10 +579,9 @@ internal fun PhotoDetailPage(
                         }
                     },
                 )
-                SheetMenuItem(
+                SheetMenuActionItem(
                     label = "In Galerie speichern",
-                    trailing = false,
-                    leading = { PhotoDownloadIcon() },
+                    icon = { PhotoDownloadIcon() },
                     onClick = {
                         scope.launch {
                             photoActionsSheetState.hide()
@@ -574,17 +590,17 @@ internal fun PhotoDetailPage(
                         }
                     },
                 )
-                SheetMenuItem(
+                SheetMenuActionItem(
                     label = "Bild löschen",
                     destructive = true,
-                    trailing = false,
-                    leading = { PhotoDeleteIcon(color = StopRed) },
+                    icon = { PhotoDeleteIcon(color = StopRed) },
                     onClick = {
-                        scope.launch {
-                            photoActionsSheetState.hide()
-                            showPhotoActionsSheet = false
-                            showDeletePhotoSheet = true
-                        }
+                        scope.swapBottomSheets(
+                            currentState = photoActionsSheetState,
+                            nextState = deletePhotoSheetState,
+                            showNext = { showDeletePhotoSheet = true },
+                            hideCurrent = { showPhotoActionsSheet = false },
+                        )
                     },
                 )
             }
@@ -631,6 +647,15 @@ internal data class PhotoOpenPreview(
     val aspectRatio: Float,
 )
 
+internal fun shouldShowOpeningPhotoPreview(
+    animationProgress: Float,
+    openingPhotoId: String,
+    selectedPhotoId: String,
+    fullImageLoaded: Boolean,
+): Boolean =
+    openingPhotoId == selectedPhotoId &&
+        (animationProgress < 1f || !fullImageLoaded)
+
 @Composable
 private fun PhotoActionButton(
     contentDescription: String,
@@ -675,7 +700,10 @@ private fun PhotoMoreIcon() = LucideIcon(
 )
 
 @Composable
-internal fun PhotoDeleteIcon(color: Color = LocalContentColor.current) = LucideIcon(
+internal fun PhotoDeleteIcon(
+    color: Color = LocalContentColor.current,
+    modifier: Modifier = Modifier.size(MapControlIconSize),
+) = LucideIcon(
     paths = listOf(
         "M3 6h18",
         "M8 6V4h8v2",
@@ -684,6 +712,7 @@ internal fun PhotoDeleteIcon(color: Color = LocalContentColor.current) = LucideI
         "M14 11v5",
     ),
     color = color,
+    modifier = modifier,
 )
 
 @Composable

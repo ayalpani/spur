@@ -19,26 +19,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 
 @Composable
 internal fun StartTourBottomSheet(
@@ -75,7 +70,12 @@ internal fun StartTourBottomSheet(
 @Composable
 internal fun MainMenu(
     onOpenSettings: () -> Unit,
+    onOpenGoogleMaps: () -> Unit,
+    onRenameTour: (() -> Unit)?,
     onOpenAbout: () -> Unit,
+    onShareTour: (() -> Unit)?,
+    onStopTour: (() -> Unit)?,
+    onDeleteTour: (() -> Unit)?,
 ) {
     Column(
         modifier = Modifier
@@ -84,14 +84,61 @@ internal fun MainMenu(
             .navigationBarsPadding()
             .padding(bottom = 24.dp),
     ) {
-        SheetMenuItem(label = "Settings", onClick = onOpenSettings)
-        SheetMenuItem(label = "Über Spur", onClick = onOpenAbout)
+        SheetMenuNavigationItem(label = "Über Spur", onClick = onOpenAbout)
+        SheetMenuNavigationItem(label = "Settings", onClick = onOpenSettings)
+        SheetMenuDivider()
+        SheetMenuActionItem(
+            label = "In G-Maps öffnen",
+            onClick = onOpenGoogleMaps,
+            icon = { LucideMapIcon(modifier = Modifier.size(SheetMenuIconSize)) },
+        )
+        onRenameTour?.let {
+            SheetMenuActionItem(
+                label = "Tour umbenennen",
+                onClick = it,
+                icon = { PencilIcon(modifier = Modifier.size(SheetMenuIconSize)) },
+            )
+        }
+        if (onShareTour != null || onStopTour != null || onDeleteTour != null) {
+            onShareTour?.let {
+                SheetMenuActionItem(
+                    label = "Tour teilen",
+                    onClick = it,
+                    icon = { ShareIcon(modifier = Modifier.size(SheetMenuIconSize)) },
+                )
+            }
+            onStopTour?.let {
+                SheetMenuActionItem(
+                    label = "Tour stoppen",
+                    onClick = it,
+                    destructive = true,
+                    icon = {
+                        LucideStopIcon(
+                            color = StopRed,
+                            modifier = Modifier.size(SheetMenuIconSize),
+                        )
+                    },
+                )
+            }
+            onDeleteTour?.let {
+                SheetMenuActionItem(
+                    label = "Tour löschen",
+                    onClick = it,
+                    destructive = true,
+                    icon = {
+                        PhotoDeleteIcon(
+                            color = StopRed,
+                            modifier = Modifier.size(SheetMenuIconSize),
+                        )
+                    },
+                )
+            }
+        }
     }
 }
 
 @Composable
 internal fun SettingsMenu(
-    onOpenTour: (() -> Unit)?,
     onOpenHome: () -> Unit,
     onOpenHomeAutoStart: () -> Unit,
     onOpenTheme: () -> Unit,
@@ -106,59 +153,16 @@ internal fun SettingsMenu(
             title = "Settings",
             modifier = Modifier.padding(horizontal = 24.dp),
         )
-        onOpenTour?.let {
-            SheetMenuItem(label = "Tour", onClick = it)
-        }
-        SheetMenuItem(
+        SheetMenuNavigationItem(
             label = "Zuhause",
-            leading = { HomeIcon() },
             onClick = onOpenHome,
         )
-        SheetMenuItem(
+        SheetMenuNavigationItem(
             label = "Startautomatik",
             onClick = onOpenHomeAutoStart,
         )
-        SheetMenuItem(label = "Theme", onClick = onOpenTheme)
-        SheetMenuItem(label = "Himmelsrichtung", onClick = onOpenDirection)
-    }
-}
-
-@Composable
-internal fun TourMenu(
-    onShareTour: (() -> Unit)?,
-    onDeleteTour: (() -> Unit)?,
-) {
-    Column(
-        modifier = Modifier
-            .navigationBarsPadding()
-            .padding(bottom = 24.dp),
-    ) {
-        BottomSheetHeader(
-            title = "Tour",
-            modifier = Modifier.padding(horizontal = 24.dp),
-        )
-        if (onDeleteTour != null || onShareTour != null) {
-            onDeleteTour?.let {
-                SheetMenuItem(
-                    label = "Tour löschen",
-                    onClick = it,
-                    destructive = true,
-                    leading = { PhotoDeleteIcon(color = StopRed) },
-                    trailing = false,
-                )
-            }
-            onShareTour?.let {
-                SheetMenuItem(
-                    label = "Tour teilen",
-                    onClick = it,
-                    leading = { ShareIcon() },
-                    trailing = false,
-                )
-            }
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-            )
-        }
+        SheetMenuNavigationItem(label = "Theme", onClick = onOpenTheme)
+        SheetMenuNavigationItem(label = "Himmelsrichtung", onClick = onOpenDirection)
     }
 }
 
@@ -183,60 +187,58 @@ internal fun BottomSheetHeader(
 }
 
 @Composable
-internal fun BuildingDetailsBottomSheet(
-    coordinate: SpurCoordinate,
-) {
-    val context = LocalContext.current
-    var address by remember(coordinate) { mutableStateOf<String?>(null) }
-    var addressResolved by remember(coordinate) { mutableStateOf(false) }
-
-    LaunchedEffect(coordinate) {
-        address = context.reverseGeocode(
-            latitude = coordinate.latitude,
-            longitude = coordinate.longitude,
-        )
-        addressResolved = true
-    }
-
-    Column(
-        modifier = Modifier
-            .navigationBarsPadding()
-            .padding(horizontal = 24.dp)
-            .padding(bottom = 24.dp),
-    ) {
-        BottomSheetHeader(title = "Gebäude")
-        Text(
-            text = "Adresse",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = when {
-                !addressResolved -> "Adresse wird ermittelt…"
-                address != null -> address.orEmpty()
-                else -> "Für dieses Gebäude ist keine Adresse verfügbar."
-            },
-            color = Ink.copy(alpha = 0.72f),
-            style = MaterialTheme.typography.bodyLarge,
-        )
-    }
-}
+internal fun SheetMenuNavigationItem(
+    label: String,
+    onClick: () -> Unit,
+) = SheetMenuItem(
+    label = label,
+    onClick = onClick,
+    destructive = false,
+    leading = null,
+    trailing = true,
+)
 
 @Composable
-internal fun SheetMenuItem(
+internal fun SheetMenuActionItem(
     label: String,
     onClick: () -> Unit,
     destructive: Boolean = false,
-    leading: (@Composable () -> Unit)? = null,
-    trailing: Boolean = true,
+    icon: @Composable () -> Unit,
+) = SheetMenuItem(
+    label = label,
+    onClick = onClick,
+    destructive = destructive,
+    leading = icon,
+    trailing = false,
+)
+
+@Composable
+internal fun SheetMenuDivider() {
+    HorizontalDivider(
+        modifier = Modifier
+            .testTag(SheetMenuDividerTestTag)
+            .padding(horizontal = 24.dp, vertical = 8.dp),
+    )
+}
+
+internal const val SheetMenuDividerTestTag = "sheet-menu-divider"
+
+@Composable
+private fun SheetMenuItem(
+    label: String,
+    onClick: () -> Unit,
+    destructive: Boolean,
+    leading: (@Composable () -> Unit)?,
+    trailing: Boolean,
 ) {
+    val contentColor = if (destructive) StopRed else Ink
     Surface(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .height(64.dp),
         color = Color.Transparent,
+        contentColor = contentColor,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 24.dp),
@@ -247,7 +249,11 @@ internal fun SheetMenuItem(
             Text(
                 text = label,
                 modifier = Modifier.weight(1f),
-                color = if (destructive) StopRed else Ink,
+                color = if (leading == null) {
+                    contentColor
+                } else {
+                    contentColor.copy(alpha = IconTextLabelAlpha)
+                },
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontSize = SheetMenuTextSize,
                 ),

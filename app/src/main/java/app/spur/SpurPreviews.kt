@@ -17,7 +17,8 @@ private fun MapPagePreview() {
         onStartTour = {},
         onSimulatedLocation = {},
         onEndTour = {},
-        onOpenHistory = {},
+        onRenameTour = { _, _ -> true },
+        onOpenHome = {},
         onCloseDisplayedTour = {},
         onDeleteTour = {},
         onDeleteWaypoint = { _, _ -> true },
@@ -43,7 +44,8 @@ private fun ActiveTourPagePreview() {
         onStartTour = {},
         onSimulatedLocation = {},
         onEndTour = {},
-        onOpenHistory = {},
+        onRenameTour = { _, _ -> true },
+        onOpenHome = {},
         onCloseDisplayedTour = {},
         onDeleteTour = {},
         onDeleteWaypoint = { _, _ -> true },
@@ -52,10 +54,13 @@ private fun ActiveTourPagePreview() {
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
-private fun HistoryBottomSheetPreview() {
-    HistoryBottomSheet(
+private fun HomeScreenPreview() {
+    HomeScreen(
         store = TourStore(LocalContext.current),
         revision = 0,
+        loadingEnabled = false,
+        backEnabled = true,
+        onBack = {},
         onOpenTour = {},
         onOpenPhoto = { _, _ -> },
     )

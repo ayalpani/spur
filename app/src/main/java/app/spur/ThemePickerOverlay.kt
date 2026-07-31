@@ -247,12 +247,12 @@ private fun ThemeMapPreview(theme: SpurColorTheme) {
             }
             drawPath(
                 path = path,
-                color = theme.primary.color.copy(alpha = TrailStrokeAlpha),
+                color = theme.trailColors.stroke,
                 style = Stroke(width = 10.dp.toPx(), cap = StrokeCap.Round),
             )
             drawPath(
                 path = path,
-                color = theme.accent.color,
+                color = theme.trailColors.background,
                 style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round),
             )
             drawLine(
@@ -288,7 +288,7 @@ private fun ThemeMapPreview(theme: SpurColorTheme) {
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     CompositionLocalProvider(
-                        LocalSignalColor provides theme.signalColor,
+                        LocalTrailColors provides theme.trailColors,
                     ) {
                         FollowLocationIcon(selected = true)
                     }

@@ -11,6 +11,18 @@ import org.maplibre.geojson.Polygon
 
 class HomeBuildingSelectionTest {
     @Test
+    fun homeAutomationUsesAOneHundredMeterGeofence() {
+        assertEquals(100f, HomeRadiusMeters)
+    }
+
+    @Test
+    fun automaticTourEndsOnlyAfterFiveMinutesOutside() {
+        assertFalse(stayedOutsideHomeLongEnough(outsideSince = 1_000L, returnedAt = 300_999L))
+        assertTrue(stayedOutsideHomeLongEnough(outsideSince = 1_000L, returnedAt = 301_000L))
+        assertFalse(stayedOutsideHomeLongEnough(outsideSince = 1_000L, returnedAt = 999L))
+    }
+
+    @Test
     fun buildingsBecomeSelectableAtConfiguredZoom() {
         assertFalse(canSelectHomeBuilding(HomeBuildingMinimumSelectionZoom - 0.01))
         assertTrue(canSelectHomeBuilding(HomeBuildingMinimumSelectionZoom))
@@ -64,7 +76,7 @@ class HomeBuildingSelectionTest {
         val home = SpurCoordinate(latitude = 52.0, longitude = 13.0)
         val startPoint = SpurCoordinate(latitude = 52.0002, longitude = 13.0003)
 
-        val result = automaticTourStartPoint(
+        val result = automaticTourHomePoint(
             HomeAutoStartSettings(
                 enabled = true,
                 home = home,
@@ -79,7 +91,7 @@ class HomeBuildingSelectionTest {
     fun existingSettingsFallBackToTheBuildingCenter() {
         val home = SpurCoordinate(latitude = 52.0, longitude = 13.0)
 
-        val result = automaticTourStartPoint(
+        val result = automaticTourHomePoint(
             HomeAutoStartSettings(
                 enabled = true,
                 home = home,
@@ -107,6 +119,27 @@ class HomeBuildingSelectionTest {
     }
 
     @Test
+    fun homeStatusFollowsTheVisibleHomeZone() {
+        val settings = HomeAutoStartSettings(
+            enabled = false,
+            home = SpurCoordinate(latitude = 52.0, longitude = 13.0),
+        )
+
+        assertTrue(
+            isWithinHomeZone(
+                settings,
+                SpurCoordinate(latitude = 52.0005, longitude = 13.0),
+            ),
+        )
+        assertFalse(
+            isWithinHomeZone(
+                settings,
+                SpurCoordinate(latitude = 52.002, longitude = 13.0),
+            ),
+        )
+    }
+
+    @Test
     fun gpsOutsideTheHomeZoneRemainsUnchanged() {
         val gps = SpurCoordinate(latitude = 52.002, longitude = 13.0)
         val settings = HomeAutoStartSettings(
@@ -129,7 +162,7 @@ class HomeBuildingSelectionTest {
         )
 
         val points = listOf(
-            requireNotNull(automaticTourStartPoint(settings)),
+            requireNotNull(automaticTourHomePoint(settings)),
             normalizedHomeCoordinate(settings, firstOutsideFix),
         )
 
@@ -163,9 +196,73 @@ class HomeBuildingSelectionTest {
             BufferedHomeLocation(52.0016, 13.0, 5_000L, 8f),
         )
 
-        val departure = departureLocations(locations, settings, exitAt = 5_000L)
+        val departure = departureLocations(locations, settings, throughAt = 5_000L)
 
         assertEquals(listOf(3_000L, 4_000L, 5_000L), departure.map { it.recordedAt })
+    }
+
+    @Test
+    fun departureNeedsSixOfTenReliableOutsideFixesIncludingTheLatest() {
+        val outside = setOf(0, 1, 2, 3, 4, 9)
+        val locations = confirmationLocations { index ->
+            if (index in outside) 52.0012 else 52.0
+        }
+
+        assertTrue(
+            confirmedHomeDeparture(
+                locations = locations,
+                settings = confirmationSettings(),
+                candidateAt = 1_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun departureRejectsAJumpPoorAccuracyAndTooShortAWindow() {
+        val settings = confirmationSettings()
+        val fiveOutside = setOf(0, 1, 2, 3, 9)
+        val singleJump = confirmationLocations { index ->
+            if (index == 9) 52.0012 else 52.0
+        }
+        val fiveOfTen = confirmationLocations { index ->
+            if (index in fiveOutside) 52.0012 else 52.0
+        }
+        val latestInside = confirmationLocations { index ->
+            if (index < 6) 52.0012 else 52.0
+        }
+        val poorAccuracy = confirmationLocations { 52.002 }
+            .map { it.copy(accuracyMeters = 60f) }
+        val tooFast = confirmationLocations(intervalMillis = 2_000L) {
+            52.0012
+        }
+
+        assertFalse(confirmedHomeDeparture(singleJump, settings, candidateAt = 1_000L))
+        assertFalse(confirmedHomeDeparture(fiveOfTen, settings, candidateAt = 1_000L))
+        assertFalse(confirmedHomeDeparture(latestInside, settings, candidateAt = 1_000L))
+        assertFalse(confirmedHomeDeparture(poorAccuracy, settings, candidateAt = 1_000L))
+        assertFalse(confirmedHomeDeparture(tooFast, settings, candidateAt = 1_000L))
+    }
+
+    @Test
+    fun arrivalNeedsSixOfTenHomeFixesIncludingTheLatest() {
+        val atHome = setOf(0, 1, 2, 3, 4, 9)
+        val locations = confirmationLocations { index ->
+            if (index in atHome) 52.0001 else 52.0006
+        }
+
+        assertTrue(confirmedHomeArrival(locations, confirmationSettings()))
+    }
+
+    @Test
+    fun arrivalRejectsTheKioskAndASingleGpsJumpHome() {
+        val settings = confirmationSettings()
+        val kiosk = confirmationLocations { 52.0006 }
+        val singleJump = confirmationLocations { index ->
+            if (index == 9) 52.0001 else 52.0006
+        }
+
+        assertFalse(confirmedHomeArrival(kiosk, settings))
+        assertFalse(confirmedHomeArrival(singleJump, settings))
     }
 
     @Test
@@ -251,4 +348,23 @@ class HomeBuildingSelectionTest {
                 ),
             ),
         )
+
+    private fun confirmationSettings() = HomeAutoStartSettings(
+        enabled = true,
+        home = SpurCoordinate(latitude = 52.0, longitude = 13.0),
+        startPoint = SpurCoordinate(latitude = 52.0001, longitude = 13.0),
+    )
+
+    private fun confirmationLocations(
+        intervalMillis: Long = 4_000L,
+        latitude: (Int) -> Double,
+    ): List<BufferedHomeLocation> =
+        (0 until HomeConfirmationSampleCount).map { index ->
+            BufferedHomeLocation(
+                latitude = latitude(index),
+                longitude = 13.0,
+                recordedAt = 1_000L + index * intervalMillis,
+                accuracyMeters = 8f,
+            )
+        }
 }

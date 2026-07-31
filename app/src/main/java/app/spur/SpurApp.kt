@@ -5,19 +5,23 @@ import android.content.Intent
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,15 +32,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -51,6 +62,8 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var displayedTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var displayedTourRequest by rememberSaveable { mutableLongStateOf(0L) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
+    var roadHistoryFingerprint by remember { mutableStateOf(RoadHistoryFingerprint()) }
+    var roadTraversalFingerprint by remember { mutableStateOf<RoadHistoryFingerprint?>(null) }
     var historyRevision by remember { mutableLongStateOf(0L) }
     var photoRevision by remember { mutableLongStateOf(0L) }
     var historyPhotoDetail by remember { mutableStateOf<MapMoment?>(null) }
@@ -58,11 +71,28 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var initialMapLoadingComplete by rememberSaveable { mutableStateOf(false) }
+    var completionTour by remember { mutableStateOf<Tour?>(null) }
+    var completionPreview by remember { mutableStateOf<File?>(null) }
+    var completionPoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
+    var completionPreviewLoading by remember { mutableStateOf(false) }
+    var completionEligibilityChecked by remember { mutableStateOf(false) }
+    var completionRefreshRequest by remember { mutableLongStateOf(0L) }
     var hasLocationPermission by rememberSaveable {
         mutableStateOf(context.hasLocationPermission())
     }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isAppResumed by remember(lifecycleOwner) {
+        mutableStateOf(
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED),
+        )
+    }
+    val completionSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val navController = rememberNavController()
-    var isHistoryVisible by rememberSaveable { mutableStateOf(false) }
+    val currentRoute = navController.currentBackStackEntryAsState()
+        .value
+        ?.destination
+        ?.route
+    val homeVisible = currentRoute == SpurRoute.HOME
     var feedbackNotice by remember { mutableStateOf<FeedbackNotice?>(null) }
     var feedbackNoticeId by remember { mutableLongStateOf(0L) }
     val showFeedbackNotice: ShowFeedbackNotice = { kind, message ->
@@ -73,6 +103,75 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
         hasLocationPermission = context.hasLocationPermission()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> isAppResumed = true
+                Lifecycle.Event.ON_PAUSE -> {
+                    isAppResumed = false
+                    completionEligibilityChecked = false
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(isAppResumed) {
+        if (!isAppResumed) return@LaunchedEffect
+        TourCompletionEvents.finishedTourIds.collect {
+            completionRefreshRequest++
+        }
+    }
+
+    LaunchedEffect(isAppResumed, activeTour?.id, completionRefreshRequest) {
+        if (!isAppResumed) return@LaunchedEffect
+        val candidate = withContext(Dispatchers.IO) {
+            val pendingId = context.pendingTourCompletionId()
+                ?: return@withContext null
+            val active = store.activeTour()
+            val pending = store.tour(pendingId)
+            eligibleTourCompletion(
+                pendingTour = pending,
+                activeTour = active,
+            ).also {
+                if (it == null) context.clearPendingTourCompletion(pendingId)
+            }
+        }
+        completionEligibilityChecked = true
+        if (candidate == null && completionTour != null) {
+            completionSheetState.hide()
+        }
+        if (completionTour?.id != candidate?.id) completionPoints = emptyList()
+        completionTour = candidate
+        completionPreview = candidate?.let { tour ->
+            context.tourPreviewFile(tour.id)
+                .takeIf { it.isFile && it.length() > 0L }
+        }
+        completionPreviewLoading = candidate != null && completionPreview == null
+    }
+
+    LaunchedEffect(completionTour?.id) {
+        val tour = completionTour ?: return@LaunchedEffect
+        val result = withContext(Dispatchers.IO) {
+            val points = store.points(tour.id)
+            val changed = if (completionPreview == null) {
+                context.ensureTourPreview(tour = tour, points = points)
+            } else {
+                false
+            }
+            val preview = context.tourPreviewFile(tour.id)
+                .takeIf { it.isFile && it.length() > 0L }
+            Triple(changed, preview, points)
+        }
+        if (completionTour?.id != tour.id) return@LaunchedEffect
+        completionPreview = result.second
+        completionPoints = result.third
+        completionPreviewLoading = false
+        if (result.first) historyRevision++
     }
 
     LaunchedEffect(hasLocationPermission, activeTour?.id, displayedTourId) {
@@ -119,6 +218,22 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         }
     }
 
+    LaunchedEffect(activeTour?.id, historyRevision) {
+        while (true) {
+            roadHistoryFingerprint = withContext(Dispatchers.IO) {
+                store.roadHistoryFingerprint()
+            }
+            if (activeTour == null) break
+            delay(1_000L)
+        }
+    }
+
+    LaunchedEffect(activeTour?.id, historyRevision) {
+        roadTraversalFingerprint = withContext(Dispatchers.IO) {
+            store.roadHistoryFingerprint(excludingTourId = activeTour?.id)
+        }
+    }
+
     LaunchedEffect(feedbackNotice?.id) {
         if (feedbackNotice == null) return@LaunchedEffect
         delay(FeedbackNoticeDurationMillis)
@@ -126,6 +241,8 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     }
 
     val deleteTour: (Long) -> Unit = { id ->
+        val returnToHome =
+            navController.previousBackStackEntry?.destination?.route == SpurRoute.HOME
         scope.launch {
             if (!context.deleteStoredTour(store, id)) {
                 showFeedbackNotice(
@@ -145,6 +262,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                 displayedTour = null
                 displayedTourId = null
                 routePoints = emptyList()
+                if (returnToHome) navController.popBackStack()
             }
             historyRevision++
         }
@@ -179,160 +297,172 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                 )
             } else {
                 Box(modifier = Modifier.fillMaxSize()) {
+                    MapPage(
+                        tour = displayedTour,
+                        activeTour = activeTour,
+                        tourDisplayRequest = displayedTourRequest,
+                        routePoints = routePoints,
+                        roadHistoryStore = store,
+                        roadHistoryFingerprint = roadHistoryFingerprint,
+                        roadTraversalFingerprint = roadTraversalFingerprint,
+                        now = now,
+                        onStartTour = {
+                            scope.launch {
+                                val start = withContext(Dispatchers.IO) {
+                                    val start = store.activeTourOrStart()
+                                    if (start.created) {
+                                        context.loadManualLocation()?.let { coordinate ->
+                                            store.appendSimulatedLocation(
+                                                start.id,
+                                                coordinate,
+                                            )
+                                        }
+                                    }
+                                    start
+                                }
+                                ContextCompat.startForegroundService(
+                                    context,
+                                    Intent(context, TrackingService::class.java)
+                                        .putExtra(TrackingService.EXTRA_TOUR_ID, start.id),
+                                )
+                                val started = withContext(Dispatchers.IO) {
+                                    store.tour(start.id)
+                                }
+                                if (start.created && started != null) context.vibrateTourStarted()
+                                activeTour = started
+                                displayedTour = started
+                                displayedTourId = start.id
+                                displayedTourRequest++
+                                routePoints = emptyList()
+                                historyRevision++
+                            }
+                        },
+                        onSimulatedLocation = { coordinate ->
+                            val id = activeTour?.id ?: return@MapPage
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    store.appendSimulatedLocation(id, coordinate)
+                                }
+                                historyRevision++
+                            }
+                        },
+                        onEndTour = {
+                            val id = activeTour?.id ?: return@MapPage
+                            scope.launch {
+                                val finished = withContext(Dispatchers.IO) {
+                                    store.finishTour(id).also { finished ->
+                                        if (finished) context.markTourCompletionPending(id)
+                                    }
+                                }
+                                if (finished) context.vibrateTourEnded()
+                                context.startService(
+                                    Intent(context, TrackingService::class.java)
+                                        .setAction(TrackingService.ACTION_STOP),
+                                )
+                                val result = withContext(Dispatchers.IO) {
+                                    store.tour(id) to store.points(id)
+                                }
+                                activeTour = null
+                                displayedTour = result.first
+                                displayedTourId = id
+                                displayedTourRequest++
+                                routePoints = result.second
+                                now = System.currentTimeMillis()
+                                historyRevision++
+                            }
+                        },
+                        onRenameTour = { id, title ->
+                            val renamedTour = withContext(Dispatchers.IO) {
+                                if (!store.updateTourTitle(id, title)) {
+                                    null
+                                } else {
+                                    store.tour(id)
+                                }
+                            }
+                            if (renamedTour == null) {
+                                false
+                            } else {
+                                if (displayedTourId == id) displayedTour = renamedTour
+                                if (activeTour?.id == id) activeTour = renamedTour
+                                historyRevision++
+                                true
+                            }
+                        },
+                        onOpenHome = {
+                            navController.navigate(SpurRoute.HOME) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onCloseDisplayedTour = {
+                            val returnToHome =
+                                navController.previousBackStackEntry
+                                    ?.destination
+                                    ?.route == SpurRoute.HOME
+                            val currentActiveTour = activeTour
+                            displayedTour = currentActiveTour
+                            displayedTourId = currentActiveTour?.id
+                            displayedTourRequest++
+                            routePoints = emptyList()
+                            if (returnToHome) navController.popBackStack()
+                        },
+                        onDeleteTour = deleteTour,
+                        onDeleteWaypoint = { tourId, retainedIds ->
+                            runCatching {
+                                val result = withContext(Dispatchers.IO) {
+                                    store.updateTourPoints(tourId, retainedIds)
+                                    store.tour(tourId) to store.points(tourId)
+                                }
+                                if (displayedTourId == tourId) {
+                                    displayedTour = result.first
+                                    routePoints = result.second
+                                }
+                                if (activeTour?.id == tourId) {
+                                    activeTour = result.first
+                                }
+                                historyRevision++
+                            }.isSuccess
+                        },
+                        showFeedbackNotice = showFeedbackNotice,
+                        photoRevision = photoRevision,
+                        onPhotoRotated = { photoRevision++ },
+                        initialLoadingComplete = initialMapLoadingComplete,
+                        splashExitComplete = splashExitComplete,
+                        onInitialLoadingComplete = {
+                            initialMapLoadingComplete = true
+                        },
+                    )
                     NavHost(
                         navController = navController,
                         startDestination = SpurRoute.MAP,
-                        enterTransition = {
-                            slideIntoContainer(
-                                AnimatedContentTransitionScope.SlideDirection.Left,
-                                tween(340),
-                            ) +
-                                fadeIn(tween(220))
-                        },
-                        exitTransition = {
-                            slideOutOfContainer(
-                                AnimatedContentTransitionScope.SlideDirection.Left,
-                                tween(340),
-                            ) + fadeOut(tween(180))
-                        },
-                        popEnterTransition = {
-                            slideIntoContainer(
-                                AnimatedContentTransitionScope.SlideDirection.Right,
-                                tween(340),
-                            ) + fadeIn(tween(220))
-                        },
-                        popExitTransition = {
-                            slideOutOfContainer(
-                                AnimatedContentTransitionScope.SlideDirection.Right,
-                                tween(340),
-                            ) + fadeOut(tween(180))
-                        },
+                        modifier = Modifier.fillMaxSize(),
+                        enterTransition = { EnterTransition.None },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None },
                     ) {
-                        composable(SpurRoute.MAP) {
-                            MapPage(
-                                tour = displayedTour,
-                                activeTour = activeTour,
-                                tourDisplayRequest = displayedTourRequest,
-                                routePoints = routePoints,
-                                now = now,
-                                onStartTour = {
-                                    scope.launch {
-                                        val id = withContext(Dispatchers.IO) {
-                                            val start = store.activeTourOrStart()
-                                            if (start.created) {
-                                                context.loadManualLocation()?.let { coordinate ->
-                                                    store.appendSimulatedLocation(
-                                                        start.id,
-                                                        coordinate,
-                                                    )
-                                                }
-                                            }
-                                            start.id
-                                        }
-                                        ContextCompat.startForegroundService(
-                                            context,
-                                            Intent(context, TrackingService::class.java)
-                                                .putExtra(TrackingService.EXTRA_TOUR_ID, id),
-                                        )
-                                        val started = withContext(Dispatchers.IO) {
-                                            store.tour(id)
-                                        }
-                                        activeTour = started
-                                        displayedTour = started
-                                        displayedTourId = id
-                                        displayedTourRequest++
-                                        routePoints = emptyList()
-                                        historyRevision++
-                                    }
-                                },
-                                onSimulatedLocation = { coordinate ->
-                                    val id = activeTour?.id ?: return@MapPage
-                                    scope.launch {
-                                        withContext(Dispatchers.IO) {
-                                            store.appendSimulatedLocation(id, coordinate)
-                                        }
-                                        historyRevision++
-                                    }
-                                },
-                                onEndTour = {
-                                    val id = activeTour?.id ?: return@MapPage
-                                    scope.launch {
-                                        withContext(Dispatchers.IO) { store.finishTour(id) }
-                                        context.startService(
-                                            Intent(context, TrackingService::class.java)
-                                                .setAction(TrackingService.ACTION_STOP),
-                                        )
-                                        val result = withContext(Dispatchers.IO) {
-                                            store.tour(id) to store.points(id)
-                                        }
-                                        activeTour = null
-                                        displayedTour = result.first
-                                        displayedTourId = id
-                                        displayedTourRequest++
-                                        routePoints = result.second
-                                        now = System.currentTimeMillis()
-                                        historyRevision++
-                                        result.first?.let { finishedTour ->
-                                            if (
-                                                context.ensureTourHistoryAssets(
-                                                    finishedTour,
-                                                    result.second,
-                                                )
-                                            ) {
-                                                historyRevision++
-                                            }
-                                        }
-                                    }
-                                },
-                                onOpenHistory = {
-                                    isHistoryVisible = true
-                                },
-                                onCloseDisplayedTour = {
-                                    val currentActiveTour = activeTour
-                                    displayedTour = currentActiveTour
-                                    displayedTourId = currentActiveTour?.id
-                                    displayedTourRequest++
-                                    routePoints = emptyList()
-                                },
-                                onDeleteTour = deleteTour,
-                                onDeleteWaypoint = { tourId, retainedIds ->
-                                    runCatching {
-                                        val result = withContext(Dispatchers.IO) {
-                                            store.updateTourPoints(tourId, retainedIds)
-                                            store.tour(tourId) to store.points(tourId)
-                                        }
-                                        if (displayedTourId == tourId) {
-                                            displayedTour = result.first
-                                            routePoints = result.second
-                                        }
-                                        if (activeTour?.id == tourId) {
-                                            activeTour = result.first
-                                        }
-                                        historyRevision++
-                                    }.isSuccess
-                                },
-                                showFeedbackNotice = showFeedbackNotice,
-                                photoRevision = photoRevision,
-                                onPhotoRotated = { photoRevision++ },
-                                initialLoadingComplete = initialMapLoadingComplete,
-                                splashExitComplete = splashExitComplete,
-                                onInitialLoadingComplete = {
-                                    initialMapLoadingComplete = true
-                                },
-                            )
-                        }
+                        composable(SpurRoute.MAP) {}
+                        composable(SpurRoute.HOME) {}
                     }
-
-                    if (isHistoryVisible) {
-                        val historySheetState =
-                            rememberModalBottomSheetState(skipPartiallyExpanded = false)
-                        SpurModalBottomSheet(
-                            onDismissRequest = { isHistoryVisible = false },
-                            sheetState = historySheetState,
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val panelWidth = with(LocalDensity.current) {
+                            maxWidth.roundToPx()
+                        }
+                        val panelOffset by animateIntAsState(
+                            targetValue = if (homeVisible) 0 else -panelWidth,
+                            animationSpec = tween(HomePanelMotionDurationMillis),
+                            label = "home panel offset",
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset { IntOffset(panelOffset, 0) },
                         ) {
-                            HistoryBottomSheet(
+                            HomeScreen(
                                 store = store,
                                 revision = historyRevision,
+                                loadingEnabled = initialMapLoadingComplete,
+                                backEnabled = homeVisible,
+                                onBack = { navController.popBackStack() },
                                 onOpenTour = { id ->
                                     if (displayedTourId != id) {
                                         displayedTour = null
@@ -340,7 +470,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                     }
                                     displayedTourId = id
                                     displayedTourRequest++
-                                    isHistoryVisible = false
+                                    navController.navigate(SpurRoute.MAP)
                                 },
                                 onOpenPhoto = { photo, photos ->
                                     historyPhotos = photos
@@ -382,6 +512,32 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 historyPhotos = emptyList()
                             },
                         )
+                    }
+                    if (isAppResumed && completionEligibilityChecked) {
+                        completionTour?.let { finishedTour ->
+                            val completionColors = context.loadColorTheme().mapControlColors
+                            CompositionLocalProvider(
+                                LocalMapControlColors provides completionColors,
+                            ) {
+                                TourCompletionBottomSheet(
+                                    tour = finishedTour,
+                                    preview = completionPreview,
+                                    previewLoading = completionPreviewLoading,
+                                    points = completionPoints,
+                                    sheetState = completionSheetState,
+                                    onDismiss = {
+                                        context.clearPendingTourCompletion(finishedTour.id)
+                                        scope.launch {
+                                            completionSheetState.hide()
+                                            completionTour = null
+                                            completionPreview = null
+                                            completionPoints = emptyList()
+                                            completionPreviewLoading = false
+                                        }
+                                    },
+                                )
+                            }
+                        }
                     }
                     FeedbackNoticeHost(
                         notice = feedbackNotice,

@@ -47,6 +47,7 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -103,17 +104,24 @@ internal fun TourSummaryPlayer(
 @OptIn(ExperimentalComposeUiApi::class)
 internal fun TourPlayer(
     tour: Tour,
-    now: Long,
+    routePoints: List<TrackPoint>,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val controlColors = LocalMapControlColors.current.inverted
     var armed by remember(tour.id) { mutableStateOf(false) }
-    var showTrackingTime by rememberSaveable(tour.id) { mutableStateOf(false) }
+    var showRecentSpeed by rememberSaveable(tour.id) { mutableStateOf(false) }
     var dragOffset by remember(tour.id) { mutableFloatStateOf(0f) }
     var dragStartX by remember(tour.id) { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
     val mainControlHeight = 60.dp
+    val playerText = remember(tour.distanceMeters, routePoints, showRecentSpeed) {
+        activeTourPlayerText(
+            tour = tour,
+            routePoints = routePoints,
+            showRecentSpeed = showRecentSpeed,
+        )
+    }
 
     Box(
         modifier = modifier.height(mainControlHeight),
@@ -165,29 +173,21 @@ internal fun TourPlayer(
                                 .fillMaxSize()
                                 .padding(start = 68.dp, end = 12.dp)
                                 .clickable(
-                                    onClickLabel = if (showTrackingTime) {
+                                    onClickLabel = if (showRecentSpeed) {
                                         "Distanz anzeigen"
                                     } else {
-                                        "Trackingzeit anzeigen"
+                                        "Geschwindigkeit anzeigen"
                                     },
                                 ) {
-                                    showTrackingTime = !showTrackingTime
+                                    showRecentSpeed = !showRecentSpeed
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = activeTourPlayerText(
-                                    tour = tour,
-                                    now = now,
-                                    showTrackingTime = showTrackingTime,
-                                ),
+                                text = playerText,
                                 color = controlColors.foreground,
-                                fontSize = if (showTrackingTime) 18.sp else 28.sp,
-                                fontWeight = if (showTrackingTime) {
-                                    FontWeight.Normal
-                                } else {
-                                    FontWeight.SemiBold
-                                },
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                             )
                         }
@@ -297,14 +297,14 @@ private fun SwipeStopPrompt(
 internal fun LucideStopIcon(
     color: Color,
     contentDescription: String? = "Tour beenden",
+    modifier: Modifier = Modifier.size(24.dp),
 ) = LucideIcon(
     paths = listOf(
         "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2",
     ),
     color = color,
     strokeWidth = LucideBoldStrokeWidth,
-    modifier = Modifier
-        .size(24.dp)
+    modifier = modifier
         .then(
             if (contentDescription == null) {
                 Modifier
@@ -322,14 +322,57 @@ internal fun formatMeters(distanceMeters: Double): String =
 
 internal fun activeTourPlayerText(
     tour: Tour,
-    now: Long,
-    showTrackingTime: Boolean,
-): String =
-    tourProgressPlayerText(
-        distanceMeters = tour.distanceMeters,
-        elapsedMillis = now - tour.startedAt,
-        showTrackingTime = showTrackingTime,
-    )
+    routePoints: List<TrackPoint>,
+    showRecentSpeed: Boolean,
+): String = if (showRecentSpeed) {
+    formatRecentSpeed(recentSpeedKilometersPerHour(routePoints))
+} else {
+    formatMeters(tour.distanceMeters)
+}
+
+internal fun recentSpeedKilometersPerHour(
+    points: List<TrackPoint>,
+    distanceWindowMeters: Double = 100.0,
+): Double? {
+    if (points.size < 2 || distanceWindowMeters <= 0.0) return null
+    val ordered = points.sortedBy(TrackPoint::recordedAt)
+    val endAt = ordered.last().recordedAt
+    var startAt = endAt
+    var accumulatedDistance = 0.0
+    var newer = ordered.last()
+    for (index in ordered.lastIndex - 1 downTo 0) {
+        val older = ordered[index]
+        val elapsedMillis = newer.recordedAt - older.recordedAt
+        if (elapsedMillis <= 0L) {
+            newer = older
+            continue
+        }
+        val segmentDistance = coordinateDistanceMeters(
+            older.latitude,
+            older.longitude,
+            newer.latitude,
+            newer.longitude,
+        )
+        val remainingDistance = distanceWindowMeters - accumulatedDistance
+        if (segmentDistance >= remainingDistance && segmentDistance > 0.0) {
+            val fraction = remainingDistance / segmentDistance
+            startAt = newer.recordedAt - (elapsedMillis * fraction).roundToLong()
+            accumulatedDistance += remainingDistance
+            break
+        }
+        accumulatedDistance += segmentDistance
+        startAt = older.recordedAt
+        newer = older
+    }
+    val elapsedMillis = endAt - startAt
+    if (accumulatedDistance < 10.0 || elapsedMillis <= 0L) return null
+    return accumulatedDistance / (elapsedMillis / 1_000.0) * 3.6
+}
+
+internal fun formatRecentSpeed(speedKilometersPerHour: Double?): String =
+    speedKilometersPerHour?.let {
+        String.format(Locale.GERMANY, "%.1f km/h", it.coerceAtLeast(0.0))
+    } ?: "– km/h"
 
 internal fun tourProgressPlayerText(
     distanceMeters: Double,

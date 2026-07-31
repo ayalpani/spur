@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Location
 import android.os.Build
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.Geofence
@@ -39,20 +40,35 @@ private const val StartLongitude = "start-longitude"
 private const val HomeGeofenceId = "spur-home"
 private const val HomePreRollAction = "app.spur.HOME_PRE_ROLL_LOCATION"
 private const val BufferedLocations = "buffered-locations"
-private const val PendingTourId = "pending-tour-id"
-private const val PendingExitAt = "pending-exit-at"
+private const val DepartureCandidateAt = "departure-candidate-at"
+private const val AutomaticTourId = "automatic-tour-id"
+private const val OutsideSince = "outside-since"
 private const val PreRollIntervalMillis = 20_000L
 private const val PreRollBatchDelayMillis = 2 * 60_000L
 private const val PreRollWindowMillis = 30 * 60_000L
-private const val PendingReconciliationMillis = 24 * 60 * 60_000L
 private const val MaximumBufferedLocations = 500
-internal const val HomeRadiusMeters = 150f
+internal const val HomeRadiusMeters = 100f
+internal const val HomeArrivalRadiusMeters = 25f
+internal const val MinimumOutsideHomeMillis = 5 * 60_000L
+internal const val HomeConfirmationSampleCount = 10
+internal const val HomeConfirmationRequiredMatches = 6
+internal const val HomeConfirmationMinimumSpanMillis = 20_000L
+internal const val DepartureConfirmationTimeoutMillis = 2 * 60_000L
+private const val DepartureMaximumAccuracyMeters = 50f
+private const val ArrivalMaximumAccuracyMeters = 35f
 
 internal data class BufferedHomeLocation(
     val latitude: Double,
     val longitude: Double,
     val recordedAt: Long,
     val accuracyMeters: Float,
+)
+
+internal fun Location.toBufferedHomeLocation() = BufferedHomeLocation(
+    latitude = latitude,
+    longitude = longitude,
+    recordedAt = time.takeIf { it > 0L } ?: System.currentTimeMillis(),
+    accuracyMeters = if (hasAccuracy()) accuracy else Float.MAX_VALUE,
 )
 
 internal fun Context.loadHomeAutoStartSettings(): HomeAutoStartSettings {
@@ -108,22 +124,28 @@ internal fun encodeHomeBuilding(feature: Feature): String = feature.toJson()
 internal fun decodeHomeBuilding(value: String?): Feature? =
     value?.let { runCatching { Feature.fromJson(it) }.getOrNull() }
 
-internal fun automaticTourStartPoint(settings: HomeAutoStartSettings): SpurCoordinate? =
+internal fun automaticTourHomePoint(settings: HomeAutoStartSettings): SpurCoordinate? =
     settings.startPoint ?: settings.home
+
+internal fun isWithinHomeZone(
+    settings: HomeAutoStartSettings,
+    coordinate: SpurCoordinate,
+): Boolean {
+    val home = settings.home ?: return false
+    return coordinateDistanceMeters(
+        fromLatitude = home.latitude,
+        fromLongitude = home.longitude,
+        toLatitude = coordinate.latitude,
+        toLongitude = coordinate.longitude,
+    ) <= HomeRadiusMeters
+}
 
 internal fun normalizedHomeCoordinate(
     settings: HomeAutoStartSettings,
     coordinate: SpurCoordinate,
 ): SpurCoordinate {
-    val home = settings.home ?: return coordinate
-    val startPoint = automaticTourStartPoint(settings) ?: return coordinate
-    val distanceFromHome = coordinateDistanceMeters(
-        fromLatitude = home.latitude,
-        fromLongitude = home.longitude,
-        toLatitude = coordinate.latitude,
-        toLongitude = coordinate.longitude,
-    )
-    return if (distanceFromHome <= HomeRadiusMeters) startPoint else coordinate
+    val startPoint = automaticTourHomePoint(settings) ?: return coordinate
+    return if (isWithinHomeZone(settings, coordinate)) startPoint else coordinate
 }
 
 internal fun Context.hasBackgroundLocationPermission(): Boolean =
@@ -146,10 +168,12 @@ internal fun Context.registerHomeExitGeofence(): Boolean {
         .setRequestId(HomeGeofenceId)
         .setCircularRegion(home.latitude, home.longitude, HomeRadiusMeters)
         .setExpirationDuration(Geofence.NEVER_EXPIRE)
-        .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_EXIT)
+        .setTransitionTypes(
+            Geofence.GEOFENCE_TRANSITION_EXIT or Geofence.GEOFENCE_TRANSITION_ENTER,
+        )
         .build()
     val request = GeofencingRequest.Builder()
-        .setInitialTrigger(0)
+        .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
         .addGeofence(geofence)
         .build()
     return runCatching {
@@ -199,8 +223,9 @@ internal fun Context.removeHomeAutoStart() {
         .removeLocationUpdates(homePreRollPendingIntent())
     homeAutoStartPreferences().edit()
         .remove(BufferedLocations)
-        .remove(PendingTourId)
-        .remove(PendingExitAt)
+        .remove(DepartureCandidateAt)
+        .remove(AutomaticTourId)
+        .remove(OutsideSince)
         .apply()
 }
 
@@ -262,12 +287,12 @@ internal fun mergeBufferedHomeLocations(
 internal fun departureLocations(
     locations: List<BufferedHomeLocation>,
     settings: HomeAutoStartSettings,
-    exitAt: Long,
+    throughAt: Long,
 ): List<BufferedHomeLocation> {
     val home = settings.home ?: return emptyList()
     val eligible = locations
         .asSequence()
-        .filter { it.recordedAt in (exitAt - PreRollWindowMillis)..exitAt }
+        .filter { it.recordedAt in (throughAt - PreRollWindowMillis)..throughAt }
         .filter { it.accuracyMeters <= 50f }
         .sortedBy(BufferedHomeLocation::recordedAt)
         .toList()
@@ -298,7 +323,69 @@ internal fun departureLocations(
     }
 }
 
-private fun Context.saveBufferedLocations(incoming: List<BufferedHomeLocation>): List<BufferedHomeLocation> {
+private fun confirmationWindow(
+    locations: List<BufferedHomeLocation>,
+): List<BufferedHomeLocation> {
+    val window = locations
+        .sortedBy(BufferedHomeLocation::recordedAt)
+        .takeLast(HomeConfirmationSampleCount)
+    if (window.size < HomeConfirmationSampleCount) return emptyList()
+    if (
+        window.last().recordedAt - window.first().recordedAt <
+        HomeConfirmationMinimumSpanMillis
+    ) return emptyList()
+    return window
+}
+
+internal fun confirmedHomeDeparture(
+    locations: List<BufferedHomeLocation>,
+    settings: HomeAutoStartSettings,
+    candidateAt: Long,
+): Boolean {
+    val home = settings.home ?: return false
+    val window = confirmationWindow(locations.filter { it.recordedAt >= candidateAt })
+    if (window.isEmpty()) return false
+    fun isReliablyOutside(location: BufferedHomeLocation): Boolean =
+        location.accuracyMeters.isFinite() &&
+            location.accuracyMeters in 0f..DepartureMaximumAccuracyMeters &&
+            coordinateDistanceMeters(
+                home.latitude,
+                home.longitude,
+                location.latitude,
+                location.longitude,
+            ) - location.accuracyMeters >= HomeRadiusMeters
+    return isReliablyOutside(window.last()) &&
+        window.count(::isReliablyOutside) >= HomeConfirmationRequiredMatches
+}
+
+internal fun confirmedHomeArrival(
+    locations: List<BufferedHomeLocation>,
+    settings: HomeAutoStartSettings,
+): Boolean {
+    val homePoint = automaticTourHomePoint(settings) ?: return false
+    val window = confirmationWindow(locations)
+    if (window.isEmpty()) return false
+    fun isReliablyHome(location: BufferedHomeLocation): Boolean =
+        location.accuracyMeters.isFinite() &&
+            location.accuracyMeters in 0f..ArrivalMaximumAccuracyMeters &&
+            coordinateDistanceMeters(
+                homePoint.latitude,
+                homePoint.longitude,
+                location.latitude,
+                location.longitude,
+            ) <= HomeArrivalRadiusMeters
+    return isReliablyHome(window.last()) &&
+        window.count(::isReliablyHome) >= HomeConfirmationRequiredMatches
+}
+
+internal fun Context.loadBufferedHomeLocations(): List<BufferedHomeLocation> =
+    decodeBufferedHomeLocations(
+        homeAutoStartPreferences().getString(BufferedLocations, null),
+    )
+
+internal fun Context.saveBufferedHomeLocations(
+    incoming: List<BufferedHomeLocation>,
+): List<BufferedHomeLocation> {
     val preferences = homeAutoStartPreferences()
     val merged = mergeBufferedHomeLocations(
         existing = decodeBufferedHomeLocations(preferences.getString(BufferedLocations, null)),
@@ -309,37 +396,51 @@ private fun Context.saveBufferedLocations(incoming: List<BufferedHomeLocation>):
     return merged
 }
 
-private fun Context.markPendingReconciliation(tourId: Long, exitAt: Long) {
+internal fun Context.markDepartureCandidate(candidateAt: Long) =
+    homeAutoStartPreferences().edit().putLong(DepartureCandidateAt, candidateAt).apply()
+
+internal fun Context.departureCandidateAt(): Long? =
+    homeAutoStartPreferences()
+        .getLong(DepartureCandidateAt, 0L)
+        .takeIf { it > 0L }
+
+internal fun Context.clearDepartureCandidate() {
+    homeAutoStartPreferences().edit().remove(DepartureCandidateAt).apply()
+}
+
+internal fun Context.markAutomaticTourOutside(tourId: Long, outsideSince: Long) {
     homeAutoStartPreferences().edit()
-        .putLong(PendingTourId, tourId)
-        .putLong(PendingExitAt, exitAt)
+        .putLong(AutomaticTourId, tourId)
+        .putLong(OutsideSince, outsideSince)
         .apply()
 }
 
-private fun Context.reconcilePendingDeparture(
-    store: TourStore,
-    settings: HomeAutoStartSettings,
-    buffered: List<BufferedHomeLocation>,
-) {
+private fun Context.markExistingAutomaticTourOutside(tourId: Long, outsideSince: Long) {
     val preferences = homeAutoStartPreferences()
-    val tourId = preferences.getLong(PendingTourId, -1L)
-    val exitAt = preferences.getLong(PendingExitAt, 0L)
-    if (tourId <= 0L || exitAt <= 0L) return
     if (
-        System.currentTimeMillis() - exitAt > PendingReconciliationMillis ||
-        store.tour(tourId) == null
+        preferences.getLong(AutomaticTourId, -1L) == tourId &&
+        !preferences.contains(OutsideSince)
     ) {
-        preferences.edit().remove(PendingTourId).remove(PendingExitAt).apply()
-        return
+        preferences.edit().putLong(OutsideSince, outsideSince).apply()
     }
-    val startPoint = automaticTourStartPoint(settings) ?: return
-    store.mergeAutomaticStartLocations(
-        tourId = tourId,
-        startPoint = startPoint,
-        locations = departureLocations(buffered, settings, exitAt),
-        exitAt = exitAt,
-    )
 }
+
+internal fun Context.automaticTourOutsideSince(tourId: Long): Long? {
+    val preferences = homeAutoStartPreferences()
+    if (preferences.getLong(AutomaticTourId, -1L) != tourId) return null
+    return preferences.getLong(OutsideSince, 0L).takeIf { it > 0L }
+}
+
+internal fun Context.clearAutomaticTourState() {
+    homeAutoStartPreferences().edit()
+        .remove(AutomaticTourId)
+        .remove(OutsideSince)
+        .remove(DepartureCandidateAt)
+        .apply()
+}
+
+internal fun stayedOutsideHomeLongEnough(outsideSince: Long, returnedAt: Long): Boolean =
+    returnedAt >= outsideSince && returnedAt - outsideSince >= MinimumOutsideHomeMillis
 
 class HomeExitReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -354,20 +455,8 @@ class HomeExitReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                 try {
-                    val buffered = context.saveBufferedLocations(
-                        result.locations.map {
-                            BufferedHomeLocation(
-                                latitude = it.latitude,
-                                longitude = it.longitude,
-                                recordedAt = it.time,
-                                accuracyMeters = if (it.hasAccuracy()) it.accuracy else Float.MAX_VALUE,
-                            )
-                        },
-                    )
-                    context.reconcilePendingDeparture(
-                        store = TourStore(context),
-                        settings = settings,
-                        buffered = buffered,
+                    context.saveBufferedHomeLocations(
+                        result.locations.map(Location::toBufferedHomeLocation),
                     )
                 } finally {
                     pendingResult.finish()
@@ -377,9 +466,12 @@ class HomeExitReceiver : BroadcastReceiver() {
         }
         val event = GeofencingEvent.fromIntent(intent) ?: return
         val settings = context.loadHomeAutoStartSettings()
+        val isHomeTransition =
+            event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT ||
+                event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER
         if (
             event.hasError() ||
-            event.geofenceTransition != Geofence.GEOFENCE_TRANSITION_EXIT ||
+            !isHomeTransition ||
             !settings.enabled
         ) return
 
@@ -388,34 +480,44 @@ class HomeExitReceiver : BroadcastReceiver() {
             try {
                 val store = TourStore(context)
                 val exitLocation = event.triggeringLocation
-                val exitAt = exitLocation?.time?.takeIf { it > 0L }
+                val transitionAt = exitLocation?.time?.takeIf { it > 0L }
                     ?: System.currentTimeMillis()
-                val start = store.activeTourOrStart(exitAt)
-                if (!start.created) return@launch
-                val tourId = start.id
-                context.markPendingReconciliation(tourId, exitAt)
-                val buffered = context.saveBufferedLocations(
-                    listOfNotNull(
-                        exitLocation?.let {
-                            BufferedHomeLocation(
-                                latitude = it.latitude,
-                                longitude = it.longitude,
-                                recordedAt = it.time,
-                                accuracyMeters = if (it.hasAccuracy()) it.accuracy else Float.MAX_VALUE,
+                if (event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER) {
+                    if (context.departureCandidateAt() != null && store.activeTour() == null) {
+                        context.clearDepartureCandidate()
+                        runCatching {
+                            context.startService(
+                                Intent(context, TrackingService::class.java)
+                                    .setAction(TrackingService.ACTION_CANCEL_HOME_DEPARTURE),
                             )
-                        },
-                    ),
+                        }
+                    }
+                    return@launch
+                }
+
+                val activeTour = store.activeTour()
+                if (activeTour != null) {
+                    context.markExistingAutomaticTourOutside(activeTour.id, transitionAt)
+                    return@launch
+                }
+                val candidateAt = System.currentTimeMillis()
+                context.markDepartureCandidate(candidateAt)
+                context.saveBufferedHomeLocations(
+                    listOfNotNull(exitLocation?.toBufferedHomeLocation()),
                 )
-                context.reconcilePendingDeparture(store, settings, buffered)
                 LocationServices.getFusedLocationProviderClient(context).flushLocations()
                 runCatching {
                     ContextCompat.startForegroundService(
                         context,
                         Intent(context, TrackingService::class.java)
-                            .putExtra(TrackingService.EXTRA_TOUR_ID, tourId),
+                            .setAction(TrackingService.ACTION_CONFIRM_HOME_DEPARTURE)
+                            .putExtra(
+                                TrackingService.EXTRA_DEPARTURE_CANDIDATE_AT,
+                                candidateAt,
+                            ),
                     )
                 }.onFailure {
-                    store.finishTour(tourId)
+                    context.clearDepartureCandidate()
                 }
             } finally {
                 pendingResult.finish()

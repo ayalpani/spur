@@ -86,14 +86,14 @@ internal fun Style.showTourRoute(
     if (routeLayer == null) {
         addTourLayerBelowMarkers(
             LineLayer(TourRouteLayer, TourRouteSource).withProperties(
-                lineColor(colors.fill.toArgb()),
+                lineColor(colors.background.toArgb()),
                 lineWidth(TourRouteWidthPixels),
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
             ).withFilter(Expression.eq(Expression.geometryType(), "LineString")),
         )
     } else {
-        routeLayer.setProperties(lineColor(colors.fill.toArgb()))
+        routeLayer.setProperties(lineColor(colors.background.toArgb()))
     }
     val waypointLayer = getLayerAs<CircleLayer>(TourWaypointLayer)
     if (waypointLayer == null) {
@@ -160,7 +160,7 @@ internal fun Style.showTourEndpoints(
     if (ringLayer == null) {
         addLayerBelowLocationPulse(
             CircleLayer(TourEndpointRingLayer, TourEndpointSource).withProperties(
-                circleColor(colors.fill.toArgb()),
+                circleColor(colors.background.toArgb()),
                 circleRadius(TourEndpointRadius),
                 circleStrokeColor(colors.stroke.toArgb()),
                 circleStrokeWidth(TourEndpointStrokeWidth),
@@ -168,7 +168,7 @@ internal fun Style.showTourEndpoints(
         )
     } else {
         ringLayer.setProperties(
-            circleColor(colors.fill.toArgb()),
+            circleColor(colors.background.toArgb()),
             circleRadius(TourEndpointRadius),
             circleStrokeColor(colors.stroke.toArgb()),
             circleStrokeWidth(TourEndpointStrokeWidth),

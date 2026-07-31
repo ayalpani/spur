@@ -10,6 +10,8 @@ import android.location.Location
 import androidx.compose.ui.graphics.toArgb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.maplibre.android.MapLibre
@@ -33,7 +35,7 @@ import kotlin.math.max
 
 private const val TourHistoryPreferences = "tour-history"
 private const val TourPreviewDirectory = "tour-previews"
-private const val TourPreviewSizePixels = 320
+internal const val TourPreviewSizePixels = 640
 private const val SamePlaceMaximumDistanceMeters = 100f
 private const val TourPreviewPaddingFraction = 0.14
 private const val TourPreviewMinimumPaddingDegrees = 0.0005
@@ -45,6 +47,7 @@ private const val TourPreviewWaypointLayer = "tour-preview-waypoint-layer"
 private const val TourPreviewEndpointLayer = "tour-preview-endpoint-layer"
 private const val TourPreviewAttribution = "© OpenFreeMap · © OpenStreetMap"
 private const val TourPreviewAttributionTextSizePixels = 9f
+private val TourPreviewMutex = Mutex()
 
 internal data class TourPlaceMetadata(
     val startPlace: String,
@@ -113,24 +116,37 @@ internal suspend fun Context.ensureTourHistoryAssets(
             changed = true
         }
     }
-    val preview = tourPreviewFile(tour.id)
-    if (!preview.isFile || preview.length() == 0L) {
-        createTourPreview(points)?.let { bitmap ->
-            addTourPreviewAttribution(bitmap)
-            val saved = withContext(Dispatchers.IO) {
-                runCatching {
-                    preview.parentFile?.mkdirs()
-                    preview.outputStream().use {
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 88, it)
-                    }
-                }.getOrDefault(false)
-            }
-            bitmap.recycle()
-            if (!saved) preview.delete()
-            changed = saved || changed
-        }
-    }
+    changed = ensureTourPreview(tour, points) || changed
     return changed
+}
+
+internal suspend fun Context.ensureTourPreview(
+    tour: Tour,
+    points: List<TrackPoint>,
+): Boolean {
+    if (points.isEmpty()) return false
+    return TourPreviewMutex.withLock {
+        val preview = tourPreviewFile(tour.id)
+        if (preview.isFile && preview.length() > 0L) return@withLock false
+        val bitmap = withContext(Dispatchers.Main.immediate) {
+            renderTourPreview(
+                points = points,
+                widthPixels = TourPreviewSizePixels,
+                heightPixels = TourPreviewSizePixels,
+            )
+        } ?: return@withLock false
+        val saved = withContext(Dispatchers.IO) {
+            runCatching {
+                preview.parentFile?.mkdirs()
+                preview.outputStream().use {
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 88, it)
+                }
+            }.getOrDefault(false)
+        }
+        bitmap.recycle()
+        if (!saved) preview.delete()
+        saved
+    }
 }
 
 private fun addTourPreviewAttribution(bitmap: Bitmap) {
@@ -202,8 +218,10 @@ private fun Address.placeName(): String? =
         ?: adminArea
         ?: featureName
 
-private suspend fun Context.createTourPreview(
+internal suspend fun Context.renderTourPreview(
     points: List<TrackPoint>,
+    widthPixels: Int,
+    heightPixels: Int,
 ): Bitmap? {
     MapLibre.getInstance(this)
     val colors = loadTrailColors()
@@ -223,7 +241,7 @@ private suspend fun Context.createTourPreview(
                 lineJoin(Property.LINE_JOIN_ROUND),
             ),
             LineLayer(TourPreviewRouteLayer, TourPreviewSource).withProperties(
-                lineColor(colors.fill.toArgb()),
+                lineColor(colors.background.toArgb()),
                 lineWidth(TourRouteWidthPixels),
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
@@ -233,13 +251,13 @@ private suspend fun Context.createTourPreview(
                 circleRadius(TourWaypointRadiusPixels),
             ),
             CircleLayer(TourPreviewEndpointLayer, TourPreviewEndpointSource).withProperties(
-                circleColor(colors.fill.toArgb()),
+                circleColor(colors.background.toArgb()),
                 circleRadius(TourEndpointRadius),
             ),
         )
     val options = MapSnapshotter.Options(
-        TourPreviewSizePixels,
-        TourPreviewSizePixels,
+        widthPixels.coerceAtLeast(1),
+        heightPixels.coerceAtLeast(1),
     )
         .withStyleBuilder(style)
         .withRegion(tourPreviewBounds(points))
@@ -256,7 +274,7 @@ private suspend fun Context.createTourPreview(
                 if (continuation.isActive) continuation.resume(null)
             },
         )
-    }
+    }?.also(::addTourPreviewAttribution)
 }
 
 internal fun tourPreviewBounds(points: List<TrackPoint>): LatLngBounds {

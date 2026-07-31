@@ -37,7 +37,7 @@ class StopSwipeTest {
     }
 
     @Test
-    fun activeTourPlayerSwitchesBetweenDistanceAndTrackingTime() {
+    fun activeTourPlayerSwitchesBetweenDistanceAndRecentSpeed() {
         val tour = Tour(
             id = 1,
             startedAt = 1_000L,
@@ -45,19 +45,33 @@ class StopSwipeTest {
             distanceMeters = 1_234.0,
             pointCount = 2,
         )
+        val points = listOf(
+            TrackPoint(1, 52.0, 13.0, recordedAt = 0L),
+            TrackPoint(2, 52.009, 13.0, recordedAt = 3_600_000L),
+            TrackPoint(3, 52.00945, 13.0, recordedAt = 3_630_000L),
+            TrackPoint(4, 52.0099, 13.0, recordedAt = 3_660_000L),
+        )
 
         assertEquals(
             "1.234 m",
-            activeTourPlayerText(tour, now = 3_662_000L, showTrackingTime = false),
+            activeTourPlayerText(tour, points, showRecentSpeed = false),
         )
         assertEquals(
-            "1h 1m 1s",
-            activeTourPlayerText(
-                tour,
-                now = 3_662_000L,
-                showTrackingTime = true,
-            ),
+            "6,0 km/h",
+            activeTourPlayerText(tour, points, showRecentSpeed = true),
         )
+        assertEquals(6.0, requireNotNull(recentSpeedKilometersPerHour(points)), 0.1)
+    }
+
+    @Test
+    fun recentSpeedWaitsForEnoughMovement() {
+        val points = listOf(
+            TrackPoint(1, 52.0, 13.0, recordedAt = 0L),
+            TrackPoint(2, 52.00001, 13.0, recordedAt = 10_000L),
+        )
+
+        assertEquals(null, recentSpeedKilometersPerHour(points))
+        assertEquals("– km/h", formatRecentSpeed(null))
     }
 
     @Test

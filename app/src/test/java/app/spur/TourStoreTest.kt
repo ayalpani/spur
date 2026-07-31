@@ -72,6 +72,13 @@ class TourStoreTest {
         )
     }
 
+    @Test
+    fun automaticHomeEndpointAlwaysFollowsTheLastRecordedWaypoint() {
+        assertEquals(10_000L, automaticTourEndRecordedAt(null, returnedAt = 10_000L))
+        assertEquals(10_000L, automaticTourEndRecordedAt(9_000L, returnedAt = 10_000L))
+        assertEquals(11_001L, automaticTourEndRecordedAt(11_000L, returnedAt = 10_000L))
+    }
+
     private fun fix(
         latitude: Double,
         accuracy: Float,

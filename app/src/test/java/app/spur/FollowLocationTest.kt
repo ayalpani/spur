@@ -9,8 +9,8 @@ import org.maplibre.android.maps.MapLibreMap
 class FollowLocationTest {
     @Test
     fun playerStacksOnlyBelowItsCalculatedMinimumWidth() {
-        assertTrue(shouldStackMapPlayer(screenWidthDp = 355))
-        assertFalse(shouldStackMapPlayer(screenWidthDp = 356))
+        assertTrue(shouldStackMapPlayer(screenWidthDp = 337))
+        assertFalse(shouldStackMapPlayer(screenWidthDp = 338))
         assertFalse(shouldStackMapPlayer(screenWidthDp = 600))
     }
 
@@ -42,6 +42,40 @@ class FollowLocationTest {
                 isFollowingLocation = true,
                 isTourActive = true,
                 routePointCount = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun asteriskStartsAtWalkingSpeedAndUsesHysteresis() {
+        assertFalse(movingForSpeed(0.99, wasMoving = false))
+        assertTrue(movingForSpeed(1.0, wasMoving = false))
+        assertTrue(movingForSpeed(0.5, wasMoving = true))
+        assertFalse(movingForSpeed(0.49, wasMoving = true))
+        assertFalse(movingForSpeed(null, wasMoving = true))
+    }
+
+    @Test
+    fun asteriskNeverRotatesInsideTheHomeZone() {
+        assertFalse(
+            movingForMapSignal(
+                isAtHome = true,
+                speedKilometersPerHour = 25.0,
+                wasMoving = false,
+            ),
+        )
+        assertFalse(
+            movingForMapSignal(
+                isAtHome = true,
+                speedKilometersPerHour = 25.0,
+                wasMoving = true,
+            ),
+        )
+        assertTrue(
+            movingForMapSignal(
+                isAtHome = false,
+                speedKilometersPerHour = 1.0,
+                wasMoving = false,
             ),
         )
     }

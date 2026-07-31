@@ -2,6 +2,8 @@
 set -euo pipefail
 
 readonly DEVICE_MODEL="SM_A546B"
+readonly DEVICE_IP="192.168.178.162"
+readonly ADB_CONNECT_SERVICE="adb-R5CWA1MD0GD-8swK1E"
 readonly PACKAGE="app.spur"
 readonly LEGACY_PACKAGE="app.spur.debug"
 readonly ACTIVITY="app.spur/.MainActivity"
@@ -48,8 +50,31 @@ online_serial() {
         awk -v model="$DEVICE_MODEL" '$2 == "device" && $0 ~ "model:" model { print $1; exit }'
 }
 
+dns_sd_endpoint() {
+    local lookup_file lookup_pid port attempt
+    command -v dns-sd >/dev/null 2>&1 || return 1
+    lookup_file="$(mktemp -t spur-adb-mdns.XXXXXX)"
+    dns-sd -L "$ADB_CONNECT_SERVICE" _adb-tls-connect._tcp local. \
+        >"$lookup_file" 2>/dev/null &
+    lookup_pid=$!
+    port=""
+    for attempt in {1..30}; do
+        port="$(
+            sed -nE 's/.*can be reached at .*:([0-9]+) .*/\1/p' "$lookup_file" |
+                head -n 1
+        )"
+        [[ -n "$port" ]] && break
+        sleep 0.1
+    done
+    kill "$lookup_pid" >/dev/null 2>&1 || true
+    wait "$lookup_pid" >/dev/null 2>&1 || true
+    rm -f "$lookup_file"
+    [[ -n "$port" ]] || return 1
+    printf '%s:%s\n' "$DEVICE_IP" "$port"
+}
+
 connect_device() {
-    local serial service
+    local serial service endpoint
     serial="$(online_serial)"
     if [[ -n "$serial" ]]; then
         printf '%s\n' "$serial"
@@ -74,6 +99,16 @@ connect_device() {
             return
         fi
     done < <("$ADB" mdns services 2>/dev/null | awk '/_adb-tls-connect/ { print $3 }')
+
+    endpoint="$(dns_sd_endpoint || true)"
+    if [[ -n "$endpoint" ]]; then
+        "$ADB" connect "$endpoint" >/dev/null 2>&1 || true
+        serial="$(online_serial)"
+        if [[ -n "$serial" ]]; then
+            printf '%s\n' "$serial"
+            return
+        fi
+    fi
 
     echo "Galaxy A54 nicht erreichbar. WLAN-Debugging am Handy einschalten." >&2
     exit 1

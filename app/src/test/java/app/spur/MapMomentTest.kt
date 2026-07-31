@@ -49,17 +49,16 @@ class MapMomentTest {
     }
 
     @Test
-    fun personaUsesItsOwnExactMapCoordinate() {
-        assertNull(personaFeature(null))
+    fun homeStatusUsesItsOwnExactMapCoordinate() {
+        assertNull(homeStatusFeature(null))
 
-        val feature = personaFeature(
+        val feature = homeStatusFeature(
             SpurCoordinate(latitude = 52.52, longitude = 13.405),
         )!!
         val point = feature.geometry() as org.maplibre.geojson.Point
 
         assertEquals(13.405, point.longitude(), 0.0)
         assertEquals(52.52, point.latitude(), 0.0)
-        assertEquals(1, feature.getNumberProperty(MapPersonaProperty))
     }
 
     @Test
@@ -145,6 +144,12 @@ class MapMomentTest {
         assertEquals(listOf(6f, 12f), clusterStackOffsets(2))
         assertEquals(listOf(0f, 6f, 12f), clusterStackOffsets(3))
         assertEquals(listOf(0f, 6f, 12f), clusterStackOffsets(12))
+    }
+
+    @Test
+    fun clusterExpansionStopsAtTheFanOutZoom() {
+        assertEquals(16.0, mapMomentClusterExpansionZoom(16), 0.0)
+        assertEquals(17.0, mapMomentClusterExpansionZoom(24), 0.0)
     }
 
     @Test

@@ -3,6 +3,7 @@ package app.spur
 import androidx.compose.foundation.background
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
@@ -16,16 +17,20 @@ internal val StopRed = Color(0xFFE53935)
 internal val MapPinRed = Color(0xFFEA4335)
 private val MomentMarkerGreen = Color(0xFF43A047)
 internal val TourMomentSelectionYellow = Color(0xFFCCCC00)
-internal val Mist = Color(0xFFE8EEE9)
+internal val GameRoadGreen = Color(0xFF39FF14)
 internal val SheetBackground = Color.White
+internal const val GameRoadOpacity = 0.24f
+internal val GameRoadSurface = GameRoadGreen
+    .copy(alpha = GameRoadOpacity)
+    .compositeOver(SheetBackground)
 internal val ImageDetailControlBackground = Color.White.copy(alpha = 0.1f)
 internal val ImageDetailControlForeground = Color.White
 internal const val DefaultMapZoom = 17.5
 internal const val MapControlGapDp = 10
 internal const val MapControlSizeDp = 60
 internal const val MapControlIconSizeDp = 32
-internal const val MapControlHorizontalPaddingDp = 18
-private const val MapControlVerticalPaddingDp = 16
+internal const val MapControlHorizontalPaddingDp = 9
+private const val MapControlVerticalPaddingDp = 8
 internal const val MapPlayerMinimumWidthDp = 180
 internal val MapControlGap = MapControlGapDp.dp
 internal val MapControlSize = MapControlSizeDp.dp
@@ -34,7 +39,9 @@ internal val MapControlHorizontalPadding = MapControlHorizontalPaddingDp.dp
 internal val MapControlVerticalPadding = MapControlVerticalPaddingDp.dp
 internal val MomentSheetHeaderGap = 24.dp
 internal val MomentSheetGridGap = 10.dp
+internal val SheetMenuIconSize = 32.dp
 internal val SheetMenuTextSize = 24.sp
+internal const val IconTextLabelAlpha = 0.68f
 internal val StopSwipeHandleSize = 52.dp
 internal val MapRotationOptionGap = 16.dp
 internal val FilterChipVisualInset = 8.dp
@@ -48,9 +55,13 @@ internal const val FeedbackNoticeDurationMillis = 2_500L
 internal const val PendingPhotoRevealDelayMillis = 1_000L
 internal const val MinimumSystemSplashDurationMillis = 3_000L
 internal const val MinimumMapLoadingDurationMillis = 3_000L
+internal const val InitialLoaderExitDurationMillis = 600
 internal const val InitialManualLocationHoldDurationMillis = 5_000L
 internal const val ActiveManualLocationHoldDurationMillis = 1_000L
 internal const val PanelMotionDurationMillis = 300
+internal const val HomePanelMotionDurationMillis = 400
+internal const val HomeStatusBackgroundTransparency = 0.25f
+internal const val SecondaryMapControlBackgroundTransparency = 0.25f
 internal const val MapRotationAnimationMillis = 350L
 internal const val AsteriskRotationDurationMillis = 900
 internal const val LoaderAsteriskAccelerationDurationMillis = 1_000
@@ -59,19 +70,17 @@ internal const val LoaderAsteriskAccelerationDegrees =
 internal val PhotoMapPreviewSize = 96.dp
 internal val LoaderAsteriskSize = 128.dp
 internal val LoaderTextGap = 20.dp
-internal val WaypointRailHeight = 96.dp
+internal val WaypointRailHeight = 112.dp
 internal const val PhotoMapPreviewZoom = 17.5
 internal const val TourRouteWidthPixels = 6f
 internal const val TourRouteBorderPerSidePixels = 4f
 internal const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
 internal const val TourWaypointRadiusPixels = 2f
-internal const val TrailStrokeAlpha = 0.5f
 internal const val LocationPulseAlpha = 0.48f
 internal const val LocationSignalPeriodMillis = 3_000
 internal const val LocationSignalIconMinimumAlpha = 0.5f
 internal const val LocationPulseMaxRadius = 35f
-internal const val MapPersonaVerticalOffsetDp = -16f
 internal const val MapPinTipY = 21.799f
 internal val MapPinIconPaths = listOf(
     "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
@@ -111,6 +120,11 @@ internal data class MapControlColors(
         )
 }
 
+internal data class LocationMarkerColors(
+    val fill: Color,
+    val outline: Color,
+)
+
 internal enum class MapControlColor(
     val label: String,
     val color: Color,
@@ -144,24 +158,32 @@ internal enum class SpurColorTheme(
     val primary: MapControlColor,
     val secondary: MapControlColor,
     val accent: MapControlColor,
+    val trailBackground: MapControlColor,
+    val trailStroke: MapControlColor,
 ) {
     CLASSIC(
         label = "Klassisch",
         primary = MapControlColor.BLACK,
         secondary = MapControlColor.WHITE,
         accent = MapControlColor.BLUE,
+        trailBackground = MapControlColor.ORANGE,
+        trailStroke = MapControlColor.BLUE,
     ),
     FOREST(
         label = "Wald",
         primary = MapControlColor.GREEN,
         secondary = MapControlColor.WHITE,
         accent = MapControlColor.YELLOW,
+        trailBackground = MapControlColor.VIOLET,
+        trailStroke = MapControlColor.YELLOW,
     ),
     ELECTRIC(
         label = "Elektrisch",
         primary = MapControlColor.INDIGO,
         secondary = MapControlColor.WHITE,
         accent = MapControlColor.ORANGE,
+        trailBackground = MapControlColor.BLUE,
+        trailStroke = MapControlColor.ORANGE,
     ),
     ;
 
@@ -171,13 +193,17 @@ internal enum class SpurColorTheme(
             foreground = secondary.color,
         )
 
-    val signalColor: Color
-        get() = primary.color
+    val locationMarkerColors: LocationMarkerColors
+        get() = LocationMarkerColors(
+            fill = trailBackground.color,
+            outline = secondary.color,
+        )
 
     val trailColors: TrailColors
         get() = TrailColors(
-            fill = accent.color,
-            stroke = primary.color.copy(alpha = TrailStrokeAlpha),
+            background = trailBackground.color,
+            foreground = trailBackground.contrastColor,
+            stroke = trailStroke.color,
         )
 }
 
@@ -218,15 +244,20 @@ internal enum class FeedbackNoticeKind(
 ) {
     PERMISSION(FollowGreen, Ink),
     ERROR(StopRed, Color.White),
-    PLACEHOLDER(Mist, Ink),
+    PLACEHOLDER(NeutralSurface, Ink),
 }
 
 internal typealias ShowFeedbackNotice = (FeedbackNoticeKind, String) -> Unit
 
 internal data class TrailColors(
-    val fill: Color,
+    val background: Color,
+    val foreground: Color,
     val stroke: Color,
 )
+
+internal val NeutralSurface = MapControlColor.GRAY.color
+    .copy(alpha = 0.16f)
+    .compositeOver(SheetBackground)
 
 internal val LocalMapControlColors = staticCompositionLocalOf {
     MapControlColors(
@@ -237,8 +268,8 @@ internal val LocalMapControlColors = staticCompositionLocalOf {
 internal val LocalAccentColor = staticCompositionLocalOf {
     SpurColorTheme.CLASSIC.accent.color
 }
-internal val LocalSignalColor = staticCompositionLocalOf {
-    SpurColorTheme.CLASSIC.signalColor
+internal val LocalLocationMarkerColors = staticCompositionLocalOf {
+    SpurColorTheme.CLASSIC.locationMarkerColors
 }
 internal val LocalTrailColors = staticCompositionLocalOf {
     SpurColorTheme.CLASSIC.trailColors

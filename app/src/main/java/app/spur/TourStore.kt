@@ -17,8 +17,13 @@ data class Tour(
     val endedAt: Long?,
     val distanceMeters: Double,
     val pointCount: Int,
-    val activity: String? = null,
+    val title: String? = null,
 )
+
+internal const val TourTitleMaximumCharacters = 80
+
+internal fun normalizeTourTitle(title: String): String? =
+    title.trim().take(TourTitleMaximumCharacters).ifEmpty { null }
 
 data class TrackPoint(
     val id: Long,
@@ -127,6 +132,11 @@ internal fun trackDistanceMeters(points: List<TrackPoint>): Double =
         )
     }
 
+internal fun automaticTourEndRecordedAt(
+    lastRecordedAt: Long?,
+    returnedAt: Long,
+): Long = lastRecordedAt?.let { maxOf(returnedAt, it + 1L) } ?: returnedAt
+
 internal fun retainedPointIds(
     points: List<TrackPoint>,
     startIndex: Int,
@@ -168,6 +178,12 @@ private data class StoredTrackPoint(
 }
 
 private data class ActiveTourTail(val point: StoredTrackPoint?)
+
+private data class StoredRoadHistoryPoint(
+    val tourId: Long,
+    val id: Long,
+    val coordinate: SpurCoordinate,
+)
 
 class TourStore(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "spur.db", null, 4) {
@@ -242,15 +258,67 @@ class TourStore(context: Context) :
     }
 
     @Synchronized
-    fun finishTour(id: Long, now: Long = System.currentTimeMillis()) {
+    fun finishTour(id: Long, now: Long = System.currentTimeMillis()): Boolean {
         gpsStartGates.remove(id)
         stationaryExitFixes.remove(id)
-        writableDatabase.update(
+        return writableDatabase.update(
             "tours",
             ContentValues().apply { put("ended_at", now) },
             "id = ? AND ended_at IS NULL",
             arrayOf(id.toString()),
-        )
+        ) > 0
+    }
+
+    @Synchronized
+    fun updateTourTitle(id: Long, title: String): Boolean =
+        writableDatabase.update(
+            "tours",
+            ContentValues().apply {
+                put("activity", normalizeTourTitle(title))
+            },
+            "id = ?",
+            arrayOf(id.toString()),
+        ) > 0
+
+    @Synchronized
+    internal fun finishTourAt(
+        id: Long,
+        endPoint: SpurCoordinate,
+        now: Long = System.currentTimeMillis(),
+    ): Boolean {
+        gpsStartGates.remove(id)
+        stationaryExitFixes.remove(id)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val activeTail = latestPointOfActiveTour(db, id) ?: return false
+            val endRecordedAt = automaticTourEndRecordedAt(
+                lastRecordedAt = activeTail.point?.recordedAt,
+                returnedAt = now,
+            )
+            insertRawLocation(
+                db = db,
+                tourId = id,
+                latitude = endPoint.latitude,
+                longitude = endPoint.longitude,
+                recordedAt = endRecordedAt,
+                accuracyMeters = 3f,
+            )
+            val finished = db.update(
+                "tours",
+                ContentValues().apply {
+                    put("ended_at", endRecordedAt)
+                    put("distance_meters", trackDistanceMeters(points(db, id)))
+                },
+                "id = ? AND ended_at IS NULL",
+                arrayOf(id.toString()),
+            ) > 0
+            if (!finished) return false
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
     }
 
     @Synchronized
@@ -720,11 +788,164 @@ class TourStore(context: Context) :
             .firstOrNull()
 
     @Synchronized
-    fun tours(): List<Tour> = queryTours(tail = "ORDER BY t.started_at DESC")
+    fun tours(
+        limit: Int? = null,
+        offset: Int = 0,
+    ): List<Tour> {
+        require(limit == null || limit > 0)
+        require(offset >= 0)
+        val paging = when {
+            limit != null -> " LIMIT $limit OFFSET $offset"
+            offset > 0 -> " LIMIT -1 OFFSET $offset"
+            else -> ""
+        }
+        return queryTours(tail = "ORDER BY t.started_at DESC$paging")
+    }
 
     @Synchronized
     fun points(tourId: Long): List<TrackPoint> =
         points(readableDatabase, tourId)
+
+    @Synchronized
+    internal fun roadHistoryFingerprint(
+        afterPointId: Long? = null,
+        excludingTourId: Long? = null,
+    ): RoadHistoryFingerprint {
+        val conditions = buildList {
+            afterPointId?.let { add("id > ?") }
+            excludingTourId?.let { add("tour_id != ?") }
+        }
+        val selection = conditions.takeIf { it.isNotEmpty() }
+            ?.joinToString(separator = " AND ", prefix = "WHERE ")
+            .orEmpty()
+        val arguments = buildList {
+            afterPointId?.let { add(it.toString()) }
+            excludingTourId?.let { add(it.toString()) }
+        }.toTypedArray()
+        return readableDatabase.rawQuery(
+            """
+            SELECT
+                COALESCE(MAX(id), 0),
+                COUNT(*),
+                COALESCE(SUM(
+                    (id % $RoadHistorySignaturePrime) +
+                    (recorded_at % $RoadHistorySignaturePrime) +
+                    CAST(ROUND(latitude * $RoadHistoryCoordinatePrecision) AS INTEGER) * 31 +
+                    CAST(ROUND(longitude * $RoadHistoryCoordinatePrecision) AS INTEGER)
+                ), 0)
+            FROM track_points
+            $selection
+            """.trimIndent(),
+            arguments,
+        ).use { cursor ->
+            cursor.moveToFirst()
+            RoadHistoryFingerprint(
+                maximumPointId = cursor.getLong(0),
+                pointCount = cursor.getLong(1),
+                signature = cursor.getLong(2),
+            )
+        }
+    }
+
+    @Synchronized
+    internal fun roadHistoryRoutes(
+        bounds: RoadHistoryBounds,
+        afterPointId: Long? = null,
+        excludingTourId: Long? = null,
+    ): List<List<SpurCoordinate>> {
+        val selection: String
+        val arguments: Array<String>
+        if (afterPointId == null) {
+            selection =
+                """
+                WHERE tour_id IN (
+                    SELECT DISTINCT tour_id
+                    FROM track_points
+                    WHERE latitude BETWEEN ? AND ?
+                      AND longitude BETWEEN ? AND ?
+                )
+                ${excludingTourId?.let { "AND tour_id != ?" }.orEmpty()}
+                """.trimIndent()
+            arguments = buildList {
+                add(bounds.minimumLatitude.toString())
+                add(bounds.maximumLatitude.toString())
+                add(bounds.minimumLongitude.toString())
+                add(bounds.maximumLongitude.toString())
+                excludingTourId?.let { add(it.toString()) }
+            }.toTypedArray()
+        } else {
+            selection =
+                """
+                WHERE (
+                    id > ?
+                    OR id IN (
+                    SELECT MAX(previous.id)
+                    FROM track_points AS previous
+                    WHERE previous.id <= ?
+                      AND previous.tour_id IN (
+                        SELECT DISTINCT added.tour_id
+                        FROM track_points AS added
+                        WHERE added.id > ?
+                    )
+                    GROUP BY previous.tour_id
+                    )
+                )
+                ${excludingTourId?.let { "AND tour_id != ?" }.orEmpty()}
+                """.trimIndent()
+            arguments = buildList {
+                repeat(3) { add(afterPointId.toString()) }
+                excludingTourId?.let { add(it.toString()) }
+            }.toTypedArray()
+        }
+        return readableDatabase.rawQuery(
+            """
+            SELECT tour_id, id, latitude, longitude
+            FROM track_points
+            $selection
+            ORDER BY tour_id, recorded_at, id
+            """.trimIndent(),
+            arguments,
+        ).use { cursor ->
+            val routes = mutableListOf<List<SpurCoordinate>>()
+            var activeRoute = mutableListOf<SpurCoordinate>()
+            var previous: StoredRoadHistoryPoint? = null
+
+            fun finishActiveRoute() {
+                if (activeRoute.size >= 2) routes += activeRoute
+                activeRoute = mutableListOf()
+            }
+
+            while (cursor.moveToNext()) {
+                val current = StoredRoadHistoryPoint(
+                    tourId = cursor.getLong(0),
+                    id = cursor.getLong(1),
+                    coordinate = SpurCoordinate(
+                        latitude = cursor.getDouble(2),
+                        longitude = cursor.getDouble(3),
+                    ),
+                )
+                val from = previous
+                if (
+                    from != null &&
+                    from.tourId == current.tourId &&
+                    (afterPointId == null || from.id > afterPointId || current.id > afterPointId) &&
+                    bounds.intersects(from.coordinate, current.coordinate)
+                ) {
+                    if (activeRoute.isEmpty()) activeRoute += from.coordinate
+                    if (activeRoute.last() != from.coordinate) {
+                        finishActiveRoute()
+                        activeRoute += from.coordinate
+                    }
+                    activeRoute += current.coordinate
+                } else {
+                    finishActiveRoute()
+                }
+                previous = current
+            }
+            finishActiveRoute()
+            routes
+        }
+    }
 
     private fun points(db: SQLiteDatabase, tourId: Long): List<TrackPoint> =
         db.rawQuery(
@@ -820,10 +1041,13 @@ class TourStore(context: Context) :
                             endedAt = if (cursor.isNull(2)) null else cursor.getLong(2),
                             distanceMeters = cursor.getDouble(3),
                             pointCount = cursor.getInt(4),
-                            activity = cursor.getString(5),
+                            title = cursor.getString(5),
                         ),
                     )
                 }
             }
         }
 }
+
+private const val RoadHistorySignaturePrime = 1_000_000_007L
+private const val RoadHistoryCoordinatePrecision = 1_000_000L

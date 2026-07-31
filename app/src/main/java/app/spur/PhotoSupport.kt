@@ -152,7 +152,7 @@ private fun PhotoMapPreview(
     Box(
         modifier = modifier
             .size(PhotoMapPreviewSize)
-            .background(Mist)
+            .background(NeutralSurface)
             .semantics { contentDescription = "Karte des Aufnahmeorts" },
         contentAlignment = Alignment.Center,
     ) {

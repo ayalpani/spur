@@ -14,7 +14,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.draw.clip
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.PropertyFactory.textSize
@@ -221,67 +220,6 @@ internal fun createMomentClusterBitmap(
         clusterStackOffsets(stackSize).forEach { offset ->
             canvas.drawBitmap(marker, offset * scale, offset * scale, paint)
         }
-    }
-}
-
-internal fun createPersonaClusterBitmap(
-    context: Context,
-    momentMarker: android.graphics.Bitmap,
-    personaMarker: android.graphics.Bitmap,
-    stackSize: Int,
-): android.graphics.Bitmap {
-    val scale = context.resources.displayMetrics.density
-    val offsets = clusterStackOffsets(stackSize)
-    return android.graphics.Bitmap.createBitmap(
-        ((MomentMarkerWidth + MomentClusterMaximumOffset) * scale).toInt(),
-        ((MomentMarkerHeight + MomentClusterMaximumOffset) * scale).toInt(),
-        android.graphics.Bitmap.Config.ARGB_8888,
-    ).also { bitmap ->
-        val canvas = android.graphics.Canvas(bitmap)
-        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-        offsets.dropLast(1).forEach { offset ->
-            canvas.drawBitmap(momentMarker, offset * scale, offset * scale, paint)
-        }
-        canvas.drawBitmap(personaMarker, offsets.last() * scale, offsets.last() * scale, paint)
-    }
-}
-
-internal fun createPersonaMarkerBitmap(
-    context: Context,
-    colors: MapControlColors,
-): android.graphics.Bitmap {
-    val scale = context.resources.displayMetrics.density
-    return android.graphics.Bitmap.createBitmap(
-        (MomentMarkerWidth * scale).toInt(),
-        (MomentMarkerHeight * scale).toInt(),
-        android.graphics.Bitmap.Config.ARGB_8888,
-    ).also { bitmap ->
-        val canvas = android.graphics.Canvas(bitmap)
-        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            strokeJoin = android.graphics.Paint.Join.ROUND
-        }
-        drawMomentMarkerShape(
-            canvas = canvas,
-            paint = paint,
-            scale = scale,
-            fillColor = colors.background,
-            outlineColor = colors.foreground,
-        )
-        ContextCompat.getDrawable(context, R.drawable.ic_footprints_location)
-            ?.mutate()
-            ?.apply {
-                val iconHalfSize = MapControlIconSizeDp / 2f
-                val iconCenterX = MomentMarkerWidth / 2f
-                val iconCenterY = 27f + MomentMarkerVerticalOffset
-                setTint(colors.foreground.toArgb())
-                setBounds(
-                    ((iconCenterX - iconHalfSize) * scale).roundToInt(),
-                    ((iconCenterY - iconHalfSize) * scale).roundToInt(),
-                    ((iconCenterX + iconHalfSize) * scale).roundToInt(),
-                    ((iconCenterY + iconHalfSize) * scale).roundToInt(),
-                )
-                draw(canvas)
-            }
     }
 }
 
