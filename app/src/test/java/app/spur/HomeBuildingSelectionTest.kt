@@ -217,7 +217,12 @@ class HomeBuildingSelectionTest {
             BufferedHomeLocation(52.0016, 13.0, 5_000L, 8f),
         )
 
-        val departure = departureLocations(locations, settings, throughAt = 5_000L)
+        val departure = departureLocations(
+            locations,
+            settings,
+            candidateAt = 2_000L,
+            throughAt = 5_000L,
+        )
 
         assertEquals(listOf(2_000L, 3_000L, 4_000L, 5_000L), departure.map { it.recordedAt })
     }
@@ -235,6 +240,7 @@ class HomeBuildingSelectionTest {
         val departure = departureLocations(
             locations = listOf(nearBuildingButNotStart, laterDeparture),
             settings = settings,
+            candidateAt = nearBuildingButNotStart.recordedAt,
             throughAt = laterDeparture.recordedAt,
         )
 

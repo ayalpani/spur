@@ -27,6 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.maplibre.geojson.Feature
 import java.util.ArrayDeque
+import kotlin.math.roundToInt
 
 internal data class HomeAutoStartSettings(
     val enabled: Boolean,
@@ -50,6 +51,14 @@ private const val BufferedLocations = "buffered-locations"
 private const val DepartureCandidateAt = "departure-candidate-at"
 private const val AutomaticTourId = "automatic-tour-id"
 private const val OutsideSince = "outside-since"
+private const val DepartureThroughAt = "departure-through-at"
+private const val DiagnosticTriggerSource = "diagnostic-trigger-source"
+private const val DiagnosticTriggerAt = "diagnostic-trigger-at"
+private const val DiagnosticFirstFixAgeMillis = "diagnostic-first-fix-age-millis"
+private const val DiagnosticFirstFixAccuracyMeters = "diagnostic-first-fix-accuracy-meters"
+private const val DiagnosticPreRollPointCount = "diagnostic-pre-roll-point-count"
+private const val DiagnosticStartDistanceBucket = "diagnostic-start-distance-bucket"
+private const val DiagnosticRuntimeFailure = "diagnostic-runtime-failure"
 private const val PreRollIntervalMillis = 20_000L
 private const val PreRollBatchDelayMillis = 2 * 60_000L
 private const val PreRollWindowMillis = 30 * 60_000L
@@ -78,6 +87,15 @@ internal data class BufferedHomeLocation(
     val recordedAt: Long,
     val accuracyMeters: Float,
 )
+
+internal enum class HomeDepartureTriggerSource(val storedValue: String) {
+    SIGNIFICANT_MOTION("significant_motion"),
+    STEP_DETECTOR("step_detector"),
+    ACTIVITY_TRANSITION("activity_transition"),
+    GEOFENCE("geofence"),
+    REGISTRATION("registration"),
+    BOOT("boot"),
+}
 
 internal data class AutomaticTourSignalResult(
     val appended: Boolean,
@@ -222,6 +240,13 @@ internal fun Context.hasActivityRecognitionPermission(): Boolean =
             Manifest.permission.ACTIVITY_RECOGNITION,
         ) == PackageManager.PERMISSION_GRANTED
 
+internal fun Context.hasTourNotificationPermission(): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+
 internal fun isHomeDepartureActivity(activityType: Int): Boolean =
     activityType in homeDepartureActivityTypes
 
@@ -249,9 +274,6 @@ internal fun Context.registerHomeExitGeofence(): Boolean {
     return runCatching {
         LocationServices.getGeofencingClient(this)
             .addGeofences(request, homeGeofencePendingIntent())
-            .addOnFailureListener {
-                saveHomeAutoStartSettings(settings.copy(enabled = false))
-            }
         true
     }.getOrDefault(false)
 }
@@ -261,8 +283,10 @@ internal fun Context.removeHomeExitGeofence() {
         .removeGeofences(homeGeofencePendingIntent())
 }
 
-internal fun Context.registerHomeAutoStart(): Boolean {
-    val geofenceRegistered = registerHomeExitGeofence()
+internal fun Context.registerHomeAutoStart(
+    triggerSource: HomeDepartureTriggerSource = HomeDepartureTriggerSource.REGISTRATION,
+): Boolean {
+    registerHomeExitGeofence()
     val settings = loadHomeAutoStartSettings()
     if (
         !settings.enabled ||
@@ -280,12 +304,14 @@ internal fun Context.registerHomeAutoStart(): Boolean {
         .setMinUpdateDistanceMeters(5f)
         .setMaxUpdateDelayMillis(PreRollBatchDelayMillis)
         .build()
-    return runCatching {
+    runCatching {
         LocationServices.getFusedLocationProviderClient(this)
             .requestLocationUpdates(request, homePreRollPendingIntent())
         registerHomeDepartureActivityTransitions()
-        geofenceRegistered
-    }.getOrDefault(false)
+    }.onFailure {
+        recordHomeDepartureRuntimeFailure("pre_roll_registration", it)
+    }
+    return startHomeDepartureArmingService(triggerSource)
 }
 
 internal fun Context.removeHomeAutoStart() {
@@ -293,13 +319,33 @@ internal fun Context.removeHomeAutoStart() {
     LocationServices.getFusedLocationProviderClient(this)
         .removeLocationUpdates(homePreRollPendingIntent())
     removeHomeDepartureActivityTransitions()
+    runCatching {
+        startService(
+            Intent(this, TrackingService::class.java)
+                .setAction(TrackingService.ACTION_DISARM_HOME_DEPARTURE),
+        )
+    }
     homeAutoStartPreferences().edit()
         .remove(BufferedLocations)
         .remove(DepartureCandidateAt)
         .remove(AutomaticTourId)
         .remove(OutsideSince)
+        .remove(DepartureThroughAt)
         .apply()
 }
+
+private fun Context.startHomeDepartureArmingService(
+    triggerSource: HomeDepartureTriggerSource,
+): Boolean = runCatching {
+    ContextCompat.startForegroundService(
+        this,
+        Intent(this, TrackingService::class.java)
+            .setAction(TrackingService.ACTION_ARM_HOME_DEPARTURE),
+    )
+    true
+}.onFailure {
+    recordHomeDepartureRuntimeFailure("fgs_${triggerSource.storedValue}", it)
+}.getOrDefault(false)
 
 private fun Context.homeGeofencePendingIntent(): PendingIntent =
     PendingIntent.getBroadcast(
@@ -356,6 +402,79 @@ private fun Context.removeHomeDepartureActivityTransitions() {
 private fun Context.homeAutoStartPreferences() =
     getSharedPreferences(RuntimePreferences, Context.MODE_PRIVATE)
 
+internal fun Context.recordHomeDepartureTrigger(
+    source: HomeDepartureTriggerSource,
+    triggeredAt: Long,
+) {
+    homeAutoStartPreferences().edit()
+        .putString(DiagnosticTriggerSource, source.storedValue)
+        .putLong(DiagnosticTriggerAt, triggeredAt)
+        .remove(DiagnosticFirstFixAgeMillis)
+        .remove(DiagnosticFirstFixAccuracyMeters)
+        .remove(DiagnosticPreRollPointCount)
+        .remove(DiagnosticStartDistanceBucket)
+        .remove(DiagnosticRuntimeFailure)
+        .apply()
+}
+
+internal fun Context.recordHomeDepartureFirstFix(
+    candidateAt: Long,
+    sample: BufferedHomeLocation,
+) {
+    val preferences = homeAutoStartPreferences()
+    if (preferences.contains(DiagnosticFirstFixAgeMillis)) return
+    preferences.edit()
+        .putLong(
+            DiagnosticFirstFixAgeMillis,
+            (sample.recordedAt - candidateAt).coerceAtLeast(0L),
+        )
+        .putInt(
+            DiagnosticFirstFixAccuracyMeters,
+            sample.accuracyMeters.takeIf(Float::isFinite)?.roundToInt() ?: -1,
+        )
+        .apply()
+}
+
+internal fun Context.recordHomeDepartureAssembly(
+    startPoint: SpurCoordinate,
+    measured: List<BufferedHomeLocation>,
+) {
+    val distanceBucket = measured.firstOrNull()?.let {
+        homeDepartureDistanceBucket(
+            coordinateDistanceMeters(
+                startPoint.latitude,
+                startPoint.longitude,
+                it.latitude,
+                it.longitude,
+            ),
+        )
+    } ?: "none"
+    homeAutoStartPreferences().edit()
+        .putInt(DiagnosticPreRollPointCount, measured.size)
+        .putString(DiagnosticStartDistanceBucket, distanceBucket)
+        .apply()
+}
+
+internal fun homeDepartureDistanceBucket(distanceMeters: Double): String = when {
+    distanceMeters < 10.0 -> "under_10m"
+    distanceMeters < 25.0 -> "10_24m"
+    distanceMeters < 50.0 -> "25_49m"
+    distanceMeters < 100.0 -> "50_99m"
+    else -> "100m_or_more"
+}
+
+internal fun Context.recordHomeDepartureRuntimeFailure(
+    operation: String,
+    error: Throwable,
+) {
+    homeAutoStartPreferences().edit()
+        .putString(
+            DiagnosticRuntimeFailure,
+            "$operation:${error.javaClass.simpleName}",
+        )
+        .apply()
+}
+
 internal fun encodeBufferedHomeLocations(locations: List<BufferedHomeLocation>): String =
     locations.joinToString("\n") {
         "${it.latitude.toBits()},${it.longitude.toBits()},${it.recordedAt}," +
@@ -395,6 +514,7 @@ internal fun mergeBufferedHomeLocations(
 internal fun departureLocations(
     locations: List<BufferedHomeLocation>,
     settings: HomeAutoStartSettings,
+    candidateAt: Long,
     throughAt: Long,
 ): List<BufferedHomeLocation> {
     val startPoint = automaticTourHomePoint(settings) ?: return emptyList()
@@ -404,15 +524,24 @@ internal fun departureLocations(
         .filter { it.accuracyMeters <= 50f }
         .sortedBy(BufferedHomeLocation::recordedAt)
         .toList()
-    val lastNearStart = eligible.indexOfLast {
+    val firstCandidateFix = eligible.indexOfFirst { it.recordedAt >= candidateAt }
+    if (firstCandidateFix < 0) return emptyList()
+    fun distanceFromStart(location: BufferedHomeLocation) =
         coordinateDistanceMeters(
             startPoint.latitude,
             startPoint.longitude,
-            it.latitude,
-            it.longitude,
-        ) <= HomeDepartureBridgeRadiusMeters
+            location.latitude,
+            location.longitude,
+        )
+    val measuredBridge = eligible.subList(0, firstCandidateFix).indexOfLast {
+        distanceFromStart(it) <= HomeDepartureBridgeRadiusMeters
     }
-    val departure = eligible.drop(lastNearStart.coerceAtLeast(0))
+    val bridgeIsUseful = measuredBridge >= 0 &&
+        distanceFromStart(eligible[measuredBridge]) <
+        distanceFromStart(eligible[firstCandidateFix])
+    val departure = eligible.drop(
+        if (bridgeIsUseful) measuredBridge else firstCandidateFix,
+    )
     return departure.fold(emptyList()) { accepted, point ->
         val previous = accepted.lastOrNull()
         if (
@@ -528,7 +657,7 @@ internal fun Context.saveBufferedHomeLocations(
     }
 }
 
-private fun Context.claimDepartureCandidate(candidateAt: Long): Boolean =
+internal fun Context.claimDepartureCandidate(candidateAt: Long): Boolean =
     synchronized(homeAutoStartRuntimeLock) {
         val preferences = homeAutoStartPreferences()
         if (preferences.getLong(DepartureCandidateAt, 0L) > 0L) {
@@ -555,9 +684,12 @@ internal fun Context.clearDepartureCandidate() {
     }
 }
 
-private fun Context.requestHomeDepartureConfirmation(candidateAt: Long) {
+private fun Context.requestHomeDepartureConfirmation(
+    candidateAt: Long,
+    source: HomeDepartureTriggerSource,
+) {
     if (!claimDepartureCandidate(candidateAt)) return
-    LocationServices.getFusedLocationProviderClient(this).flushLocations()
+    recordHomeDepartureTrigger(source, candidateAt)
     runCatching {
         ContextCompat.startForegroundService(
             this,
@@ -567,13 +699,21 @@ private fun Context.requestHomeDepartureConfirmation(candidateAt: Long) {
         )
     }.onFailure {
         clearDepartureCandidate()
+        recordHomeDepartureRuntimeFailure("fgs_${source.storedValue}", it)
     }
 }
 
-internal fun Context.markAutomaticTourOutside(tourId: Long, outsideSince: Long) {
+internal fun Context.markAutomaticTourOutside(
+    tourId: Long,
+    outsideSince: Long,
+    departureThroughAt: Long? = null,
+) {
     homeAutoStartPreferences().edit()
         .putLong(AutomaticTourId, tourId)
         .putLong(OutsideSince, outsideSince)
+        .apply {
+            departureThroughAt?.let { putLong(DepartureThroughAt, it) }
+        }
         .apply()
 }
 
@@ -593,10 +733,40 @@ internal fun Context.automaticTourOutsideSince(tourId: Long): Long? {
     return preferences.getLong(OutsideSince, 0L).takeIf { it > 0L }
 }
 
+internal fun Context.automaticTourDepartureThroughAt(tourId: Long): Long? {
+    val preferences = homeAutoStartPreferences()
+    if (preferences.getLong(AutomaticTourId, -1L) != tourId) return null
+    return preferences.getLong(DepartureThroughAt, 0L).takeIf { it > 0L }
+}
+
+internal fun Context.reconcileAutomaticDeparture(
+    store: TourStore,
+    tourId: Long,
+) {
+    val throughAt = automaticTourDepartureThroughAt(tourId) ?: return
+    val exitAt = automaticTourOutsideSince(tourId) ?: return
+    val settings = loadHomeAutoStartSettings()
+    val startPoint = automaticTourHomePoint(settings) ?: return
+    val measured = departureLocations(
+        locations = loadBufferedHomeLocations(),
+        settings = settings,
+        candidateAt = exitAt,
+        throughAt = throughAt,
+    )
+    recordHomeDepartureAssembly(startPoint, measured)
+    store.mergeAutomaticStartLocations(
+        tourId = tourId,
+        startPoint = startPoint,
+        locations = measured,
+        exitAt = exitAt,
+    )
+}
+
 internal fun Context.clearAutomaticTourState() {
     homeAutoStartPreferences().edit()
         .remove(AutomaticTourId)
         .remove(OutsideSince)
+        .remove(DepartureThroughAt)
         .remove(DepartureCandidateAt)
         .apply()
 }
@@ -607,7 +777,7 @@ internal fun stayedOutsideHomeLongEnough(outsideSince: Long, returnedAt: Long): 
 class HomeExitReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            context.registerHomeAutoStart()
+            context.registerHomeAutoStart(HomeDepartureTriggerSource.BOOT)
             return
         }
         if (ActivityTransitionResult.hasResult(intent)) {
@@ -624,7 +794,10 @@ class HomeExitReceiver : BroadcastReceiver() {
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                 try {
                     if (TourStore(context).activeTour() == null) {
-                        context.requestHomeDepartureConfirmation(System.currentTimeMillis())
+                        context.requestHomeDepartureConfirmation(
+                            candidateAt = System.currentTimeMillis(),
+                            source = HomeDepartureTriggerSource.ACTIVITY_TRANSITION,
+                        )
                     }
                 } finally {
                     pendingResult.finish()
@@ -639,9 +812,19 @@ class HomeExitReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                 try {
-                    context.saveBufferedHomeLocations(
-                        result.locations.map(Location::toBufferedHomeLocation),
-                    )
+                    val incoming = result.locations.map(Location::toBufferedHomeLocation)
+                    context.saveBufferedHomeLocations(incoming)
+                    val store = TourStore(context)
+                    store.activeTour()?.let { activeTour ->
+                        val throughAt = context
+                            .automaticTourDepartureThroughAt(activeTour.id)
+                        if (throughAt != null && incoming.any { it.recordedAt <= throughAt }) {
+                            context.reconcileAutomaticDeparture(
+                                store = store,
+                                tourId = activeTour.id,
+                            )
+                        }
+                    }
                 } finally {
                     pendingResult.finish()
                 }
@@ -687,7 +870,10 @@ class HomeExitReceiver : BroadcastReceiver() {
                 context.saveBufferedHomeLocations(
                     listOfNotNull(exitLocation?.toBufferedHomeLocation()),
                 )
-                context.requestHomeDepartureConfirmation(System.currentTimeMillis())
+                context.requestHomeDepartureConfirmation(
+                    candidateAt = System.currentTimeMillis(),
+                    source = HomeDepartureTriggerSource.GEOFENCE,
+                )
             } finally {
                 pendingResult.finish()
             }

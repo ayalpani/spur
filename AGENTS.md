@@ -164,16 +164,18 @@ confirming that the command preserves app data.
   value and its compact one-based position as `current/total` directly below.
 - Never rotate the main Spur/follow Asterisk while the current location is
   inside the Home Zone, regardless of noisy GPS speed readings.
-- For automatic departures, keep the 100 m geofence as confirmation and
-  fallback, but arm the existing high-accuracy confirmation service from
-  Android activity transitions as soon as walking, running, cycling, or vehicle
-  movement begins. Preserve the batched balanced-power pre-roll and merge every
-  measured departure point before the live tour so the route never starts with
-  one synthetic line across the Home Zone. Activity recognition is optional;
-  when its runtime permission is missing, retain the geofence fallback. Anchor
-  departure trimming at the configured start point. Add that canonical point
-  to the track only when a measured point bridges it within 35 m; otherwise
-  begin at the first real fix instead of inventing an edge or distance.
+- While automatic departures are enabled, keep the visible foreground service
+  armed without continuous high-accuracy GPS. Use the one-shot significant-
+  motion sensor first, the permission-gated step detector and activity
+  transitions second, and the 100 m geofence as confirmation and last fallback.
+  Motion must switch immediately to high accuracy; a false candidate and a
+  completed automatic tour must re-arm instead of stopping the service.
+  Preserve the batched balanced-power pre-roll and idempotently merge late or
+  out-of-order flush results before or after tour creation and after service
+  restoration. Keep every measured point from the motion trigger, optionally
+  prepend a closer measured bridge from immediately before it, and add the
+  canonical start only when that measured route bridges it within 35 m. Never
+  invent an edge or distance. Keep runtime diagnostics coordinate-free.
 - During an automatic return, preserve every measured tour waypoint inside the
   100 m Home Zone. Only append the canonical Home point after the independent
   6-of-10 arrival confirmation inside the 25 m arrival radius; never snap live

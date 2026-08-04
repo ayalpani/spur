@@ -1,11 +1,19 @@
 package app.spur
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.hardware.TriggerEvent
+import android.hardware.TriggerEventListener
 import android.location.Location
 import android.os.Build
 import android.os.Handler
@@ -14,7 +22,6 @@ import android.os.Looper
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import android.content.pm.ServiceInfo
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -29,14 +36,32 @@ import java.util.Locale
 class TrackingService : Service() {
     private lateinit var store: TourStore
     private lateinit var locationClient: FusedLocationProviderClient
+    private lateinit var sensorManager: SensorManager
     private var tourId: Long? = null
-    private var isDepartureCandidate = false
+    private var mode = HomeDepartureTrackingMode.STOPPED
     private var candidateAt: Long? = null
     private val departureSamples = ArrayDeque<BufferedHomeLocation>()
+    private var significantMotionSensor: Sensor? = null
+    private var stepDetectorSensor: Sensor? = null
+    private var significantMotionArmed = false
+    private var stepDetectorArmed = false
     private var automaticTourSignalProcessor: AutomaticTourSignalProcessor<Location>? = null
     private val handler = Handler(Looper.getMainLooper())
     private val departureTimeout = Runnable {
-        if (isDepartureCandidate) cancelDepartureCandidate()
+        if (mode == HomeDepartureTrackingMode.CONFIRMING) finishFalseDepartureCandidate()
+    }
+    private val significantMotionListener = object : TriggerEventListener() {
+        override fun onTrigger(event: TriggerEvent?) {
+            significantMotionArmed = false
+            beginMotionTriggeredDeparture(HomeDepartureTriggerSource.SIGNIFICANT_MOTION)
+        }
+    }
+    private val stepDetectorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent?) {
+            beginMotionTriggeredDeparture(HomeDepartureTriggerSource.STEP_DETECTOR)
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
     }
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -48,6 +73,9 @@ class TrackingService : Service() {
         super.onCreate()
         store = TourStore(this)
         locationClient = LocationServices.getFusedLocationProviderClient(this)
+        sensorManager = getSystemService(SensorManager::class.java)
+        significantMotionSensor = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
+        stepDetectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
@@ -61,14 +89,36 @@ class TrackingService : Service() {
         when (intent?.action) {
             ACTION_STOP -> {
                 clearDepartureCandidate()
+                clearAutomaticTourState()
+                return if (loadHomeAutoStartSettings().enabled) {
+                    beginArmedWaiting()
+                    START_STICKY
+                } else {
+                    stopTracking()
+                    START_NOT_STICKY
+                }
+            }
+
+            ACTION_DISARM_HOME_DEPARTURE -> {
+                store.activeTour()?.let {
+                    beginActiveTour(it)
+                    return START_STICKY
+                }
                 stopTracking()
                 return START_NOT_STICKY
             }
 
             ACTION_CANCEL_HOME_DEPARTURE -> {
-                clearDepartureCandidate()
-                if (isDepartureCandidate || store.activeTour() == null) stopTracking()
-                return START_NOT_STICKY
+                store.activeTour()?.let {
+                    beginActiveTour(it)
+                    return START_STICKY
+                }
+                finishFalseDepartureCandidate()
+                return if (mode == HomeDepartureTrackingMode.ARMED) {
+                    START_STICKY
+                } else {
+                    START_NOT_STICKY
+                }
             }
 
             ACTION_CONFIRM_HOME_DEPARTURE -> {
@@ -76,8 +126,7 @@ class TrackingService : Service() {
                     .takeIf { it > 0L }
                     ?: departureCandidateAt()
                 if (requestedAt == null) {
-                    stopTracking()
-                    return START_NOT_STICKY
+                    return restoreTracking()
                 }
                 beginDepartureConfirmation(requestedAt)
                 return START_STICKY
@@ -91,23 +140,53 @@ class TrackingService : Service() {
             beginActiveTour(activeTour)
             return START_STICKY
         }
+        return restoreTracking()
+    }
 
+    private fun restoreTracking(): Int {
+        val activeTour = store.activeTour()
+        val settings = loadHomeAutoStartSettings()
         val restoredCandidateAt = departureCandidateAt()
-        if (restoredCandidateAt != null) {
-            beginDepartureConfirmation(restoredCandidateAt)
-            return START_STICKY
+        return when (
+            restoredHomeDepartureMode(
+                hasActiveTour = activeTour != null,
+                automationEnabled = settings.enabled,
+                candidateAt = restoredCandidateAt,
+                now = System.currentTimeMillis(),
+            )
+        ) {
+            HomeDepartureTrackingMode.ACTIVE -> {
+                beginActiveTour(requireNotNull(activeTour))
+                START_STICKY
+            }
+
+            HomeDepartureTrackingMode.CONFIRMING -> {
+                beginDepartureConfirmation(requireNotNull(restoredCandidateAt))
+                START_STICKY
+            }
+
+            HomeDepartureTrackingMode.ARMED -> {
+                beginArmedWaiting()
+                START_STICKY
+            }
+
+            HomeDepartureTrackingMode.STOPPED -> {
+                stopTracking()
+                START_NOT_STICKY
+            }
         }
-        stopTracking()
-        return START_NOT_STICKY
     }
 
     private fun beginActiveTour(tour: Tour) {
         handler.removeCallbacks(departureTimeout)
         clearDepartureCandidate()
-        isDepartureCandidate = false
+        disarmMotionSensors()
+        mode = HomeDepartureTrackingMode.ACTIVE
         candidateAt = null
         departureSamples.clear()
         tourId = tour.id
+        if (!enterForeground(notification(tour), "fgs_active")) return
+        reconcileAutomaticDeparture(store, tour.id)
         automaticTourSignalProcessor = automaticTourOutsideSince(tour.id)?.let { outsideSince ->
             AutomaticTourSignalProcessor(
                 settings = loadHomeAutoStartSettings(),
@@ -122,13 +201,66 @@ class TrackingService : Service() {
                 },
             )
         }
-        ServiceCompat.startForeground(
-            this,
-            NOTIFICATION_ID,
-            notification(tour),
-            foregroundServiceType(),
-        )
-        requestUpdates()
+        requestHighAccuracyUpdates()
+    }
+
+    private fun beginArmedWaiting() {
+        val settings = loadHomeAutoStartSettings()
+        if (!settings.enabled || settings.home == null || !hasBackgroundLocationPermission()) {
+            stopTracking()
+            return
+        }
+        handler.removeCallbacks(departureTimeout)
+        clearDepartureCandidate()
+        mode = HomeDepartureTrackingMode.ARMED
+        candidateAt = null
+        departureSamples.clear()
+        tourId = null
+        automaticTourSignalProcessor = null
+        locationClient.removeLocationUpdates(locationCallback)
+        if (!enterForeground(armedNotification(), "fgs_armed")) return
+        armMotionSensors()
+    }
+
+    private fun armMotionSensors() {
+        disarmMotionSensors()
+        significantMotionSensor?.let { sensor ->
+            significantMotionArmed = runCatching {
+                sensorManager.requestTriggerSensor(significantMotionListener, sensor)
+            }.getOrDefault(false)
+        }
+        if (hasActivityRecognitionPermission()) {
+            stepDetectorSensor?.let { sensor ->
+                stepDetectorArmed = runCatching {
+                    sensorManager.registerListener(
+                        stepDetectorListener,
+                        sensor,
+                        SensorManager.SENSOR_DELAY_NORMAL,
+                    )
+                }.getOrDefault(false)
+            }
+        }
+    }
+
+    private fun disarmMotionSensors() {
+        if (significantMotionArmed) {
+            sensorManager.cancelTriggerSensor(
+                significantMotionListener,
+                significantMotionSensor,
+            )
+        }
+        significantMotionArmed = false
+        if (stepDetectorArmed) sensorManager.unregisterListener(stepDetectorListener)
+        stepDetectorArmed = false
+    }
+
+    private fun beginMotionTriggeredDeparture(source: HomeDepartureTriggerSource) {
+        if (mode != HomeDepartureTrackingMode.ARMED) return
+        val triggeredAt = System.currentTimeMillis()
+        if (!claimDepartureCandidate(triggeredAt)) return
+        mode = mode.afterMotion()
+        recordHomeDepartureTrigger(source, triggeredAt)
+        beginDepartureConfirmation(triggeredAt)
     }
 
     private fun beginDepartureConfirmation(requestedAt: Long) {
@@ -140,36 +272,39 @@ class TrackingService : Service() {
         val remaining = requestedAt + DepartureConfirmationTimeoutMillis -
             System.currentTimeMillis()
         if (!settings.enabled || settings.home == null || remaining <= 0L) {
-            cancelDepartureCandidate()
+            finishFalseDepartureCandidate()
             return
         }
+        disarmMotionSensors()
         markDepartureCandidate(requestedAt)
         tourId = null
-        isDepartureCandidate = true
+        mode = HomeDepartureTrackingMode.CONFIRMING
         candidateAt = requestedAt
         departureSamples.clear()
-        loadBufferedHomeLocations()
-            .filter { it.recordedAt >= requestedAt }
-            .sortedBy(BufferedHomeLocation::recordedAt)
+        if (!enterForeground(departureNotification(), "fgs_confirmation")) return
+        orderedConfirmationSamples(
+            existing = emptyList(),
+            incoming = loadBufferedHomeLocations().filter { it.recordedAt >= requestedAt },
+        )
             .forEach(departureSamples::addLast)
         automaticTourSignalProcessor = null
-        ServiceCompat.startForeground(
-            this,
-            NOTIFICATION_ID,
-            departureNotification(),
-            foregroundServiceType(),
-        )
-        requestUpdates()
+        requestHighAccuracyUpdates()
+        locationClient.flushLocations().addOnFailureListener {
+            recordHomeDepartureRuntimeFailure("pre_roll_flush", it)
+        }
         handler.removeCallbacks(departureTimeout)
         handler.postDelayed(departureTimeout, remaining)
     }
 
-    private fun requestUpdates() {
+    private fun requestHighAccuracyUpdates() {
+        check(
+            locationCaptureFor(mode) == HomeDepartureLocationCapture.HIGH_ACCURACY,
+        )
         if (
             ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) !=
             PackageManager.PERMISSION_GRANTED
         ) {
-            if (isDepartureCandidate) clearDepartureCandidate()
+            if (mode == HomeDepartureTrackingMode.CONFIRMING) clearDepartureCandidate()
             stopTracking()
             return
         }
@@ -177,15 +312,34 @@ class TrackingService : Service() {
         val requestBuilder = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 4_000L)
             .setMinUpdateIntervalMillis(2_000L)
             .setWaitForAccurateLocation(false)
-        if (isDepartureCandidate) requestBuilder.setMinUpdateDistanceMeters(4f)
+        if (mode == HomeDepartureTrackingMode.CONFIRMING) {
+            requestBuilder.setMinUpdateDistanceMeters(4f)
+        }
         val request = requestBuilder.build()
-        locationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+        runCatching {
+            locationClient.requestLocationUpdates(
+                request,
+                locationCallback,
+                Looper.getMainLooper(),
+            )
+        }.onSuccess { task ->
+            task.addOnFailureListener(::handleLocationRequestFailure)
+        }.onFailure(::handleLocationRequestFailure)
+    }
+
+    private fun handleLocationRequestFailure(error: Throwable) {
+        recordHomeDepartureRuntimeFailure("high_accuracy", error)
+        if (mode == HomeDepartureTrackingMode.CONFIRMING) {
+            finishFalseDepartureCandidate()
+        } else {
+            stopTracking()
+        }
     }
 
     private fun recordLocation(location: Location) {
         if (applicationContext.loadManualLocation() != null) return
         val sample = location.toBufferedHomeLocation()
-        if (isDepartureCandidate) {
+        if (mode == HomeDepartureTrackingMode.CONFIRMING) {
             recordDepartureCandidate(sample)
             return
         }
@@ -206,11 +360,11 @@ class TrackingService : Service() {
 
     private fun recordDepartureCandidate(sample: BufferedHomeLocation) {
         val startedAt = candidateAt ?: return
-        departureSamples.addLast(sample)
-        while (departureSamples.size > HomeConfirmationSampleCount) {
-            departureSamples.removeFirst()
-        }
+        val ordered = orderedConfirmationSamples(departureSamples, listOf(sample))
+        departureSamples.clear()
+        ordered.forEach(departureSamples::addLast)
         saveBufferedHomeLocations(listOf(sample))
+        if (sample.recordedAt >= startedAt) recordHomeDepartureFirstFix(startedAt, sample)
         val settings = loadHomeAutoStartSettings()
         if (!confirmedHomeDeparture(departureSamples.toList(), settings, startedAt)) return
 
@@ -218,26 +372,20 @@ class TrackingService : Service() {
             beginActiveTour(it)
             return
         }
-        val homePoint = automaticTourHomePoint(settings) ?: run {
-            cancelDepartureCandidate()
+        automaticTourHomePoint(settings) ?: run {
+            finishFalseDepartureCandidate()
             return
         }
         var createdTourId: Long? = null
         runCatching {
             val id = store.startTour(startedAt)
             createdTourId = id
-            val measuredDeparture = departureLocations(
-                locations = loadBufferedHomeLocations(),
-                settings = settings,
-                throughAt = sample.recordedAt,
-            )
-            store.mergeAutomaticStartLocations(
+            markAutomaticTourOutside(
                 tourId = id,
-                startPoint = homePoint,
-                locations = measuredDeparture,
-                exitAt = startedAt,
+                outsideSince = startedAt,
+                departureThroughAt = sample.recordedAt,
             )
-            markAutomaticTourOutside(id, startedAt)
+            reconcileAutomaticDeparture(store, id)
             store.tour(id) ?: error("Created tour is missing")
         }.onSuccess { tour ->
             beginActiveTour(tour)
@@ -245,7 +393,8 @@ class TrackingService : Service() {
         }.onFailure {
             createdTourId?.let { store.finishTour(it) }
             clearAutomaticTourState()
-            stopTracking()
+            recordHomeDepartureRuntimeFailure("tour_start", it)
+            finishFalseDepartureCandidate()
         }
     }
 
@@ -253,60 +402,85 @@ class TrackingService : Service() {
         applicationContext.markTourCompletionPending(id)
         applicationContext.vibrateTourEnded()
         clearAutomaticTourState()
-        stopTracking()
+        returnToArmedWaitingOrStop()
     }
 
-    private fun cancelDepartureCandidate() {
+    private fun finishFalseDepartureCandidate() {
         clearDepartureCandidate()
-        isDepartureCandidate = false
         candidateAt = null
         departureSamples.clear()
         handler.removeCallbacks(departureTimeout)
-        stopTracking()
+        returnToArmedWaitingOrStop()
+    }
+
+    private fun returnToArmedWaitingOrStop() {
+        mode = idleHomeDepartureMode(loadHomeAutoStartSettings().enabled)
+        if (mode == HomeDepartureTrackingMode.ARMED) {
+            beginArmedWaiting()
+        } else {
+            stopTracking()
+        }
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(departureTimeout)
+        disarmMotionSensors()
         locationClient.removeLocationUpdates(locationCallback)
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
     private fun stopTracking() {
+        mode = HomeDepartureTrackingMode.STOPPED
         automaticTourSignalProcessor = null
+        handler.removeCallbacks(departureTimeout)
+        disarmMotionSensors()
         locationClient.removeLocationUpdates(locationCallback)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    private fun foregroundServiceType(): Int =
-        if (Build.VERSION.SDK_INT >= 29) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-        } else {
-            0
-        }
+    private fun foregroundServiceType(): Int = if (Build.VERSION.SDK_INT >= 29) {
+        ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+    } else {
+        0
+    }
 
-    private fun notification(tour: Tour) =
-        NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification_location)
-            .setContentTitle("Spur zeichnet deine Tour auf")
-            .setContentText(
-                "${formatKilometers(tour.distanceMeters)} · seit ${
-                    DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
-                        .format(Date(tour.startedAt))
-                }",
-            )
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+    private fun enterForeground(
+        notification: Notification,
+        operation: String,
+    ): Boolean = runCatching {
+        ServiceCompat.startForeground(
+            this,
+            NOTIFICATION_ID,
+            notification,
+            foregroundServiceType(),
+        )
+        true
+    }.onFailure {
+        recordHomeDepartureRuntimeFailure(operation, it)
+        stopTracking()
+    }.getOrDefault(false)
+
+    private fun notification(tour: Tour) = serviceNotification(
+        title = "Spur zeichnet deine Tour auf",
+        text = "${formatKilometers(tour.distanceMeters)} · seit ${
+            DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
+                .format(Date(tour.startedAt))
+        }",
+    )
 
     private fun departureNotification() =
+        serviceNotification("Spur prüft deinen Tourstart", "Standort wird kurz bestätigt")
+
+    private fun armedNotification() =
+        serviceNotification("Spur wartet auf deinen Start", "Startautomatik ist bereit")
+
+    private fun serviceNotification(title: String, text: String) =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_location)
-            .setContentTitle("Spur prüft deinen Tourstart")
-            .setContentText("Standort wird kurz bestätigt")
+            .setContentTitle(title)
+            .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -316,6 +490,8 @@ class TrackingService : Service() {
         const val ACTION_STOP = "app.spur.STOP_TRACKING"
         const val ACTION_CONFIRM_HOME_DEPARTURE = "app.spur.CONFIRM_HOME_DEPARTURE"
         const val ACTION_CANCEL_HOME_DEPARTURE = "app.spur.CANCEL_HOME_DEPARTURE"
+        const val ACTION_ARM_HOME_DEPARTURE = "app.spur.ARM_HOME_DEPARTURE"
+        const val ACTION_DISARM_HOME_DEPARTURE = "app.spur.DISARM_HOME_DEPARTURE"
         const val EXTRA_TOUR_ID = "tour_id"
         const val EXTRA_DEPARTURE_CANDIDATE_AT = "departure_candidate_at"
         private const val CHANNEL_ID = "active-tour"

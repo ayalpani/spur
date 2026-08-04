@@ -51,7 +51,14 @@ internal fun HomeAutoStartBottomSheet(
         if (!enabled) context.removeHomeAutoStart()
         settings = settings.copy(enabled = enabled)
         context.saveHomeAutoStartSettings(settings)
-        if (enabled) context.registerHomeAutoStart()
+        if (enabled && !context.registerHomeAutoStart()) {
+            settings = settings.copy(enabled = false)
+            context.saveHomeAutoStartSettings(settings)
+            context.removeHomeAutoStart()
+            onSettingsChanged(settings)
+            message = "Die Startautomatik konnte nicht gestartet werden."
+            return
+        }
         onSettingsChanged(settings)
         message = if (enabled) {
             "Spur startet deine Tour beim Verlassen deines Zuhauses."
@@ -63,12 +70,38 @@ internal fun HomeAutoStartBottomSheet(
     val activityPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (!settings.enabled) updateEnabled(true)
         if (granted) {
-            context.registerHomeAutoStart()
-            message = "Der genaue Tourstart ist aktiv."
+            if (settings.enabled) {
+                message = if (context.registerHomeAutoStart()) {
+                    "Der genaue Tourstart ist aktiv."
+                } else {
+                    "Die Startautomatik konnte nicht gestartet werden."
+                }
+            } else {
+                updateEnabled(true)
+            }
         } else {
-            message = "Ohne Bewegungserkennung kann der erste Wegabschnitt gröber sein."
+            message = if (settings.enabled) {
+                "Die Startautomatik bleibt aktiv. Die zusätzliche Schritterkennung ist aus."
+            } else {
+                "Die Startautomatik bleibt aus, bis du den Bewegungszugriff erlaubst."
+            }
+        }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) {
+            message = if (settings.enabled) {
+                "Die Startautomatik bleibt aktiv, aber Android blendet ihre Meldung aus."
+            } else {
+                "Die Startautomatik bleibt aus, bis Benachrichtigungen erlaubt sind."
+            }
+        } else if (context.hasActivityRecognitionPermission()) {
+            updateEnabled(true)
+        } else {
+            activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
         }
     }
 
@@ -77,7 +110,9 @@ internal fun HomeAutoStartBottomSheet(
     ) { granted ->
         awaitingBackgroundPermission = false
         if (granted) {
-            if (context.hasActivityRecognitionPermission()) {
+            if (!context.hasTourNotificationPermission()) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else if (context.hasActivityRecognitionPermission()) {
                 updateEnabled(true)
             } else {
                 activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
@@ -89,7 +124,9 @@ internal fun HomeAutoStartBottomSheet(
 
     fun enable() {
         if (context.hasBackgroundLocationPermission()) {
-            if (context.hasActivityRecognitionPermission()) {
+            if (!context.hasTourNotificationPermission()) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else if (context.hasActivityRecognitionPermission()) {
                 updateEnabled(true)
             } else {
                 activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
@@ -117,7 +154,11 @@ internal fun HomeAutoStartBottomSheet(
             if (event == Lifecycle.Event.ON_RESUME && currentAwaitingPermission) {
                 awaitingBackgroundPermission = false
                 if (context.hasBackgroundLocationPermission()) {
-                    if (context.hasActivityRecognitionPermission()) {
+                    if (!context.hasTourNotificationPermission()) {
+                        notificationPermissionLauncher.launch(
+                            Manifest.permission.POST_NOTIFICATIONS,
+                        )
+                    } else if (context.hasActivityRecognitionPermission()) {
                         updateEnabled(true)
                     } else {
                         activityPermissionLauncher.launch(
@@ -159,11 +200,14 @@ internal fun HomeAutoStartBottomSheet(
         } else {
             Text(
                 text = if (settings.enabled) {
-                    if (context.hasActivityRecognitionPermission()) {
+                    if (!context.hasTourNotificationPermission()) {
+                        "Die Startautomatik ist aktiv. Android blendet die dauerhafte " +
+                            "Startmeldung aus."
+                    } else if (context.hasActivityRecognitionPermission()) {
                         "Die Startautomatik und der genaue Tourstart sind aktiv."
                     } else {
-                        "Die Startautomatik ist aktiv. Für Wegpunkte direkt beim Losgehen " +
-                            "fehlt noch der Bewegungszugriff."
+                        "Spur wartet sichtbar auf deinen Start. Die zusätzliche " +
+                            "Schritterkennung ist nicht freigegeben."
                     }
                 } else if (!context.hasBackgroundLocationPermission()) {
                     "Erlaube Spur den Standortzugriff im Hintergrund, damit eine Tour " +
@@ -188,10 +232,20 @@ internal fun HomeAutoStartBottomSheet(
             )
             if (settings.enabled && !context.hasActivityRecognitionPermission()) {
                 SpurSecondaryButton(
-                    label = "Genauen Tourstart erlauben",
+                    label = "Schritterkennung erlauben",
                     onClick = {
                         activityPermissionLauncher.launch(
                             Manifest.permission.ACTIVITY_RECOGNITION,
+                        )
+                    },
+                )
+            }
+            if (settings.enabled && !context.hasTourNotificationPermission()) {
+                SpurSecondaryButton(
+                    label = "Startmeldung erlauben",
+                    onClick = {
+                        notificationPermissionLauncher.launch(
+                            Manifest.permission.POST_NOTIFICATIONS,
                         )
                     },
                 )

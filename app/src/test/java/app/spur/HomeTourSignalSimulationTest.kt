@@ -7,6 +7,139 @@ import org.junit.Test
 
 class HomeTourSignalSimulationTest {
     @Test
+    fun motionMovesTheArmedServiceToHighAccuracyConfirmation() {
+        val confirming = HomeDepartureTrackingMode.ARMED.afterMotion()
+
+        assertEquals(HomeDepartureTrackingMode.CONFIRMING, confirming)
+        assertEquals(
+            HomeDepartureLocationCapture.HIGH_ACCURACY,
+            locationCaptureFor(confirming),
+        )
+        assertEquals(
+            HomeDepartureLocationCapture.NONE,
+            locationCaptureFor(HomeDepartureTrackingMode.ARMED),
+        )
+    }
+
+    @Test
+    fun idleAutomationRearmsAfterAFalseCandidateOrCompletedTour() {
+        assertEquals(
+            HomeDepartureTrackingMode.ARMED,
+            idleHomeDepartureMode(automationEnabled = true),
+        )
+        assertEquals(
+            HomeDepartureTrackingMode.STOPPED,
+            idleHomeDepartureMode(automationEnabled = false),
+        )
+    }
+
+    @Test
+    fun serviceRestartRestoresActiveConfirmationOrArmedState() {
+        assertEquals(
+            HomeDepartureTrackingMode.ACTIVE,
+            restoredHomeDepartureMode(
+                hasActiveTour = true,
+                automationEnabled = true,
+                candidateAt = null,
+                now = 60_000L,
+            ),
+        )
+        assertEquals(
+            HomeDepartureTrackingMode.CONFIRMING,
+            restoredHomeDepartureMode(
+                hasActiveTour = false,
+                automationEnabled = true,
+                candidateAt = 1_000L,
+                now = 60_000L,
+            ),
+        )
+        assertEquals(
+            HomeDepartureTrackingMode.ARMED,
+            restoredHomeDepartureMode(
+                hasActiveTour = false,
+                automationEnabled = true,
+                candidateAt = 1_000L,
+                now = DepartureConfirmationTimeoutMillis + 1_000L,
+            ),
+        )
+        assertEquals(
+            HomeDepartureTrackingMode.ARMED,
+            restoredHomeDepartureMode(
+                hasActiveTour = false,
+                automationEnabled = true,
+                candidateAt = null,
+                now = 60_000L,
+            ),
+        )
+        assertEquals(
+            HomeDepartureTrackingMode.STOPPED,
+            restoredHomeDepartureMode(
+                hasActiveTour = false,
+                automationEnabled = false,
+                candidateAt = null,
+                now = 60_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun lateOutOfOrderPreRollFlushRebuildsTheMeasuredStartContinuously() {
+        val startPoint = SpurCoordinate(52.0, 13.0)
+        val settings = HomeAutoStartSettings(
+            enabled = true,
+            home = startPoint,
+            startPoint = startPoint,
+        )
+        val bridge = signal(52.00004, at = 1_000L)
+        val second = signal(52.00016, at = 2_000L)
+        val third = signal(52.00028, at = 3_000L)
+        val confirmed = signal(52.00040, at = 4_000L)
+        val firstAssembly = automaticStartLocations(
+            startPoint = startPoint,
+            measured = departureLocations(
+                locations = listOf(bridge, confirmed),
+                settings = settings,
+                candidateAt = 500L,
+                throughAt = confirmed.recordedAt,
+            ),
+            exitAt = 500L,
+        )
+
+        val persisted = mergeBufferedHomeLocations(
+            existing = listOf(confirmed, bridge),
+            incoming = listOf(third, second),
+            now = confirmed.recordedAt,
+        )
+        val rebuilt = automaticStartLocations(
+            startPoint = startPoint,
+            measured = departureLocations(
+                locations = persisted,
+                settings = settings,
+                candidateAt = 500L,
+                throughAt = confirmed.recordedAt,
+            ),
+            exitAt = 500L,
+        )
+
+        assertEquals(listOf(500L, 1_000L, 4_000L), firstAssembly.map { it.recordedAt })
+        assertEquals(
+            listOf(500L, 1_000L, 2_000L, 3_000L, 4_000L),
+            rebuilt.map { it.recordedAt },
+        )
+        val rebuiltTrack = rebuilt.mapIndexed { index, point ->
+            TrackPoint(index.toLong(), point.latitude, point.longitude, point.recordedAt)
+        }
+        assertTrue(
+            rebuiltTrack.zipWithNext().all { (from, to) ->
+                distanceMeters(
+                    SpurCoordinate(from.latitude, from.longitude),
+                    SpurCoordinate(to.latitude, to.longitude),
+                ) < 20.0
+            },
+        )
+    }
+
+    @Test
     fun completeSignalSequencePreservesTheMeasuredDepartureAndReturnRoute() {
         val home = SpurCoordinate(52.0, 13.0)
         val settings = HomeAutoStartSettings(
@@ -31,6 +164,7 @@ class HomeTourSignalSimulationTest {
         val departure = departureLocations(
             locations = departureSignals,
             settings = settings,
+            candidateAt = 0L,
             throughAt = departureSignals.last().recordedAt,
         )
         val route = automaticStartLocations(
@@ -102,6 +236,7 @@ class HomeTourSignalSimulationTest {
         val measured = departureLocations(
             locations = listOf(firstRealFix),
             settings = settings,
+            candidateAt = firstRealFix.recordedAt,
             throughAt = firstRealFix.recordedAt,
         )
         val assembled = automaticStartLocations(
@@ -115,6 +250,15 @@ class HomeTourSignalSimulationTest {
 
         assertEquals(listOf(firstRealFix), assembled)
         assertEquals(0.0, trackDistanceMeters(track), 0.001)
+    }
+
+    @Test
+    fun departureDiagnosticsUseOnlyANonCoordinateDistanceBucket() {
+        assertEquals("under_10m", homeDepartureDistanceBucket(9.9))
+        assertEquals("10_24m", homeDepartureDistanceBucket(24.9))
+        assertEquals("25_49m", homeDepartureDistanceBucket(49.9))
+        assertEquals("50_99m", homeDepartureDistanceBucket(99.9))
+        assertEquals("100m_or_more", homeDepartureDistanceBucket(100.0))
     }
 
     @Test
