@@ -136,6 +136,93 @@ class RoadCoverageStoreTest {
     }
 
     @Test
+    fun viewportCacheChangesWhenPanningRevealsANewCell() {
+        val firstCenter = SpurCoordinate(52.5000, 13.3969)
+        val pannedCenter = SpurCoordinate(52.5000, 13.3971)
+        val firstCameraKey = roadNetworkCameraKey(zoom = 16.0, target = firstCenter)
+        val pannedCameraKey = roadNetworkCameraKey(zoom = 16.0, target = pannedCenter)
+        val firstViewportKey = roadNetworkViewportKey(
+            zoom = 16.0,
+            bounds = RoadHistoryBounds(
+                minimumLatitude = 52.495,
+                maximumLatitude = 52.505,
+                minimumLongitude = 13.3919,
+                maximumLongitude = 13.4019,
+            ),
+        )
+        val pannedViewportKey = roadNetworkViewportKey(
+            zoom = 16.0,
+            bounds = RoadHistoryBounds(
+                minimumLatitude = 52.495,
+                maximumLatitude = 52.505,
+                minimumLongitude = 13.3921,
+                maximumLongitude = 13.4021,
+            ),
+        )
+
+        assertEquals(firstCameraKey, pannedCameraKey)
+        assertNotEquals(firstViewportKey, pannedViewportKey)
+    }
+
+    @Test
+    fun globalLayerCacheAppendsWithoutRemovingPreparedCoverage() {
+        val first = listOf(
+            SpurCoordinate(52.50, 13.40),
+            SpurCoordinate(52.50, 13.41),
+        )
+        val second = listOf(
+            SpurCoordinate(52.51, 13.42),
+            SpurCoordinate(52.51, 13.43),
+        )
+        val cache = RoadCoverageLayerCache()
+
+        val prepared = cache.replace("history", listOf(first))
+        val appended = requireNotNull(cache.append("history", listOf(second)))
+
+        assertTrue(appended.revision > prepared.revision)
+        assertTrue(appended.segments.contains(first))
+        assertTrue(appended.segments.contains(second))
+        assertNull(cache.append("different-history", listOf(first)))
+        assertEquals(appended, cache.current())
+    }
+
+    @Test
+    fun preparationCacheIsBoundedAndRoadSignatureIsOrderIndependent() {
+        val viewport = requireNotNull(
+            roadNetworkViewportKey(
+                zoom = 16.0,
+                bounds = RoadHistoryBounds(52.49, 52.51, 13.39, 13.41),
+            ),
+        )
+        fun key(index: Int) = RoadCoveragePreparationKey(
+            cacheKey = "cell-$index",
+            viewportKey = viewport,
+            roadGeometrySignature = index.toLong(),
+        )
+        val cache = RoadCoveragePreparationCache(maximumEntries = 2)
+        cache.add(key(1))
+        cache.add(key(2))
+        cache.add(key(3))
+
+        assertFalse(cache.contains(key(1)))
+        assertTrue(cache.contains(key(2)))
+        assertTrue(cache.contains(key(3)))
+
+        val firstRoad = RenderedRoadSegment(
+            key = "first",
+            points = listOf(SpurCoordinate(52.5, 13.4), SpurCoordinate(52.5, 13.41)),
+        )
+        val secondRoad = RenderedRoadSegment(
+            key = "second",
+            points = listOf(SpurCoordinate(52.51, 13.4), SpurCoordinate(52.51, 13.41)),
+        )
+        assertEquals(
+            roadGeometrySignature(listOf(firstRoad, secondRoad)),
+            roadGeometrySignature(listOf(secondRoad, firstRoad)),
+        )
+    }
+
+    @Test
     fun roadHistoryBoundsCoverEveryLoadedRoadPlusPadding() {
         val bounds = requireNotNull(
             roadHistoryBounds(

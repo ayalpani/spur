@@ -182,23 +182,27 @@ internal fun MapSurface(
     var roadNetworkReadyCameraKey by remember {
         mutableStateOf<RoadNetworkCameraKey?>(null)
     }
+    var roadNetworkReadyViewportKey by remember {
+        mutableStateOf<RoadNetworkViewportKey?>(null)
+    }
     var loadedRoads by remember { mutableStateOf(emptyList<RenderedRoadSegment>()) }
     var loadedRoadsCameraKey by remember { mutableStateOf<RoadNetworkCameraKey?>(null) }
+    var loadedRoadsViewportKey by remember {
+        mutableStateOf<RoadNetworkViewportKey?>(null)
+    }
+    var loadedRoadsSignature by remember { mutableLongStateOf(0L) }
     var loadedRoadsRevision by remember { mutableLongStateOf(0L) }
     var appliedRoadTraversalLoad by remember {
         mutableStateOf<Pair<String, Long>?>(null)
     }
-    var appliedRoadCoverageLoad by remember {
-        mutableStateOf<Pair<String, Long>?>(null)
-    }
     var roadHistoryCameraKey by remember { mutableStateOf<RoadNetworkCameraKey?>(null) }
     val currentRoadHistoryCameraKey by rememberUpdatedState(roadHistoryCameraKey)
-    var renderedRoadCoverageContextKey by remember { mutableStateOf<String?>(null) }
-    var renderedRoadCoverageSegments by remember {
-        mutableStateOf(emptyList<List<SpurCoordinate>>())
+    val roadCoverageLayerCache = remember(roadHistoryStore) { RoadCoverageLayerCache() }
+    val roadCoveragePreparationCache = remember(roadHistoryStore) {
+        RoadCoveragePreparationCache()
     }
-    var reconciledRoadHistoryBaseline by remember(roadHistoryStore) {
-        mutableStateOf<RoadHistoryFingerprint?>(null)
+    var roadCoverageLayerSnapshot by remember(roadHistoryStore) {
+        mutableStateOf(roadCoverageLayerCache.current())
     }
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var previewCameraPosition by remember {
@@ -631,6 +635,7 @@ internal fun MapSurface(
             isCameraMoving = true
             roadNetworkNeedsLoad = true
             roadNetworkReadyCameraKey = null
+            roadNetworkReadyViewportKey = null
             cameraMoveReason = reason
             if (shouldStopFollowing(reason)) {
                 isSelectedTrackPointVisible = false
@@ -772,12 +777,18 @@ internal fun MapSurface(
             roadNetworkNeedsLoad = false
             val readyMap = map ?: return@OnDidBecomeIdleListener
             val cameraKey = readyMap.roadNetworkCameraKey()
+            val viewportKey = readyMap.roadNetworkViewportKey()
             roadNetworkReadyCameraKey = cameraKey
+            roadNetworkReadyViewportKey = viewportKey
             if (cameraKey != null && cameraKey != loadedRoadsCameraKey) {
                 roadTraversalContext = null
             }
-            val shouldLoad = cameraKey != null &&
-                (cameraKey != loadedRoadsCameraKey || roadSourceChanged)
+            val shouldLoad = cameraKey != null && viewportKey != null &&
+                (
+                    cameraKey != loadedRoadsCameraKey ||
+                        viewportKey != loadedRoadsViewportKey ||
+                        roadSourceChanged
+                    )
             roadSourceChanged = false
             if (!shouldLoad) return@OnDidBecomeIdleListener
             roadNetworkLoadRevision++
@@ -1150,35 +1161,44 @@ internal fun MapSurface(
     ) {
         if (mapStyleRevision == 0 || isZoomControlInteracting) return@LaunchedEffect
         val expectedCameraKey = roadNetworkReadyCameraKey ?: return@LaunchedEffect
+        val expectedViewportKey = roadNetworkReadyViewportKey ?: return@LaunchedEffect
         val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
             mapView.getMapAsync { readyMap ->
                 if (continuation.isActive) continuation.resume(readyMap)
             }
         }
-        if (map.roadNetworkCameraKey() != expectedCameraKey) return@LaunchedEffect
-        val target = map.cameraPosition.target ?: return@LaunchedEffect
-        val center = SpurCoordinate(target.latitude, target.longitude)
+        if (
+            map.roadNetworkCameraKey() != expectedCameraKey ||
+            map.roadNetworkViewportKey() != expectedViewportKey
+        ) {
+            return@LaunchedEffect
+        }
         val polylines = map.osmRoadPolylines(
             viewport = mapView.roadQueryViewport(),
-            near = center,
         )
         val workJob = kotlin.coroutines.coroutineContext[Job]
-        val roads = withContext(Dispatchers.Default) {
+        val (roads, signature) = withContext(Dispatchers.Default) {
             if (workJob?.isActive == false) {
-                emptyList()
+                emptyList<RenderedRoadSegment>() to 0L
             } else {
-                intersectionRoadEdges(polylines)
+                intersectionRoadEdges(polylines).let { roads ->
+                    roads to roadGeometrySignature(roads)
+                }
             }
         }
         if (
             workJob?.isActive == false ||
             roadNetworkReadyCameraKey != expectedCameraKey ||
-            map.roadNetworkCameraKey() != expectedCameraKey
+            roadNetworkReadyViewportKey != expectedViewportKey ||
+            map.roadNetworkCameraKey() != expectedCameraKey ||
+            map.roadNetworkViewportKey() != expectedViewportKey
         ) {
             return@LaunchedEffect
         }
         loadedRoads = roads
         loadedRoadsCameraKey = expectedCameraKey
+        loadedRoadsViewportKey = expectedViewportKey
+        loadedRoadsSignature = signature
         loadedRoadsRevision++
     }
 
@@ -1369,72 +1389,27 @@ internal fun MapSurface(
     }
 
     val hasRoadHistory = roadHistoryFingerprint.pointCount >= 2
+    val roadCoverageContextKey = if (isTourActive) {
+        "active:$tourId"
+    } else {
+        roadHistoryFingerprint.cacheIdentity()
+    }
+
     LaunchedEffect(
-        mapStyleRevision,
-        roadHistoryMapRevision,
-        loadedRoadsRevision,
-        roadHistoryFingerprint,
+        roadCoverageContextKey,
         roadTraversalFingerprint,
         activeTourId,
-        isTourActive,
         roadHistoryStore,
+        roadCoverageStore,
     ) {
-        if (mapStyleRevision == 0) return@LaunchedEffect
-        val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
-            mapView.getMapAsync { readyMap ->
-                if (continuation.isActive) continuation.resume(readyMap)
-            }
-        }
         val coverageStore = roadCoverageStore ?: return@LaunchedEffect
         val historyStore = roadHistoryStore ?: return@LaunchedEffect
-        val renderedCoverageContextKey = buildString {
-            append(mapStyleRevision)
-            append(':')
-            if (isTourActive) {
-                append("active:")
-                append(tourId)
-            } else {
-                append(roadHistoryFingerprint.cacheIdentity())
-            }
-        }
-
-        suspend fun renderCoverage(
-            additions: List<List<SpurCoordinate>>,
-            refresh: Boolean = false,
-        ) {
-            val contextChanged =
-                renderedRoadCoverageContextKey != renderedCoverageContextKey
-            if (!refresh && !contextChanged) return
-            val segments = if (contextChanged) {
-                withContext(Dispatchers.IO) { coverageStore.overviewSegments() }
-            } else {
-                withContext(Dispatchers.Default) {
-                    appendOverviewRoadCoverageSegments(
-                        existing = renderedRoadCoverageSegments,
-                        additions = additions,
-                    )
-                }
-            }
-            val features = withContext(Dispatchers.Default) {
-                roadProgressOverviewFeatureCollection(segments)
-            }
-            renderedRoadCoverageSegments = segments
-            renderedRoadCoverageContextKey = renderedCoverageContextKey
-            map.style?.showRoadProgressFeatures(features)
-        }
-
         val roadHistoryBaseline = roadTraversalFingerprint
-        if (
-            roadHistoryBaseline != null &&
-            reconciledRoadHistoryBaseline != roadHistoryBaseline
-        ) {
+        if (roadHistoryBaseline != null) {
             val cachedBaseline = withContext(Dispatchers.IO) {
                 coverageStore.historyBaseline()
             }
-            if (
-                cachedBaseline != null &&
-                cachedBaseline != roadHistoryBaseline
-            ) {
+            if (cachedBaseline != null && cachedBaseline != roadHistoryBaseline) {
                 val addedFingerprint = withContext(Dispatchers.IO) {
                     historyStore.roadHistoryFingerprint(
                         afterPointId = cachedBaseline.maximumPointId,
@@ -1449,28 +1424,74 @@ internal fun MapSurface(
                     )
                 ) {
                     withContext(Dispatchers.IO) { coverageStore.clear() }
-                    renderedRoadCoverageSegments = emptyList()
-                    renderedRoadCoverageContextKey = null
+                    roadCoveragePreparationCache.clear()
                 }
             }
             withContext(Dispatchers.IO) {
                 coverageStore.replaceHistoryBaseline(roadHistoryBaseline)
             }
-            reconciledRoadHistoryBaseline = roadHistoryBaseline
         }
-        renderCoverage(emptyList())
-        val cameraKey = map.roadNetworkCameraKey()
-        val target = map.cameraPosition.target
-        if (!hasRoadHistory || cameraKey == null || target == null) {
-            roadHistoryCameraKey = null
-            if (!hasRoadHistory) {
-                renderedRoadCoverageSegments = emptyList()
-                val features = roadProgressOverviewFeatureCollection(emptyList())
-                renderedRoadCoverageContextKey = renderedCoverageContextKey
-                map.style?.showRoadProgressFeatures(features)
+        val segments = if (hasRoadHistory) {
+            withContext(Dispatchers.IO) { coverageStore.overviewSegments() }
+        } else {
+            emptyList()
+        }
+        roadCoverageLayerSnapshot = withContext(Dispatchers.Default) {
+            roadCoverageLayerCache.replace(
+                contextKey = roadCoverageContextKey,
+                segments = segments,
+            )
+        }
+    }
+
+    LaunchedEffect(mapStyleRevision, roadCoverageLayerSnapshot.revision) {
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
+            mapView.getMapAsync { readyMap ->
+                if (continuation.isActive) continuation.resume(readyMap)
             }
+        }
+        map.style?.showRoadProgressFeatures(roadCoverageLayerSnapshot.features)
+    }
+
+    val roadCoverageLayerIsReady =
+        roadCoverageLayerSnapshot.contextKey == roadCoverageContextKey
+    LaunchedEffect(
+        mapStyleRevision,
+        roadHistoryMapRevision,
+        loadedRoadsRevision,
+        roadHistoryFingerprint,
+        activeTourId,
+        isTourActive,
+        roadHistoryStore,
+        roadCoverageLayerIsReady,
+        roadCoverageContextKey,
+    ) {
+        if (mapStyleRevision == 0 || !roadCoverageLayerIsReady) return@LaunchedEffect
+        val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
+            mapView.getMapAsync { readyMap ->
+                if (continuation.isActive) continuation.resume(readyMap)
+            }
+        }
+        val coverageStore = roadCoverageStore ?: return@LaunchedEffect
+        val historyStore = roadHistoryStore ?: return@LaunchedEffect
+        val cameraKey = map.roadNetworkCameraKey()
+        val viewportKey = map.roadNetworkViewportKey()
+        val target = map.cameraPosition.target
+        if (!hasRoadHistory || cameraKey == null || viewportKey == null || target == null) {
+            roadHistoryCameraKey = null
             return@LaunchedEffect
         }
+
+        suspend fun appendToLayer(segments: List<List<SpurCoordinate>>) {
+            val snapshot = withContext(Dispatchers.Default) {
+                roadCoverageLayerCache.append(roadCoverageContextKey, segments)
+            } ?: return
+            if (snapshot.revision != roadCoverageLayerSnapshot.revision) {
+                roadCoverageLayerSnapshot = snapshot
+            }
+        }
+
         val cacheKey = cameraKey.roadCoverageCacheKey()
         val cached = withContext(Dispatchers.IO) {
             coverageStore.coverage(cacheKey)
@@ -1479,31 +1500,33 @@ internal fun MapSurface(
         val needsCompaction = cacheIsCurrent &&
             cached?.needsCompaction == true &&
             !isTourActive
-        val roadLoad = cacheKey to loadedRoadsRevision
-        val roadLoadIsApplied = appliedRoadCoverageLoad == roadLoad
-        val roadsAreReady = loadedRoadsCameraKey == cameraKey
-        if (cacheIsCurrent && !roadsAreReady) {
-            roadHistoryCameraKey = cameraKey
-            renderCoverage(cached.segments)
-            return@LaunchedEffect
-        }
-        if (cacheIsCurrent && !needsCompaction && roadLoadIsApplied) {
-            roadHistoryCameraKey = cameraKey
-            renderCoverage(cached.segments)
-            return@LaunchedEffect
-        }
+        val roadsAreReady = loadedRoadsCameraKey == cameraKey &&
+            loadedRoadsViewportKey == viewportKey
         if (!roadsAreReady) {
             roadHistoryCameraKey = cameraKey
-            renderCoverage(cached?.segments.orEmpty())
+            return@LaunchedEffect
+        }
+
+        val roadLoad = RoadCoveragePreparationKey(
+            cacheKey = cacheKey,
+            viewportKey = viewportKey,
+            roadGeometrySignature = loadedRoadsSignature,
+        )
+        val roadLoadIsApplied = roadCoveragePreparationCache.contains(roadLoad)
+        if (cacheIsCurrent && !needsCompaction && roadLoadIsApplied) {
+            roadHistoryCameraKey = cameraKey
             return@LaunchedEffect
         }
 
         val historyCanAppend = !cacheIsCurrent &&
-            cached != null &&
-            isTourActive && withContext(Dispatchers.IO) {
-                cached.fingerprint + historyStore.roadHistoryFingerprint(
-                    afterPointId = cached.fingerprint.maximumPointId,
-                ) == roadHistoryFingerprint
+            cached != null && withContext(Dispatchers.IO) {
+                preservesRoadCoverage(
+                    cached = cached.fingerprint,
+                    current = roadHistoryFingerprint,
+                    added = historyStore.roadHistoryFingerprint(
+                        afterPointId = cached.fingerprint.maximumPointId,
+                    ),
+                )
             }
         val refreshesRoadGeometry = shouldRefreshRoadCoverageGeometry(
             hasCachedCoverage = cached != null,
@@ -1515,8 +1538,10 @@ internal fun MapSurface(
         val canAppend = historyCanAppend && !refreshesRoadGeometry
         if (cached != null && !cacheIsCurrent && !historyCanAppend) {
             withContext(Dispatchers.IO) { coverageStore.clear() }
-            renderedRoadCoverageSegments = emptyList()
-            renderedRoadCoverageContextKey = null
+            roadCoveragePreparationCache.clear()
+            roadCoverageLayerSnapshot = withContext(Dispatchers.Default) {
+                roadCoverageLayerCache.replace(roadCoverageContextKey, emptyList())
+            }
         }
         val center = SpurCoordinate(target.latitude, target.longitude)
         val routes = withContext(Dispatchers.IO) {
@@ -1534,23 +1559,24 @@ internal fun MapSurface(
         if (routes.isEmpty()) {
             val coverage = CachedRoadCoverage(
                 fingerprint = roadHistoryFingerprint,
-                segments = cached?.segments.takeIf { canAppend }.orEmpty(),
+                segments = cached?.segments
+                    .takeIf { cacheIsCurrent || historyCanAppend }
+                    .orEmpty(),
                 needsCompaction = cached?.needsCompaction == true && canAppend,
             )
             withContext(Dispatchers.IO) {
                 coverageStore.replace(cacheKey, coverage)
             }
-            appliedRoadCoverageLoad = roadLoad
+            roadCoveragePreparationCache.add(roadLoad)
             roadHistoryCameraKey = cameraKey
-            renderCoverage(coverage.segments, refresh = true)
             return@LaunchedEffect
         }
 
         val roads = loadedRoads
         val workJob = kotlin.coroutines.coroutineContext[Job]
         if (roads.isEmpty()) {
-            appliedRoadCoverageLoad = roadLoad
-            renderCoverage(cached?.segments.orEmpty())
+            roadCoveragePreparationCache.add(roadLoad)
+            roadHistoryCameraKey = cameraKey
             return@LaunchedEffect
         }
         val addedSegments = withContext(Dispatchers.Default) {
@@ -1577,9 +1603,9 @@ internal fun MapSurface(
                 ),
             )
         }
-        appliedRoadCoverageLoad = roadLoad
+        roadCoveragePreparationCache.add(roadLoad)
         roadHistoryCameraKey = cameraKey
-        renderCoverage(segments, refresh = true)
+        appendToLayer(segments)
     }
 
     LaunchedEffect(roadProgressSnapshot.completion?.generation) {
@@ -1752,6 +1778,14 @@ internal data class RoadNetworkCameraKey(
     val longitudeCell: Int,
 )
 
+internal data class RoadNetworkViewportKey(
+    val zoom: Int,
+    val southernCell: Int,
+    val northernCell: Int,
+    val westernCell: Int,
+    val easternCell: Int,
+)
+
 private data class RoadTraversalContext(
     val key: String,
     val completedRoads: Map<String, CompletedRoad>,
@@ -1775,26 +1809,56 @@ private fun MapLibreMap.roadNetworkCameraKey(): RoadNetworkCameraKey? {
     )
 }
 
+private fun MapLibreMap.roadNetworkViewportKey(): RoadNetworkViewportKey? {
+    val bounds = projection.visibleRegion.latLngBounds
+    return roadNetworkViewportKey(
+        zoom = cameraPosition.zoom,
+        bounds = RoadHistoryBounds(
+            minimumLatitude = bounds.latitudeSouth,
+            maximumLatitude = bounds.latitudeNorth,
+            minimumLongitude = bounds.longitudeWest,
+            maximumLongitude = bounds.longitudeEast,
+        ),
+    )
+}
+
 internal fun roadNetworkCameraKey(
     zoom: Double,
     target: SpurCoordinate,
 ): RoadNetworkCameraKey? {
     if (!shouldShowRoadHistory(zoom)) return null
     val zoomLevel = floor(zoom).toInt()
-    val cellDegrees = when {
-        zoomLevel >= 20 -> 0.00025
-        zoomLevel >= 19 -> 0.0005
-        zoomLevel >= 18 -> 0.001
-        zoomLevel >= 16 -> 0.002
-        zoomLevel >= 15 -> 0.005
-        zoomLevel >= 14 -> 0.005
-        else -> 0.01
-    }
+    val cellDegrees = roadNetworkCellDegrees(zoomLevel)
     return RoadNetworkCameraKey(
         zoom = zoomLevel,
         latitudeCell = floor(target.latitude / cellDegrees).toInt(),
         longitudeCell = floor(target.longitude / cellDegrees).toInt(),
     )
+}
+
+internal fun roadNetworkViewportKey(
+    zoom: Double,
+    bounds: RoadHistoryBounds,
+): RoadNetworkViewportKey? {
+    if (!shouldShowRoadHistory(zoom)) return null
+    val zoomLevel = floor(zoom).toInt()
+    val cellDegrees = roadNetworkCellDegrees(zoomLevel)
+    return RoadNetworkViewportKey(
+        zoom = zoomLevel,
+        southernCell = floor(bounds.minimumLatitude / cellDegrees).toInt(),
+        northernCell = floor(bounds.maximumLatitude / cellDegrees).toInt(),
+        westernCell = floor(bounds.minimumLongitude / cellDegrees).toInt(),
+        easternCell = floor(bounds.maximumLongitude / cellDegrees).toInt(),
+    )
+}
+
+private fun roadNetworkCellDegrees(zoomLevel: Int): Double = when {
+    zoomLevel >= 20 -> 0.00025
+    zoomLevel >= 19 -> 0.0005
+    zoomLevel >= 18 -> 0.001
+    zoomLevel >= 16 -> 0.002
+    zoomLevel >= 14 -> 0.005
+    else -> 0.01
 }
 
 private fun MapView.roadQueryViewport(): RectF = RectF(
