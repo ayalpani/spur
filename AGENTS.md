@@ -87,6 +87,8 @@ confirming that the command preserves app data.
   Home. It inherits the location movement rotation, including the Home-Zone
   stop rule. Keep the lower-right location/follow action behavior but render a
   static Lucide `PersonStanding` icon there; never rotate both controls.
+- In the active-tour header, precede "Unterwegs" with a static Lucide connected-
+  nodes icon. Do not use or animate the Asterisk in that header.
 - Keep "In G-Maps öffnen" below the main menu's single divider, on the same
   action level as operations on the displayed tour such as "Tour löschen".
   Transfer the current map center, the nearest supported integer zoom derived

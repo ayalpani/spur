@@ -42,7 +42,8 @@ internal fun MenuIcon(
 )
 
 @Composable
-internal fun ShareIcon(
+internal fun ConnectedNodesIcon(
+    color: Color = LocalContentColor.current,
     modifier: Modifier = Modifier.size(MapControlIconSize),
 ) = LucideIcon(
     paths = listOf(
@@ -52,9 +53,15 @@ internal fun ShareIcon(
         "M8.59 13.51 15.42 17.49",
         "M15.41 6.51 8.59 10.49",
     ),
+    color = color,
     modifier = modifier,
     strokeWidth = LucideRegularStrokeWidth,
 )
+
+@Composable
+internal fun ShareIcon(
+    modifier: Modifier = Modifier.size(MapControlIconSize),
+) = ConnectedNodesIcon(modifier = modifier)
 
 @Composable
 internal fun ExternalLinkIcon() = LucideIcon(

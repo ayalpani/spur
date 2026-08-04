@@ -99,11 +99,9 @@ internal fun TourModeHeader(
                         modifier = Modifier.size(60.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        AsteriskIcon(
-                            rotation = 0f,
+                        ConnectedNodesIcon(
                             color = Ink,
-                            contentDescription = "Spur",
-                            modifier = Modifier.size(32.dp),
+                            modifier = Modifier.size(28.dp),
                         )
                     }
                 } else {
