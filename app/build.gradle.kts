@@ -45,7 +45,7 @@ dependencies {
     implementation("androidx.emoji2:emoji2-emojipicker:1.6.0")
     implementation("androidx.navigation:navigation-compose:2.9.8")
     implementation("androidx.recyclerview:recyclerview:1.2.1")
-    implementation("com.google.guava:guava:31.0.1-android")
+    implementation("com.google.guava:guava:33.4.8-android")
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("me.saket.telephoto:zoomable-image-coil3:0.19.0")
     implementation("org.maplibre.gl:android-sdk:11.8.0")
