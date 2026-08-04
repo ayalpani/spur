@@ -163,21 +163,31 @@ class HomeBuildingSelectionTest {
     }
 
     @Test
-    fun automaticTourBeginsAtChosenStartPointBeforeFirstOutsideFix() {
+    fun automaticTourBeginsAtChosenStartPointWhenAMeasuredBridgeExists() {
         val startPoint = SpurCoordinate(latitude = 52.0002, longitude = 13.0003)
-        val firstOutsideFix = SpurCoordinate(latitude = 52.002, longitude = 13.0)
-        val settings = HomeAutoStartSettings(
-            enabled = true,
-            home = SpurCoordinate(latitude = 52.0, longitude = 13.0),
+        val measuredBridge = BufferedHomeLocation(
+            latitude = 52.00025,
+            longitude = 13.0003,
+            recordedAt = 2_000L,
+            accuracyMeters = 8f,
+        )
+        val firstOutsideFix = BufferedHomeLocation(52.002, 13.0, 3_000L, 8f)
+
+        val points = automaticStartLocations(
             startPoint = startPoint,
+            measured = listOf(measuredBridge, firstOutsideFix),
+            exitAt = 1_000L,
         )
 
-        val points = listOf(
-            requireNotNull(automaticTourHomePoint(settings)),
-            normalizedHomeCoordinate(settings, firstOutsideFix),
+        assertEquals(
+            listOf(
+                startPoint,
+                SpurCoordinate(measuredBridge.latitude, measuredBridge.longitude),
+                SpurCoordinate(firstOutsideFix.latitude, firstOutsideFix.longitude),
+            ),
+            points.map { SpurCoordinate(it.latitude, it.longitude) },
         )
-
-        assertEquals(listOf(startPoint, firstOutsideFix), points)
+        assertTrue(points[0].recordedAt < points[1].recordedAt)
     }
 
     @Test
@@ -209,7 +219,26 @@ class HomeBuildingSelectionTest {
 
         val departure = departureLocations(locations, settings, throughAt = 5_000L)
 
-        assertEquals(listOf(3_000L, 4_000L, 5_000L), departure.map { it.recordedAt })
+        assertEquals(listOf(2_000L, 3_000L, 4_000L, 5_000L), departure.map { it.recordedAt })
+    }
+
+    @Test
+    fun departureCutoffUsesTheConfiguredStartPointInsteadOfTheBuildingCenter() {
+        val settings = HomeAutoStartSettings(
+            enabled = true,
+            home = SpurCoordinate(52.0, 13.0),
+            startPoint = SpurCoordinate(52.0, 13.000358),
+        )
+        val nearBuildingButNotStart = BufferedHomeLocation(52.0, 12.9998, 1_000L, 8f)
+        val laterDeparture = BufferedHomeLocation(52.0005315, 12.999366, 2_000L, 8f)
+
+        val departure = departureLocations(
+            locations = listOf(nearBuildingButNotStart, laterDeparture),
+            settings = settings,
+            throughAt = laterDeparture.recordedAt,
+        )
+
+        assertEquals(listOf(nearBuildingButNotStart, laterDeparture), departure)
     }
 
     @Test

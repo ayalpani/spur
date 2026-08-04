@@ -687,35 +687,9 @@ class TourStore(context: Context) :
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val existing = points(db, tourId)
-            val earliestAt = locations.firstOrNull()?.recordedAt ?: exitAt
-            val storedStart = existing.firstOrNull {
-                coordinateDistanceMeters(
-                    it.latitude,
-                    it.longitude,
-                    startPoint.latitude,
-                    startPoint.longitude,
-                ) < 0.5
-            }
-            if (storedStart == null) {
-                insertRawLocation(
-                    db = db,
-                    tourId = tourId,
-                    latitude = startPoint.latitude,
-                    longitude = startPoint.longitude,
-                    recordedAt = earliestAt,
-                    accuracyMeters = 3f,
-                )
-            } else if (earliestAt < storedStart.recordedAt) {
-                db.update(
-                    "track_points",
-                    ContentValues().apply { put("recorded_at", earliestAt) },
-                    "tour_id = ? AND id = ?",
-                    arrayOf(tourId.toString(), storedStart.id.toString()),
-                )
-            }
+            val prepared = automaticStartLocations(startPoint, locations, exitAt)
             val known = points(db, tourId).toMutableList()
-            locations.forEach { location ->
+            prepared.forEach { location ->
                 val duplicate = known.any {
                     kotlin.math.abs(it.recordedAt - location.recordedAt) <= 1_000L &&
                         coordinateDistanceMeters(

@@ -170,7 +170,10 @@ confirming that the command preserves app data.
   movement begins. Preserve the batched balanced-power pre-roll and merge every
   measured departure point before the live tour so the route never starts with
   one synthetic line across the Home Zone. Activity recognition is optional;
-  when its runtime permission is missing, retain the geofence fallback.
+  when its runtime permission is missing, retain the geofence fallback. Anchor
+  departure trimming at the configured start point. Add that canonical point
+  to the track only when a measured point bridges it within 35 m; otherwise
+  begin at the first real fix instead of inventing an edge or distance.
 - During an automatic return, preserve every measured tour waypoint inside the
   100 m Home Zone. Only append the canonical Home point after the independent
   6-of-10 arrival confirmation inside the 25 m arrival radius; never snap live

@@ -63,6 +63,7 @@ internal const val HomeConfirmationMinimumSpanMillis = 20_000L
 internal const val DepartureConfirmationTimeoutMillis = 2 * 60_000L
 private const val DepartureMaximumAccuracyMeters = 50f
 private const val ArrivalMaximumAccuracyMeters = 35f
+private const val HomeDepartureBridgeRadiusMeters = 35.0
 private val homeDepartureActivityTypes = listOf(
     DetectedActivity.WALKING,
     DetectedActivity.RUNNING,
@@ -396,22 +397,22 @@ internal fun departureLocations(
     settings: HomeAutoStartSettings,
     throughAt: Long,
 ): List<BufferedHomeLocation> {
-    val home = settings.home ?: return emptyList()
+    val startPoint = automaticTourHomePoint(settings) ?: return emptyList()
     val eligible = locations
         .asSequence()
         .filter { it.recordedAt in (throughAt - PreRollWindowMillis)..throughAt }
         .filter { it.accuracyMeters <= 50f }
         .sortedBy(BufferedHomeLocation::recordedAt)
         .toList()
-    val lastNearHome = eligible.indexOfLast {
+    val lastNearStart = eligible.indexOfLast {
         coordinateDistanceMeters(
-            home.latitude,
-            home.longitude,
+            startPoint.latitude,
+            startPoint.longitude,
             it.latitude,
             it.longitude,
-        ) <= 35.0
+        ) <= HomeDepartureBridgeRadiusMeters
     }
-    val departure = eligible.drop((lastNearHome + 1).coerceAtLeast(0))
+    val departure = eligible.drop(lastNearStart.coerceAtLeast(0))
     return departure.fold(emptyList()) { accepted, point ->
         val previous = accepted.lastOrNull()
         if (
@@ -428,6 +429,28 @@ internal fun departureLocations(
             accepted
         }
     }
+}
+
+internal fun automaticStartLocations(
+    startPoint: SpurCoordinate,
+    measured: List<BufferedHomeLocation>,
+    exitAt: Long,
+): List<BufferedHomeLocation> {
+    val firstMeasured = measured.firstOrNull() ?: return emptyList()
+    val hasMeasuredBridge = coordinateDistanceMeters(
+        startPoint.latitude,
+        startPoint.longitude,
+        firstMeasured.latitude,
+        firstMeasured.longitude,
+    ) <= HomeDepartureBridgeRadiusMeters
+    if (!hasMeasuredBridge) return measured
+    val syntheticStart = BufferedHomeLocation(
+        latitude = startPoint.latitude,
+        longitude = startPoint.longitude,
+        recordedAt = minOf(exitAt, firstMeasured.recordedAt - 1L),
+        accuracyMeters = 3f,
+    )
+    return listOf(syntheticStart) + measured
 }
 
 private fun confirmationWindow(

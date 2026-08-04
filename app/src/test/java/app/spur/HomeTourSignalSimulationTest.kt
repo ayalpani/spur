@@ -28,12 +28,16 @@ class HomeTourSignalSimulationTest {
         )
 
         assertTrue(confirmedHomeDeparture(departureSignals, settings, candidateAt = 0L))
-        val route = mutableListOf(home)
-        route += departureLocations(
+        val departure = departureLocations(
             locations = departureSignals,
             settings = settings,
             throughAt = departureSignals.last().recordedAt,
-        ).map { it.coordinate() }
+        )
+        val route = automaticStartLocations(
+            startPoint = home,
+            measured = departure,
+            exitAt = 0L,
+        ).mapTo(mutableListOf()) { it.coordinate() }
 
         val returnSignals = listOf(
             signal(52.0014, at = 360_000L),
@@ -70,11 +74,47 @@ class HomeTourSignalSimulationTest {
 
         val expected = buildList {
             add(home)
-            addAll(departureSignals.drop(1).map { it.coordinate() })
+            addAll(departureSignals.map { it.coordinate() })
             addAll(returnSignals.map { it.coordinate() })
             add(home)
         }
         assertEquals(expected, route)
+    }
+
+    @Test
+    fun missingMeasuredStartBridgeDoesNotCreateAZeroTimeNinetyMeterEdge() {
+        val home = SpurCoordinate(52.0, 13.0)
+        val startPoint = SpurCoordinate(52.0, 13.000358)
+        val settings = HomeAutoStartSettings(
+            enabled = true,
+            home = home,
+            startPoint = startPoint,
+        )
+        val firstRealFix = signal(
+            latitude = 52.0005315,
+            longitude = 12.999366,
+            at = 1_000_000L,
+            accuracyMeters = 20.6f,
+        )
+        assertTrue(distanceMeters(home, startPoint) in 23.5..25.5)
+        assertTrue(distanceMeters(startPoint, firstRealFix.coordinate()) in 89.0..91.0)
+
+        val measured = departureLocations(
+            locations = listOf(firstRealFix),
+            settings = settings,
+            throughAt = firstRealFix.recordedAt,
+        )
+        val assembled = automaticStartLocations(
+            startPoint = startPoint,
+            measured = measured,
+            exitAt = firstRealFix.recordedAt,
+        )
+        val track = assembled.mapIndexed { index, point ->
+            TrackPoint(index.toLong(), point.latitude, point.longitude, point.recordedAt)
+        }
+
+        assertEquals(listOf(firstRealFix), assembled)
+        assertEquals(0.0, trackDistanceMeters(track), 0.001)
     }
 
     @Test
@@ -98,12 +138,25 @@ class HomeTourSignalSimulationTest {
         assertFalse(result.finished)
     }
 
-    private fun signal(latitude: Double, at: Long) = BufferedHomeLocation(
+    private fun signal(
+        latitude: Double,
+        longitude: Double = 13.0,
+        at: Long,
+        accuracyMeters: Float = 5f,
+    ) = BufferedHomeLocation(
         latitude = latitude,
-        longitude = 13.0,
+        longitude = longitude,
         recordedAt = at,
-        accuracyMeters = 5f,
+        accuracyMeters = accuracyMeters,
     )
 
     private fun BufferedHomeLocation.coordinate() = SpurCoordinate(latitude, longitude)
+
+    private fun distanceMeters(from: SpurCoordinate, to: SpurCoordinate) =
+        coordinateDistanceMeters(
+            fromLatitude = from.latitude,
+            fromLongitude = from.longitude,
+            toLatitude = to.latitude,
+            toLongitude = to.longitude,
+        )
 }
