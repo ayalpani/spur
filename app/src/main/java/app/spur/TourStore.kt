@@ -26,6 +26,31 @@ internal data class TourNotificationSummary(
     val distanceMeters: Double,
 )
 
+internal data class TourRevision(
+    val id: Long,
+    val startedAt: Long,
+    val endedAt: Long?,
+    val distanceMeters: Double,
+    val pointCount: Int,
+    val title: String?,
+    val maximumPointId: Long?,
+    val maximumPointRecordedAt: Long?,
+) {
+    fun asTour() = Tour(
+        id = id,
+        startedAt = startedAt,
+        endedAt = endedAt,
+        distanceMeters = distanceMeters,
+        pointCount = pointCount,
+        title = title,
+    )
+}
+
+internal fun shouldReloadTour(
+    previous: TourRevision?,
+    current: TourRevision?,
+): Boolean = previous != current
+
 internal const val TourTitleMaximumCharacters = 80
 
 internal fun normalizeTourTitle(title: String): String? =
@@ -817,6 +842,64 @@ class TourStore(context: Context) :
     fun activeTour(): Tour? =
         queryTours(where = "t.ended_at IS NULL", tail = "ORDER BY t.started_at DESC LIMIT 1")
             .firstOrNull()
+
+    @Synchronized
+    internal fun activeTourId(): Long? =
+        readableDatabase.rawQuery(
+            """
+            SELECT id
+            FROM tours
+            WHERE ended_at IS NULL
+            ORDER BY started_at DESC
+            LIMIT 1
+            """.trimIndent(),
+            emptyArray(),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
+
+    @Synchronized
+    internal fun tourRevision(id: Long): TourRevision? =
+        readableDatabase.rawQuery(
+            """
+            SELECT
+                t.id,
+                t.started_at,
+                t.ended_at,
+                t.distance_meters,
+                COUNT(p.id),
+                t.activity,
+                MAX(p.id),
+                (
+                    SELECT latest.recorded_at
+                    FROM track_points latest
+                    WHERE latest.tour_id = t.id
+                    ORDER BY latest.id DESC
+                    LIMIT 1
+                )
+            FROM tours t
+            LEFT JOIN track_points p ON p.tour_id = t.id
+            WHERE t.id = ?
+            GROUP BY t.id
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(id.toString()),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                null
+            } else {
+                TourRevision(
+                    id = cursor.getLong(0),
+                    startedAt = cursor.getLong(1),
+                    endedAt = if (cursor.isNull(2)) null else cursor.getLong(2),
+                    distanceMeters = cursor.getDouble(3),
+                    pointCount = cursor.getInt(4),
+                    title = cursor.getString(5),
+                    maximumPointId = if (cursor.isNull(6)) null else cursor.getLong(6),
+                    maximumPointRecordedAt = if (cursor.isNull(7)) null else cursor.getLong(7),
+                )
+            }
+        }
 
     @Synchronized
     internal fun activeTourNotificationSummary(): TourNotificationSummary? =

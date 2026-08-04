@@ -26,6 +26,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,12 +41,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun TourModeHeader(
     tour: Tour?,
     active: Boolean,
-    now: Long,
     visible: Boolean,
     titleEditor: TextFieldValue?,
     titleSaving: Boolean,
@@ -57,6 +58,16 @@ internal fun TourModeHeader(
     modifier: Modifier = Modifier,
 ) {
     val displayedTour = tour ?: return
+    val currentTime = remember(displayedTour.id) {
+        mutableLongStateOf(System.currentTimeMillis())
+    }
+    LaunchedEffect(active, displayedTour.id) {
+        currentTime.longValue = System.currentTimeMillis()
+        while (active) {
+            delay(1_000L)
+            currentTime.longValue = System.currentTimeMillis()
+        }
+    }
     val editingTitle = !active && titleEditor != null
     val focusRequester = remember(displayedTour.id) { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -176,9 +187,9 @@ internal fun TourModeHeader(
                     )
                     Text(
                         text = if (active) {
-                            formatDuration(now - displayedTour.startedAt)
+                            formatDuration(currentTime.longValue - displayedTour.startedAt)
                         } else {
-                            historySectionLabel(displayedTour.startedAt, now)
+                            historySectionLabel(displayedTour.startedAt, currentTime.longValue)
                         },
                         color = Ink.copy(alpha = 0.62f),
                         style = if (active) {

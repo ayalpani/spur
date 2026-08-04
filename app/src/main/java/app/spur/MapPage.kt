@@ -85,7 +85,6 @@ internal fun MapPage(
     roadHistoryStore: TourStore? = null,
     roadHistoryFingerprint: RoadHistoryFingerprint = RoadHistoryFingerprint(),
     roadTraversalFingerprint: RoadHistoryFingerprint? = null,
-    now: Long,
     onStartTour: () -> Unit,
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
@@ -599,7 +598,6 @@ internal fun MapPage(
             TourModeHeader(
                 tour = tour,
                 active = isDisplayedActiveTour,
-                now = now,
                 visible = isTourModeHeaderVisible,
                 titleEditor = tourTitleEditor,
                 titleSaving = isSavingTourTitle,
@@ -830,7 +828,8 @@ internal fun MapPage(
                         TourSummaryPlayer(
                             tourId = tour.id,
                             distanceMeters = tour.distanceMeters,
-                            elapsedMillis = (tour.endedAt ?: now) - tour.startedAt,
+                            elapsedMillis =
+                                (tour.endedAt ?: System.currentTimeMillis()) - tour.startedAt,
                             modifier = modifier.height(MapControlSize),
                         )
                     } else {
