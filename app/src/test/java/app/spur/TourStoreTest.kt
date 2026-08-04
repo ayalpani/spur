@@ -73,6 +73,48 @@ class TourStoreTest {
     }
 
     @Test
+    fun stationaryCollapseDeltaMatchesFullDistanceRecalculation() {
+        val previous = point(1, 52.51980, 0L)
+        val replaced = listOf(
+            point(2, 52.52000, 1_000L),
+            point(3, 52.52020, 151_000L),
+            point(4, 52.52010, 301_000L),
+        )
+        val replacement = requireNotNull(stationaryCluster(replaced))
+        val oldDistance = trackDistanceMeters(listOf(previous) + replaced)
+        val collapsedPoint = TrackPoint(
+            id = replaced.last().id,
+            latitude = replacement.latitude,
+            longitude = replacement.longitude,
+            recordedAt = replacement.recordedAt,
+        )
+        val expectedDistance = trackDistanceMeters(listOf(previous, collapsedPoint))
+
+        assertEquals(
+            expectedDistance,
+            oldDistance + stationaryCollapseDistanceDelta(previous, replaced, replacement),
+            0.001,
+        )
+    }
+
+    @Test
+    fun stationaryCollapseDeltaMatchesFullRecalculationAtTourStart() {
+        val replaced = listOf(
+            point(1, 52.52000, 0L),
+            point(2, 52.52020, 150_000L),
+            point(3, 52.52010, 300_000L),
+        )
+        val replacement = requireNotNull(stationaryCluster(replaced))
+
+        assertEquals(
+            0.0,
+            trackDistanceMeters(replaced) +
+                stationaryCollapseDistanceDelta(null, replaced, replacement),
+            0.001,
+        )
+    }
+
+    @Test
     fun automaticHomeEndpointAlwaysFollowsTheLastRecordedWaypoint() {
         assertEquals(10_000L, automaticTourEndRecordedAt(null, returnedAt = 10_000L))
         assertEquals(10_000L, automaticTourEndRecordedAt(9_000L, returnedAt = 10_000L))

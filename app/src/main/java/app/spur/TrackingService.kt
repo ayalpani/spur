@@ -17,6 +17,7 @@ import android.hardware.TriggerEventListener
 import android.location.Location
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.ActivityCompat
@@ -47,6 +48,12 @@ class TrackingService : Service() {
     private var stepDetectorArmed = false
     private var automaticTourSignalProcessor: AutomaticTourSignalProcessor<Location>? = null
     private val handler = Handler(Looper.getMainLooper())
+    private lateinit var trackingThread: HandlerThread
+    private lateinit var trackingHandler: Handler
+    @Volatile
+    private var trackingSessionId = 0L
+    @Volatile
+    private var activeTrackingSession: ActiveTrackingSession? = null
     private val departureTimeout = Runnable {
         if (mode == HomeDepartureTrackingMode.CONFIRMING) finishFalseDepartureCandidate()
     }
@@ -65,12 +72,24 @@ class TrackingService : Service() {
     }
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
-            result.locations.forEach(::recordLocation)
+            if (mode == HomeDepartureTrackingMode.CONFIRMING) {
+                result.locations
+                    .map(::Location)
+                    .map(Location::toBufferedHomeLocation)
+                    .forEach(::recordDepartureCandidate)
+                return
+            }
+            val session = activeTrackingSession ?: return
+            result.locations.map(::Location).forEach { location ->
+                trackingHandler.post { persistLocation(session, location) }
+            }
         }
     }
 
     override fun onCreate() {
         super.onCreate()
+        trackingThread = HandlerThread("spur-tracking").also(HandlerThread::start)
+        trackingHandler = Handler(trackingThread.looper)
         store = TourStore(this)
         locationClient = LocationServices.getFusedLocationProviderClient(this)
         sensorManager = getSystemService(SensorManager::class.java)
@@ -100,7 +119,7 @@ class TrackingService : Service() {
             }
 
             ACTION_DISARM_HOME_DEPARTURE -> {
-                store.activeTour()?.let {
+                store.activeTourNotificationSummary()?.let {
                     beginActiveTour(it)
                     return START_STICKY
                 }
@@ -109,7 +128,7 @@ class TrackingService : Service() {
             }
 
             ACTION_CANCEL_HOME_DEPARTURE -> {
-                store.activeTour()?.let {
+                store.activeTourNotificationSummary()?.let {
                     beginActiveTour(it)
                     return START_STICKY
                 }
@@ -134,8 +153,10 @@ class TrackingService : Service() {
         }
 
         val requestedTourId = intent?.getLongExtra(EXTRA_TOUR_ID, -1L)?.takeIf { it > 0 }
-            ?: store.activeTour()?.id
-        val activeTour = requestedTourId?.let(store::tour)?.takeIf { it.endedAt == null }
+            ?: store.activeTourNotificationSummary()?.id
+        val activeTour = requestedTourId
+            ?.let(store::tourNotificationSummary)
+            ?.takeIf { store.activeTourNotificationSummary()?.id == it.id }
         if (activeTour != null) {
             beginActiveTour(activeTour)
             return START_STICKY
@@ -144,7 +165,7 @@ class TrackingService : Service() {
     }
 
     private fun restoreTracking(): Int {
-        val activeTour = store.activeTour()
+        val activeTour = store.activeTourNotificationSummary()
         val settings = loadHomeAutoStartSettings()
         val restoredCandidateAt = departureCandidateAt()
         return when (
@@ -177,7 +198,7 @@ class TrackingService : Service() {
         }
     }
 
-    private fun beginActiveTour(tour: Tour) {
+    private fun beginActiveTour(tour: TourNotificationSummary) {
         handler.removeCallbacks(departureTimeout)
         clearDepartureCandidate()
         disarmMotionSensors()
@@ -201,6 +222,13 @@ class TrackingService : Service() {
                 },
             )
         }
+        val session = ActiveTrackingSession(
+            id = nextTrackingSessionId(),
+            tourId = tour.id,
+            notificationText = notificationText(tour),
+            automaticProcessor = automaticTourSignalProcessor,
+        )
+        activeTrackingSession = session
         requestHighAccuracyUpdates()
     }
 
@@ -217,6 +245,7 @@ class TrackingService : Service() {
         departureSamples.clear()
         tourId = null
         automaticTourSignalProcessor = null
+        invalidateActiveTrackingSession()
         locationClient.removeLocationUpdates(locationCallback)
         if (!enterForeground(armedNotification(), "fgs_armed")) return
         armMotionSensors()
@@ -264,7 +293,7 @@ class TrackingService : Service() {
     }
 
     private fun beginDepartureConfirmation(requestedAt: Long) {
-        store.activeTour()?.let {
+        store.activeTourNotificationSummary()?.let {
             beginActiveTour(it)
             return
         }
@@ -281,6 +310,7 @@ class TrackingService : Service() {
         mode = HomeDepartureTrackingMode.CONFIRMING
         candidateAt = requestedAt
         departureSamples.clear()
+        invalidateActiveTrackingSession()
         if (!enterForeground(departureNotification(), "fgs_confirmation")) return
         orderedConfirmationSamples(
             existing = emptyList(),
@@ -336,26 +366,37 @@ class TrackingService : Service() {
         }
     }
 
-    private fun recordLocation(location: Location) {
+    private fun persistLocation(
+        session: ActiveTrackingSession,
+        location: Location,
+    ) {
+        if (!isCurrent(session)) return
         if (applicationContext.loadManualLocation() != null) return
         val sample = location.toBufferedHomeLocation()
-        if (mode == HomeDepartureTrackingMode.CONFIRMING) {
-            recordDepartureCandidate(sample)
-            return
-        }
-        val id = tourId ?: return
-        val automaticResult = automaticTourSignalProcessor?.record(
+        val automaticResult = session.automaticProcessor?.record(
             sample = sample,
             measured = location,
         )
-        val appended = automaticResult?.appended ?: store.appendLocation(id, location)
+        val appended = automaticResult?.appended ?: store.appendLocation(session.tourId, location)
         if (appended) {
-            store.tour(id)?.let {
-                getSystemService(NotificationManager::class.java)
-                    .notify(NOTIFICATION_ID, notification(it))
+            store.tourNotificationSummary(session.tourId)?.let { summary ->
+                val text = notificationText(summary)
+                if (text != session.notificationText) {
+                    session.notificationText = text
+                    handler.post {
+                        if (isCurrent(session)) {
+                            getSystemService(NotificationManager::class.java)
+                                .notify(NOTIFICATION_ID, notification(summary))
+                        }
+                    }
+                }
             }
         }
-        if (automaticResult?.finished == true) finishAutomaticTourAtHome(id)
+        if (automaticResult?.finished == true) {
+            handler.post {
+                if (isCurrent(session)) finishAutomaticTourAtHome(session.tourId)
+            }
+        }
     }
 
     private fun recordDepartureCandidate(sample: BufferedHomeLocation) {
@@ -368,7 +409,7 @@ class TrackingService : Service() {
         val settings = loadHomeAutoStartSettings()
         if (!confirmedHomeDeparture(departureSamples.toList(), settings, startedAt)) return
 
-        store.activeTour()?.let {
+        store.activeTourNotificationSummary()?.let {
             beginActiveTour(it)
             return
         }
@@ -386,7 +427,7 @@ class TrackingService : Service() {
                 departureThroughAt = sample.recordedAt,
             )
             reconcileAutomaticDeparture(store, id)
-            store.tour(id) ?: error("Created tour is missing")
+            store.tourNotificationSummary(id) ?: error("Created tour is missing")
         }.onSuccess { tour ->
             beginActiveTour(tour)
             applicationContext.vibrateTourStarted()
@@ -423,9 +464,12 @@ class TrackingService : Service() {
     }
 
     override fun onDestroy() {
+        invalidateActiveTrackingSession()
         handler.removeCallbacks(departureTimeout)
         disarmMotionSensors()
         locationClient.removeLocationUpdates(locationCallback)
+        trackingHandler.removeCallbacksAndMessages(null)
+        trackingThread.quitSafely()
         super.onDestroy()
     }
 
@@ -433,6 +477,7 @@ class TrackingService : Service() {
     private fun stopTracking() {
         mode = HomeDepartureTrackingMode.STOPPED
         automaticTourSignalProcessor = null
+        invalidateActiveTrackingSession()
         handler.removeCallbacks(departureTimeout)
         disarmMotionSensors()
         locationClient.removeLocationUpdates(locationCallback)
@@ -462,13 +507,27 @@ class TrackingService : Service() {
         stopTracking()
     }.getOrDefault(false)
 
-    private fun notification(tour: Tour) = serviceNotification(
+    private fun notification(tour: TourNotificationSummary) = serviceNotification(
         title = "Spur zeichnet deine Tour auf",
-        text = "${formatKilometers(tour.distanceMeters)} · seit ${
+        text = notificationText(tour),
+    )
+
+    private fun notificationText(tour: TourNotificationSummary) =
+        "${formatKilometers(tour.distanceMeters)} · seit ${
             DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
                 .format(Date(tour.startedAt))
-        }",
-    )
+        }"
+
+    @Synchronized
+    private fun nextTrackingSessionId(): Long = ++trackingSessionId
+
+    private fun invalidateActiveTrackingSession() {
+        nextTrackingSessionId()
+        activeTrackingSession = null
+    }
+
+    private fun isCurrent(session: ActiveTrackingSession): Boolean =
+        activeTrackingSession === session && trackingSessionId == session.id
 
     private fun departureNotification() =
         serviceNotification("Spur prüft deinen Tourstart", "Standort wird kurz bestätigt")
@@ -498,3 +557,10 @@ class TrackingService : Service() {
         private const val NOTIFICATION_ID = 41
     }
 }
+
+private data class ActiveTrackingSession(
+    val id: Long,
+    val tourId: Long,
+    var notificationText: String,
+    val automaticProcessor: AutomaticTourSignalProcessor<Location>?,
+)

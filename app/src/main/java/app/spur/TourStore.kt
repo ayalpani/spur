@@ -20,6 +20,12 @@ data class Tour(
     val title: String? = null,
 )
 
+internal data class TourNotificationSummary(
+    val id: Long,
+    val startedAt: Long,
+    val distanceMeters: Double,
+)
+
 internal const val TourTitleMaximumCharacters = 80
 
 internal fun normalizeTourTitle(title: String): String? =
@@ -131,6 +137,24 @@ internal fun trackDistanceMeters(points: List<TrackPoint>): Double =
             toLongitude = to.longitude,
         )
     }
+
+internal fun stationaryCollapseDistanceDelta(
+    previous: TrackPoint?,
+    replaced: List<TrackPoint>,
+    replacement: StationaryCluster,
+): Double {
+    if (replaced.isEmpty()) return 0.0
+    val oldDistance = trackDistanceMeters(listOfNotNull(previous) + replaced)
+    val newDistance = previous?.let {
+        coordinateDistanceMeters(
+            fromLatitude = it.latitude,
+            fromLongitude = it.longitude,
+            toLatitude = replacement.latitude,
+            toLongitude = replacement.longitude,
+        )
+    } ?: 0.0
+    return newDistance - oldDistance
+}
 
 internal fun automaticTourEndRecordedAt(
     lastRecordedAt: Long?,
@@ -532,6 +556,12 @@ class TourStore(context: Context) :
         val cluster = stationaryCluster(recent) ?: return
         val representative = recent.last()
         val removedIds = recent.dropLast(1).map(TrackPoint::id)
+        val previous = pointBefore(db, tourId, recent.first())
+        val distanceDelta = stationaryCollapseDistanceDelta(
+            previous = previous,
+            replaced = recent,
+            replacement = cluster,
+        )
         db.beginTransaction()
         try {
             if (removedIds.isNotEmpty()) {
@@ -553,19 +583,51 @@ class TourStore(context: Context) :
                 "tour_id = ? AND id = ?",
                 arrayOf(tourId.toString(), representative.id.toString()),
             )
-            db.update(
-                "tours",
-                ContentValues().apply {
-                    put("distance_meters", trackDistanceMeters(points(tourId)))
-                },
-                "id = ?",
-                arrayOf(tourId.toString()),
+            db.execSQL(
+                """
+                UPDATE tours
+                SET distance_meters = MAX(0, distance_meters + ?)
+                WHERE id = ?
+                """.trimIndent(),
+                arrayOf(distanceDelta, tourId),
             )
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
         }
     }
+
+    private fun pointBefore(
+        db: SQLiteDatabase,
+        tourId: Long,
+        point: TrackPoint,
+    ): TrackPoint? =
+        db.rawQuery(
+            """
+            SELECT id, latitude, longitude, recorded_at
+            FROM track_points
+            WHERE tour_id = ? AND (recorded_at < ? OR (recorded_at = ? AND id < ?))
+            ORDER BY recorded_at DESC, id DESC
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(
+                tourId.toString(),
+                point.recordedAt.toString(),
+                point.recordedAt.toString(),
+                point.id.toString(),
+            ),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                null
+            } else {
+                TrackPoint(
+                    id = cursor.getLong(0),
+                    latitude = cursor.getDouble(1),
+                    longitude = cursor.getDouble(2),
+                    recordedAt = cursor.getLong(3),
+                )
+            }
+        }
 
     private fun pointsSinceWindowStart(
         db: SQLiteDatabase,
@@ -755,6 +817,21 @@ class TourStore(context: Context) :
     fun activeTour(): Tour? =
         queryTours(where = "t.ended_at IS NULL", tail = "ORDER BY t.started_at DESC LIMIT 1")
             .firstOrNull()
+
+    @Synchronized
+    internal fun activeTourNotificationSummary(): TourNotificationSummary? =
+        queryTourNotificationSummary(
+            where = "ended_at IS NULL",
+            tail = "ORDER BY started_at DESC LIMIT 1",
+        )
+
+    @Synchronized
+    internal fun tourNotificationSummary(id: Long): TourNotificationSummary? =
+        queryTourNotificationSummary(
+            where = "id = ?",
+            args = arrayOf(id.toString()),
+            tail = "LIMIT 1",
+        )
 
     @Synchronized
     fun tour(id: Long): Tour? =
@@ -1019,6 +1096,31 @@ class TourStore(context: Context) :
                         ),
                     )
                 }
+            }
+        }
+
+    private fun queryTourNotificationSummary(
+        where: String,
+        args: Array<String> = emptyArray(),
+        tail: String,
+    ): TourNotificationSummary? =
+        readableDatabase.rawQuery(
+            """
+            SELECT id, started_at, distance_meters
+            FROM tours
+            WHERE $where
+            $tail
+            """.trimIndent(),
+            args,
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                null
+            } else {
+                TourNotificationSummary(
+                    id = cursor.getLong(0),
+                    startedAt = cursor.getLong(1),
+                    distanceMeters = cursor.getDouble(2),
+                )
             }
         }
 }
