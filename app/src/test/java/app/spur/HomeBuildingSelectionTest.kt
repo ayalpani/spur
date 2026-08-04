@@ -1,5 +1,6 @@
 package app.spur
 
+import com.google.android.gms.location.DetectedActivity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -10,6 +11,16 @@ import org.maplibre.geojson.Point
 import org.maplibre.geojson.Polygon
 
 class HomeBuildingSelectionTest {
+    @Test
+    fun movementActivitiesArmThePreciseHomeDepartureCapture() {
+        assertTrue(isHomeDepartureActivity(DetectedActivity.WALKING))
+        assertTrue(isHomeDepartureActivity(DetectedActivity.RUNNING))
+        assertTrue(isHomeDepartureActivity(DetectedActivity.ON_BICYCLE))
+        assertTrue(isHomeDepartureActivity(DetectedActivity.IN_VEHICLE))
+        assertFalse(isHomeDepartureActivity(DetectedActivity.STILL))
+        assertFalse(isHomeDepartureActivity(DetectedActivity.UNKNOWN))
+    }
+
     @Test
     fun homeAutomationUsesAOneHundredMeterGeofence() {
         assertEquals(100f, HomeRadiusMeters)

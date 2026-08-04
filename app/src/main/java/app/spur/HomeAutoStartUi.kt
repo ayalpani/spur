@@ -60,12 +60,28 @@ internal fun HomeAutoStartBottomSheet(
         }
     }
 
+    val activityPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!settings.enabled) updateEnabled(true)
+        if (granted) {
+            context.registerHomeAutoStart()
+            message = "Der genaue Tourstart ist aktiv."
+        } else {
+            message = "Ohne Bewegungserkennung kann der erste Wegabschnitt gröber sein."
+        }
+    }
+
     val backgroundPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         awaitingBackgroundPermission = false
         if (granted) {
-            updateEnabled(true)
+            if (context.hasActivityRecognitionPermission()) {
+                updateEnabled(true)
+            } else {
+                activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
         } else {
             message = "Ohne Hintergrundstandort bleibt die Startautomatik aus."
         }
@@ -73,7 +89,11 @@ internal fun HomeAutoStartBottomSheet(
 
     fun enable() {
         if (context.hasBackgroundLocationPermission()) {
-            updateEnabled(true)
+            if (context.hasActivityRecognitionPermission()) {
+                updateEnabled(true)
+            } else {
+                activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
         } else {
             awaitingBackgroundPermission = true
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -97,7 +117,13 @@ internal fun HomeAutoStartBottomSheet(
             if (event == Lifecycle.Event.ON_RESUME && currentAwaitingPermission) {
                 awaitingBackgroundPermission = false
                 if (context.hasBackgroundLocationPermission()) {
-                    updateEnabled(true)
+                    if (context.hasActivityRecognitionPermission()) {
+                        updateEnabled(true)
+                    } else {
+                        activityPermissionLauncher.launch(
+                            Manifest.permission.ACTIVITY_RECOGNITION,
+                        )
+                    }
                 } else {
                     message = "Ohne Hintergrundstandort bleibt die Startautomatik aus."
                 }
@@ -133,7 +159,12 @@ internal fun HomeAutoStartBottomSheet(
         } else {
             Text(
                 text = if (settings.enabled) {
-                    "Die Startautomatik ist aktiv."
+                    if (context.hasActivityRecognitionPermission()) {
+                        "Die Startautomatik und der genaue Tourstart sind aktiv."
+                    } else {
+                        "Die Startautomatik ist aktiv. Für Wegpunkte direkt beim Losgehen " +
+                            "fehlt noch der Bewegungszugriff."
+                    }
                 } else if (!context.hasBackgroundLocationPermission()) {
                     "Erlaube Spur den Standortzugriff im Hintergrund, damit eine Tour " +
                         "auch bei geschlossener App starten kann."
@@ -155,6 +186,16 @@ internal fun HomeAutoStartBottomSheet(
                     if (settings.enabled) updateEnabled(false) else enable()
                 },
             )
+            if (settings.enabled && !context.hasActivityRecognitionPermission()) {
+                SpurSecondaryButton(
+                    label = "Genauen Tourstart erlauben",
+                    onClick = {
+                        activityPermissionLauncher.launch(
+                            Manifest.permission.ACTIVITY_RECOGNITION,
+                        )
+                    },
+                )
+            }
             SpurSecondaryButton(
                 label = "Zuhause ändern",
                 onClick = onChooseHome,

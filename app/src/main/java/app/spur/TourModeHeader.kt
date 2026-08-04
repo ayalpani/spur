@@ -99,7 +99,7 @@ internal fun TourModeHeader(
                         modifier = Modifier.size(60.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        ConnectedNodesIcon(
+                        WaypointsIcon(
                             color = Ink,
                             modifier = Modifier.size(28.dp),
                         )

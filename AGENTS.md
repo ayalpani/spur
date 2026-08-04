@@ -87,8 +87,8 @@ confirming that the command preserves app data.
   Home. It inherits the location movement rotation, including the Home-Zone
   stop rule. Keep the lower-right location/follow action behavior but render a
   static Lucide `PersonStanding` icon there; never rotate both controls.
-- In the active-tour header, precede "Unterwegs" with a static Lucide connected-
-  nodes icon. Do not use or animate the Asterisk in that header.
+- In the active-tour header, precede "Unterwegs" with a static Lucide
+  `Waypoints` icon. Do not use or animate the Asterisk in that header.
 - Keep "In G-Maps öffnen" below the main menu's single divider, on the same
   action level as operations on the displayed tour such as "Tour löschen".
   Transfer the current map center, the nearest supported integer zoom derived
@@ -164,6 +164,13 @@ confirming that the command preserves app data.
   value and its compact one-based position as `current/total` directly below.
 - Never rotate the main Spur/follow Asterisk while the current location is
   inside the Home Zone, regardless of noisy GPS speed readings.
+- For automatic departures, keep the 100 m geofence as confirmation and
+  fallback, but arm the existing high-accuracy confirmation service from
+  Android activity transitions as soon as walking, running, cycling, or vehicle
+  movement begins. Preserve the batched balanced-power pre-roll and merge every
+  measured departure point before the live tour so the route never starts with
+  one synthetic line across the Home Zone. Activity recognition is optional;
+  when its runtime permission is missing, retain the geofence fallback.
 - Confirm every successfully created tour with one short vibration and every
   successfully completed tour with a short double vibration. Apply the same
   haptics to manual and Home-Zone-driven lifecycle transitions; service restarts

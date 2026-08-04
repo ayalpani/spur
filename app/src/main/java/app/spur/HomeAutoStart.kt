@@ -9,6 +9,11 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.google.android.gms.location.ActivityRecognition
+import com.google.android.gms.location.ActivityTransition
+import com.google.android.gms.location.ActivityTransitionRequest
+import com.google.android.gms.location.ActivityTransitionResult
+import com.google.android.gms.location.DetectedActivity
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofencingRequest
@@ -39,6 +44,7 @@ private const val StartLatitude = "start-latitude"
 private const val StartLongitude = "start-longitude"
 private const val HomeGeofenceId = "spur-home"
 private const val HomePreRollAction = "app.spur.HOME_PRE_ROLL_LOCATION"
+private const val HomeActivityTransitionAction = "app.spur.HOME_ACTIVITY_TRANSITION"
 private const val BufferedLocations = "buffered-locations"
 private const val DepartureCandidateAt = "departure-candidate-at"
 private const val AutomaticTourId = "automatic-tour-id"
@@ -56,6 +62,13 @@ internal const val HomeConfirmationMinimumSpanMillis = 20_000L
 internal const val DepartureConfirmationTimeoutMillis = 2 * 60_000L
 private const val DepartureMaximumAccuracyMeters = 50f
 private const val ArrivalMaximumAccuracyMeters = 35f
+private val homeDepartureActivityTypes = listOf(
+    DetectedActivity.WALKING,
+    DetectedActivity.RUNNING,
+    DetectedActivity.ON_BICYCLE,
+    DetectedActivity.IN_VEHICLE,
+)
+private val homeAutoStartRuntimeLock = Any()
 
 internal data class BufferedHomeLocation(
     val latitude: Double,
@@ -155,6 +168,16 @@ internal fun Context.hasBackgroundLocationPermission(): Boolean =
             Manifest.permission.ACCESS_BACKGROUND_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
 
+internal fun Context.hasActivityRecognitionPermission(): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACTIVITY_RECOGNITION,
+        ) == PackageManager.PERMISSION_GRANTED
+
+internal fun isHomeDepartureActivity(activityType: Int): Boolean =
+    activityType in homeDepartureActivityTypes
+
 internal fun Context.registerHomeExitGeofence(): Boolean {
     val settings = loadHomeAutoStartSettings()
     val home = settings.home ?: return false
@@ -213,6 +236,7 @@ internal fun Context.registerHomeAutoStart(): Boolean {
     return runCatching {
         LocationServices.getFusedLocationProviderClient(this)
             .requestLocationUpdates(request, homePreRollPendingIntent())
+        registerHomeDepartureActivityTransitions()
         geofenceRegistered
     }.getOrDefault(false)
 }
@@ -221,6 +245,7 @@ internal fun Context.removeHomeAutoStart() {
     removeHomeExitGeofence()
     LocationServices.getFusedLocationProviderClient(this)
         .removeLocationUpdates(homePreRollPendingIntent())
+    removeHomeDepartureActivityTransitions()
     homeAutoStartPreferences().edit()
         .remove(BufferedLocations)
         .remove(DepartureCandidateAt)
@@ -244,6 +269,42 @@ private fun Context.homePreRollPendingIntent(): PendingIntent =
         Intent(this, HomeExitReceiver::class.java).setAction(HomePreRollAction),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
     )
+
+private fun Context.homeActivityTransitionPendingIntent(): PendingIntent =
+    PendingIntent.getBroadcast(
+        this,
+        2,
+        Intent(this, HomeExitReceiver::class.java).setAction(HomeActivityTransitionAction),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+    )
+
+private fun Context.registerHomeDepartureActivityTransitions() {
+    if (!hasActivityRecognitionPermission()) return
+    val transitions = homeDepartureActivityTypes.map { activityType ->
+        ActivityTransition.Builder()
+            .setActivityType(activityType)
+            .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
+            .build()
+    }
+    try {
+        ActivityRecognition.getClient(this).requestActivityTransitionUpdates(
+            ActivityTransitionRequest(transitions),
+            homeActivityTransitionPendingIntent(),
+        )
+    } catch (_: SecurityException) {
+        // The runtime permission can be revoked between the check and registration.
+    }
+}
+
+private fun Context.removeHomeDepartureActivityTransitions() {
+    if (!hasActivityRecognitionPermission()) return
+    try {
+        ActivityRecognition.getClient(this)
+            .removeActivityTransitionUpdates(homeActivityTransitionPendingIntent())
+    } catch (_: SecurityException) {
+        // The runtime permission can be revoked between the check and removal.
+    }
+}
 
 private fun Context.homeAutoStartPreferences() =
     getSharedPreferences(RuntimePreferences, Context.MODE_PRIVATE)
@@ -385,19 +446,34 @@ internal fun Context.loadBufferedHomeLocations(): List<BufferedHomeLocation> =
 
 internal fun Context.saveBufferedHomeLocations(
     incoming: List<BufferedHomeLocation>,
-): List<BufferedHomeLocation> {
+): List<BufferedHomeLocation> = synchronized(homeAutoStartRuntimeLock) {
     val preferences = homeAutoStartPreferences()
-    val merged = mergeBufferedHomeLocations(
+    mergeBufferedHomeLocations(
         existing = decodeBufferedHomeLocations(preferences.getString(BufferedLocations, null)),
         incoming = incoming,
         now = System.currentTimeMillis(),
-    )
-    preferences.edit().putString(BufferedLocations, encodeBufferedHomeLocations(merged)).apply()
-    return merged
+    ).also { merged ->
+        preferences.edit()
+            .putString(BufferedLocations, encodeBufferedHomeLocations(merged))
+            .apply()
+    }
 }
 
-internal fun Context.markDepartureCandidate(candidateAt: Long) =
-    homeAutoStartPreferences().edit().putLong(DepartureCandidateAt, candidateAt).apply()
+private fun Context.claimDepartureCandidate(candidateAt: Long): Boolean =
+    synchronized(homeAutoStartRuntimeLock) {
+        val preferences = homeAutoStartPreferences()
+        if (preferences.getLong(DepartureCandidateAt, 0L) > 0L) {
+            false
+        } else {
+            preferences.edit().putLong(DepartureCandidateAt, candidateAt).commit()
+        }
+    }
+
+internal fun Context.markDepartureCandidate(candidateAt: Long) {
+    synchronized(homeAutoStartRuntimeLock) {
+        homeAutoStartPreferences().edit().putLong(DepartureCandidateAt, candidateAt).apply()
+    }
+}
 
 internal fun Context.departureCandidateAt(): Long? =
     homeAutoStartPreferences()
@@ -405,7 +481,24 @@ internal fun Context.departureCandidateAt(): Long? =
         .takeIf { it > 0L }
 
 internal fun Context.clearDepartureCandidate() {
-    homeAutoStartPreferences().edit().remove(DepartureCandidateAt).apply()
+    synchronized(homeAutoStartRuntimeLock) {
+        homeAutoStartPreferences().edit().remove(DepartureCandidateAt).apply()
+    }
+}
+
+private fun Context.requestHomeDepartureConfirmation(candidateAt: Long) {
+    if (!claimDepartureCandidate(candidateAt)) return
+    LocationServices.getFusedLocationProviderClient(this).flushLocations()
+    runCatching {
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, TrackingService::class.java)
+                .setAction(TrackingService.ACTION_CONFIRM_HOME_DEPARTURE)
+                .putExtra(TrackingService.EXTRA_DEPARTURE_CANDIDATE_AT, candidateAt),
+        )
+    }.onFailure {
+        clearDepartureCandidate()
+    }
 }
 
 internal fun Context.markAutomaticTourOutside(tourId: Long, outsideSince: Long) {
@@ -446,6 +539,28 @@ class HomeExitReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             context.registerHomeAutoStart()
+            return
+        }
+        if (ActivityTransitionResult.hasResult(intent)) {
+            ActivityTransitionResult.extractResult(intent)
+                ?.transitionEvents
+                ?.lastOrNull { event ->
+                    event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER &&
+                        isHomeDepartureActivity(event.activityType)
+                }
+                ?: return
+            val settings = context.loadHomeAutoStartSettings()
+            if (!settings.enabled) return
+            val pendingResult = goAsync()
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                try {
+                    if (TourStore(context).activeTour() == null) {
+                        context.requestHomeDepartureConfirmation(System.currentTimeMillis())
+                    }
+                } finally {
+                    pendingResult.finish()
+                }
+            }
             return
         }
         if (LocationResult.hasResult(intent)) {
@@ -500,25 +615,10 @@ class HomeExitReceiver : BroadcastReceiver() {
                     context.markExistingAutomaticTourOutside(activeTour.id, transitionAt)
                     return@launch
                 }
-                val candidateAt = System.currentTimeMillis()
-                context.markDepartureCandidate(candidateAt)
                 context.saveBufferedHomeLocations(
                     listOfNotNull(exitLocation?.toBufferedHomeLocation()),
                 )
-                LocationServices.getFusedLocationProviderClient(context).flushLocations()
-                runCatching {
-                    ContextCompat.startForegroundService(
-                        context,
-                        Intent(context, TrackingService::class.java)
-                            .setAction(TrackingService.ACTION_CONFIRM_HOME_DEPARTURE)
-                            .putExtra(
-                                TrackingService.EXTRA_DEPARTURE_CANDIDATE_AT,
-                                candidateAt,
-                            ),
-                    )
-                }.onFailure {
-                    context.clearDepartureCandidate()
-                }
+                context.requestHomeDepartureConfirmation(System.currentTimeMillis())
             } finally {
                 pendingResult.finish()
             }
