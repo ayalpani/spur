@@ -6,7 +6,11 @@ import android.media.ToneGenerator
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.DraggableState
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
@@ -30,6 +34,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -42,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -73,9 +79,27 @@ internal fun EditorDeleteSheet(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    EditorDeleteSheet(
+        title = title,
+        primaryLabel = primaryLabel,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        onDismiss = onDismiss,
+        onConfirm = onConfirm,
+    )
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+internal fun EditorDeleteSheet(
+    title: String,
+    primaryLabel: String,
+    sheetState: SheetState,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
     SpurModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = sheetState,
     ) {
         Column(
             modifier = Modifier
@@ -106,7 +130,10 @@ internal fun WaypointRail(
     locations: List<EditorLocation>,
     selectedPointId: Long?,
     focusRequest: Long = 0L,
+    followLatest: Boolean = false,
     emptyText: String = "Keine Wegpunkte aufgezeichnet.",
+    backgroundColor: Color = Color.White,
+    onScrollInProgressChanged: (Boolean) -> Unit = {},
     onSelected: (Long) -> Unit,
 ) {
     if (locations.isEmpty()) {
@@ -114,7 +141,7 @@ internal fun WaypointRail(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(WaypointRailHeight)
-                .background(Color.White)
+                .background(backgroundColor)
                 .padding(horizontal = 24.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -128,13 +155,21 @@ internal fun WaypointRail(
         return
     }
 
-    val resolvedSelectedPointId = selectedPointId ?: locations.last().point.id
+    val resolvedSelectedPointId = if (followLatest) {
+        locations.last().point.id
+    } else {
+        selectedPointId ?: locations.last().point.id
+    }
     val initialIndex = locations.indexOfFirst {
         it.point.id == resolvedSelectedPointId
     }
         .coerceAtLeast(0)
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
+    val currentOnScrollInProgressChanged by rememberUpdatedState(
+        onScrollInProgressChanged,
+    )
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
     val tickTone = remember {
         runCatching {
             ToneGenerator(
@@ -158,11 +193,41 @@ internal fun WaypointRail(
         lazyListState = state,
         snapPosition = SnapPosition.Center,
     )
+    val endpointDragState = rememberDraggableState { delta ->
+        state.dispatchRawDelta(-delta)
+    }
+    val finishEndpointDrag: suspend (Float) -> Unit = { velocity ->
+        try {
+            state.scroll {
+                with(fling) { performFling(-velocity) }
+            }
+        } finally {
+            currentOnScrollInProgressChanged(false)
+        }
+    }
 
-    suspend fun centerVisibleItem(index: Int, animated: Boolean) {
+    suspend fun centerVisibleItem(
+        index: Int,
+        animated: Boolean,
+        animateEndpointArrival: Boolean = false,
+    ) {
         var item = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
         if (item == null) {
+            val layout = state.layoutInfo
+            val endpointApproachDistance = (
+                (layout.viewportEndOffset - layout.viewportStartOffset) / 2f -
+                    with(density) { (WaypointEndpointLabelWidth - 3.dp).toPx() }
+                ).coerceAtLeast(0f)
             state.scrollToItem(index)
+            if (animated && animateEndpointArrival && endpointApproachDistance > 0.5f) {
+                state.scrollBy(
+                    if (index == 0) {
+                        endpointApproachDistance
+                    } else {
+                        -endpointApproachDistance
+                    },
+                )
+            }
             withFrameNanos { }
             item = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
         }
@@ -191,7 +256,11 @@ internal fun WaypointRail(
         onSelected(pointId)
         scope.launch {
             try {
-                centerVisibleItem(index, animated = true)
+                centerVisibleItem(
+                    index = index,
+                    animated = true,
+                    animateEndpointArrival = index == 0 || index == locations.lastIndex,
+                )
             } finally {
                 isProgrammaticScroll = false
             }
@@ -199,7 +268,22 @@ internal fun WaypointRail(
     }
 
     LaunchedEffect(state, locations.size) {
-        centerVisibleItem(initialIndex, animated = false)
+        isProgrammaticScroll = true
+        try {
+            centerVisibleItem(initialIndex, animated = false)
+        } finally {
+            isProgrammaticScroll = false
+        }
+    }
+
+    LaunchedEffect(state) {
+        snapshotFlow { state.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect(currentOnScrollInProgressChanged)
+    }
+
+    DisposableEffect(state) {
+        onDispose { currentOnScrollInProgressChanged(false) }
     }
 
     LaunchedEffect(state, focusRequest) {
@@ -244,33 +328,67 @@ internal fun WaypointRail(
         modifier = Modifier
             .fillMaxWidth()
             .height(WaypointRailHeight)
-            .background(Color.White),
+            .background(backgroundColor),
     ) {
         val selectedIndex = locations.indexOfFirst {
             it.point.id == resolvedSelectedPointId
         }.coerceAtLeast(0)
         val itemWidth = 10.dp
         val edgePadding = (maxWidth - itemWidth) / 2
-        val density = LocalDensity.current
-        val endpointCenters by remember(state, locations.size) {
+        val endpointOffsets by remember(
+            state,
+            locations.size,
+            edgePadding,
+            maxWidth,
+            density,
+            followLatest,
+        ) {
             derivedStateOf {
                 val visibleItems = state.layoutInfo.visibleItemsInfo
-                val start = visibleItems.firstOrNull { it.index == 0 }
-                    ?.let { it.offset + it.size / 2 }
-                val end = visibleItems.firstOrNull { it.index == locations.lastIndex }
-                    ?.let { it.offset + it.size / 2 }
-                start to end
+                val maximumOffset =
+                    (maxWidth - WaypointEndpointLabelWidth).coerceAtLeast(0.dp)
+                fun endpointCenter(index: Int) = visibleItems
+                    .firstOrNull { it.index == index }
+                    ?.let { item ->
+                        edgePadding + with(density) {
+                            (item.offset + item.size / 2).toDp()
+                        }
+                    }
+                val startOffset = endpointCenter(0)
+                    ?.minus(WaypointEndpointLabelWidth - 3.dp)
+                    ?.coerceIn(0.dp, maximumOffset)
+                    ?: 0.dp
+                val endOffset = if (followLatest) {
+                    (maxWidth / 2 - 3.dp).coerceIn(0.dp, maximumOffset)
+                } else {
+                    endpointCenter(locations.lastIndex)
+                        ?.minus(3.dp)
+                        ?.coerceIn(0.dp, maximumOffset)
+                        ?: maximumOffset
+                }
+                startOffset to endOffset
             }
         }
-        Text(
-            text = "${selectedIndex + 1} von ${locations.size}",
+        Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .zIndex(1f)
-                .padding(top = 10.dp),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
+                .padding(top = 7.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = formatClock(locations[selectedIndex].point.recordedAt),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+            Text(
+                text = waypointPositionText(selectedIndex, locations.size),
+                color = Ink.copy(alpha = 0.46f),
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+            )
+        }
         LazyRow(
             state = state,
             flingBehavior = fling,
@@ -294,7 +412,7 @@ internal fun WaypointRail(
                         }
                         .semantics {
                             contentDescription =
-                                "GPS-Punkt ${index + 1} von ${locations.size}"
+                                "Wegpunkt ${index + 1} von ${locations.size}"
                         },
                     contentAlignment = Alignment.BottomCenter,
                 ) {
@@ -311,7 +429,7 @@ internal fun WaypointRail(
                         }
                         Box(
                             modifier = Modifier
-                                .padding(bottom = 8.dp)
+                                .padding(bottom = 14.dp)
                                 .width(2.dp)
                                 .height(20.dp)
                                 .background(Ink.copy(alpha = 0.16f), CircleShape),
@@ -320,32 +438,30 @@ internal fun WaypointRail(
                 }
             }
         }
-        endpointCenters.first?.let { center ->
-            WaypointEndpointLabel(
-                label = "Start",
-                timestamp = locations.first().point.recordedAt,
-                onClick = { selectAndCenter(0) },
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .offset(
-                        x = edgePadding + with(density) { center.toDp() } - 69.dp,
-                        y = (-2).dp,
-                    ),
-            )
-        }
-        endpointCenters.second?.let { center ->
-            WaypointEndpointLabel(
-                label = "Ende",
-                timestamp = locations.last().point.recordedAt,
-                onClick = { selectAndCenter(locations.lastIndex) },
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .offset(
-                        x = edgePadding + with(density) { center.toDp() } - 3.dp,
-                        y = (-2).dp,
-                    ),
-            )
-        }
+        WaypointEndpointLabel(
+            label = "Start",
+            timestamp = locations.first().point.recordedAt,
+            backgroundColor = backgroundColor,
+            onClick = { selectAndCenter(0) },
+            dragState = endpointDragState,
+            onDragStarted = { currentOnScrollInProgressChanged(true) },
+            onDragStopped = finishEndpointDrag,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .offset(x = endpointOffsets.first, y = (-2).dp),
+        )
+        WaypointEndpointLabel(
+            label = "Ende",
+            timestamp = locations.last().point.recordedAt,
+            backgroundColor = backgroundColor,
+            onClick = { selectAndCenter(locations.lastIndex) },
+            dragState = endpointDragState,
+            onDragStarted = { currentOnScrollInProgressChanged(true) },
+            onDragStopped = finishEndpointDrag,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .offset(x = endpointOffsets.second, y = (-2).dp),
+        )
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -361,13 +477,24 @@ internal fun WaypointRail(
 private fun WaypointEndpointLabel(
     label: String,
     timestamp: Long,
+    backgroundColor: Color,
     onClick: () -> Unit,
+    dragState: DraggableState,
+    onDragStarted: () -> Unit,
+    onDragStopped: suspend (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
-            .requiredWidth(72.dp)
+            .requiredWidth(WaypointEndpointLabelWidth)
             .height(48.dp)
+            .background(backgroundColor)
+            .draggable(
+                state = dragState,
+                orientation = Orientation.Horizontal,
+                onDragStarted = { onDragStarted() },
+                onDragStopped = { velocity -> onDragStopped(velocity) },
+            )
             .clickable(onClick = onClick)
             .semantics { contentDescription = "$label der Tour" },
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -377,7 +504,7 @@ private fun WaypointEndpointLabel(
             text = label,
             color = Ink.copy(alpha = 0.28f),
             textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Medium,
         )
         Text(
@@ -388,6 +515,11 @@ private fun WaypointEndpointLabel(
         )
     }
 }
+
+private val WaypointEndpointLabelWidth = 72.dp
+
+internal fun waypointPositionText(selectedIndex: Int, total: Int): String =
+    "${selectedIndex.coerceAtLeast(0) + 1}/${total.coerceAtLeast(0)}"
 
 internal fun MomentType.editorLabel(): String = when (this) {
     MomentType.PHOTO -> "Foto"

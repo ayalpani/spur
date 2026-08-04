@@ -6,21 +6,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +47,8 @@ internal fun MomentComposer(
     }
     var voiceRecordingStartRequest by remember(target) { mutableLongStateOf(0L) }
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val emojiSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val voiceSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val placementTarget = target
 
     val accept: (PendingMapMoment) -> Unit = { pending ->
@@ -103,6 +102,7 @@ internal fun MomentComposer(
             sheetState = momentSheetState,
         ) {
             MomentPickerSheetContent(
+                onDismiss = onDismiss,
                 onSelect = { type ->
                     when (type) {
                         MomentType.PHOTO -> {
@@ -130,16 +130,21 @@ internal fun MomentComposer(
                             }
                         }
                         MomentType.VOICE -> {
-                            showPicker = false
                             voiceRecordingStartRequest = 0L
-                            showVoiceRecorder = true
+                            scope.swapBottomSheets(
+                                currentState = momentSheetState,
+                                nextState = voiceSheetState,
+                                showNext = { showVoiceRecorder = true },
+                                hideCurrent = { showPicker = false },
+                            )
                         }
                         MomentType.EMOJI -> {
-                            scope.launch {
-                                momentSheetState.hide()
-                                showPicker = false
-                                showEmojiPicker = true
-                            }
+                            scope.swapBottomSheets(
+                                currentState = momentSheetState,
+                                nextState = emojiSheetState,
+                                showNext = { showEmojiPicker = true },
+                                hideCurrent = { showPicker = false },
+                            )
                         }
                     }
                 },
@@ -149,15 +154,23 @@ internal fun MomentComposer(
 
     if (showEmojiPicker) {
         val closeEmojiPicker: () -> Unit = {
-            showEmojiPicker = false
-            showPicker = true
+            scope.swapBottomSheets(
+                currentState = emojiSheetState,
+                nextState = momentSheetState,
+                showNext = { showPicker = true },
+                hideCurrent = { showEmojiPicker = false },
+            )
         }
         EmojiPickerBottomSheet(
             onDismiss = onDismiss,
             onBack = closeEmojiPicker,
+            sheetState = emojiSheetState,
             onEmojiPicked = { emoji ->
-                showEmojiPicker = false
-                accept(PendingMapMoment.emoji(emoji))
+                scope.launch {
+                    emojiSheetState.hide()
+                    showEmojiPicker = false
+                    accept(PendingMapMoment.emoji(emoji))
+                }
             },
         )
     }
@@ -190,7 +203,7 @@ internal fun MomentComposer(
     if (showVoiceRecorder) {
         SpurModalBottomSheet(
             onDismissRequest = onDismiss,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            sheetState = voiceSheetState,
         ) {
             VoiceRecorderBottomSheet(
                 startRecordingRequest = voiceRecordingStartRequest,
@@ -212,50 +225,63 @@ internal fun MomentComposer(
 @Composable
 private fun MomentPickerSheetContent(
     onSelect: (MomentType) -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .navigationBarsPadding()
-            .padding(horizontal = 24.dp)
-            .padding(bottom = 20.dp),
+    CompositionLocalProvider(
+        LocalMapControlColors provides MapControlColors(
+            background = MapControlColor.BLACK.color,
+            foreground = MapControlColor.WHITE.color,
+        ),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
         ) {
-            MomentOption(
-                label = "Foto",
-                accentColor = momentMarkerColor(MomentType.PHOTO),
-                icon = { MomentPhotoIcon() },
-                modifier = Modifier.weight(1f),
-                onClick = { onSelect(MomentType.PHOTO) },
-            )
-            MomentOption(
-                label = "Video",
-                accentColor = momentMarkerColor(MomentType.VIDEO),
-                icon = { MomentVideoIcon() },
-                modifier = Modifier.weight(1f),
-                onClick = { onSelect(MomentType.VIDEO) },
-            )
-        }
-        Spacer(modifier = Modifier.height(MomentSheetGridGap))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
-        ) {
-            MomentOption(
-                label = "Sprache",
-                accentColor = momentMarkerColor(MomentType.VOICE),
-                icon = { MomentVoiceIcon() },
-                modifier = Modifier.weight(1f),
-                onClick = { onSelect(MomentType.VOICE) },
-            )
-            MomentOption(
-                label = "Emoji",
-                accentColor = momentMarkerColor(MomentType.EMOJI),
-                icon = { Text(text = "🙂", fontSize = 30.sp) },
-                modifier = Modifier.weight(1f),
-                onClick = { onSelect(MomentType.EMOJI) },
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
+            ) {
+                SpurSecondaryButton(
+                    label = "Foto",
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = { MomentPhotoIcon() },
+                    compactContent = true,
+                    onClick = { onSelect(MomentType.PHOTO) },
+                )
+                SpurSecondaryButton(
+                    label = "Video",
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = { MomentVideoIcon() },
+                    compactContent = true,
+                    onClick = { onSelect(MomentType.VIDEO) },
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
+            ) {
+                SpurSecondaryButton(
+                    label = "Sprache",
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = { MomentVoiceIcon() },
+                    compactContent = true,
+                    onClick = { onSelect(MomentType.VOICE) },
+                )
+                SpurSecondaryButton(
+                    label = "Emoji",
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = { MomentEmojiIcon() },
+                    compactContent = true,
+                    onClick = { onSelect(MomentType.EMOJI) },
+                )
+            }
+            SpurPrimaryButton(
+                label = "Abbrechen",
+                onClick = onDismiss,
             )
         }
     }

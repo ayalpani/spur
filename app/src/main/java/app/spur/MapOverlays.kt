@@ -198,7 +198,7 @@ private fun RotatingAsterisk(
 internal fun AcceleratingAsterisk(
     isRunning: Boolean,
     color: Color,
-    contentDescription: String,
+    contentDescription: String?,
     modifier: Modifier = Modifier,
 ) {
     val rotation = remember { Animatable(0f) }
@@ -235,10 +235,10 @@ internal fun AcceleratingAsterisk(
 internal fun loaderAsteriskAcceleration(fraction: Float): Float = fraction * fraction
 
 @Composable
-private fun AsteriskIcon(
+internal fun AsteriskIcon(
     rotation: Float,
     color: Color,
-    contentDescription: String,
+    contentDescription: String?,
     modifier: Modifier = Modifier,
 ) {
     LucideIcon(
@@ -251,22 +251,29 @@ private fun AsteriskIcon(
         strokeWidth = LucideBoldStrokeWidth,
         modifier = modifier
             .graphicsLayer { rotationZ = rotation }
-            .semantics { this.contentDescription = contentDescription },
+            .then(
+                if (contentDescription == null) {
+                    Modifier
+                } else {
+                    Modifier.semantics { this.contentDescription = contentDescription }
+                },
+            ),
     )
 }
 
 @Composable
 internal fun SimulatedLocationPuck(modifier: Modifier = Modifier) {
+    val colors = LocalLocationMarkerColors.current
     Canvas(
         modifier = modifier
             .size(52.dp)
             .semantics { contentDescription = "Simulierter Standort" },
     ) {
-        drawCircle(Ink.copy(alpha = 0.2f), radius = size.minDimension / 2)
-        drawCircle(Color.White, radius = 10.dp.toPx())
-        drawCircle(Ink, radius = 6.dp.toPx())
+        drawCircle(colors.fill.copy(alpha = 0.2f), radius = size.minDimension / 2)
+        drawCircle(colors.outline, radius = 10.dp.toPx())
+        drawCircle(colors.fill, radius = 6.dp.toPx())
         drawCircle(
-            color = Ink,
+            color = colors.fill,
             radius = 10.dp.toPx(),
             style = Stroke(width = 1.5.dp.toPx()),
         )

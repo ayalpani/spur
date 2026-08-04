@@ -2,10 +2,7 @@ package app.spur
 
 import android.Manifest
 import android.content.pm.PackageManager
-import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
-import androidx.activity.enableEdgeToEdge
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -41,7 +38,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -83,15 +79,10 @@ internal fun VideoCameraScreen(
     val currentPendingVideo by rememberUpdatedState(pendingVideo)
     val currentCapturedVideo by rememberUpdatedState(capturedVideo)
 
-    DisposableEffect(context) {
-        val activity = context as? ComponentActivity
-        activity?.enableEdgeToEdge(
-            navigationBarStyle = SystemBarStyle.dark(Color.Black.toArgb()),
-        )
-        onDispose {
-            activity?.enableEdgeToEdge()
-        }
-    }
+    ActivityNavigationBar(
+        backgroundColor = Color.Black,
+        priority = ActivityNavigationBarOverlayPriority,
+    )
 
     fun discardAndClose() {
         discardRequested.set(true)

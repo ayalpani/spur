@@ -35,13 +35,14 @@ internal fun enableLocationTracking(
     manualLocation: SpurCoordinate?,
     initialMapZoom: Double,
     defaultMapBearing: Double,
+    markerColors: LocationMarkerColors,
     pulseColor: Color,
 ) {
     if (!context.hasLocationPermission()) return
 
     val locationComponent = map.locationComponent
     val options = LocationComponentOptions.builder(context)
-        .spurLocationAppearance(pulseColor)
+        .spurLocationAppearance(markerColors, pulseColor)
         .build()
     locationComponent.activateLocationComponent(
         LocationComponentActivationOptions.builder(context, style)
@@ -78,29 +79,33 @@ internal fun enableLocationTracking(
     }
 }
 
-internal fun MapLibreMap.restartLocationPulse(color: Color) {
+internal fun MapLibreMap.restartLocationPulse(
+    colors: LocationMarkerColors,
+    pulseColor: Color,
+) {
     val component = locationComponent
     if (!component.isLocationComponentActivated || !component.isLocationComponentEnabled) return
     component.applyStyle(
         component.locationComponentOptions
             .toBuilder()
-            .spurLocationAppearance(color)
+            .spurLocationAppearance(colors, pulseColor)
             .build(),
     )
 }
 
 private fun LocationComponentOptions.Builder.spurLocationAppearance(
-    color: Color,
+    colors: LocationMarkerColors,
+    pulseColor: Color,
 ): LocationComponentOptions.Builder =
-    foregroundTintColor(color.toArgb())
-        .backgroundTintColor(color.toArgb())
-        .foregroundStaleTintColor(color.toArgb())
-        .backgroundStaleTintColor(color.toArgb())
-        .bearingTintColor(color.toArgb())
+    foregroundTintColor(colors.fill.toArgb())
+        .backgroundTintColor(colors.outline.toArgb())
+        .foregroundStaleTintColor(colors.fill.toArgb())
+        .backgroundStaleTintColor(colors.outline.toArgb())
+        .bearingTintColor(colors.fill.toArgb())
         .accuracyAlpha(0f)
         .pulseEnabled(true)
         .pulseFadeEnabled(true)
-        .pulseColor(color.toArgb())
+        .pulseColor(pulseColor.toArgb())
         .pulseSingleDuration(LocationSignalPeriodMillis.toFloat())
         .pulseMaxRadius(LocationPulseMaxRadius)
         .pulseAlpha(LocationPulseAlpha)
@@ -110,13 +115,14 @@ internal fun MapLibreMap.followLocation(
     context: Context,
     manualLocation: SpurCoordinate?,
     transitionDuration: Long,
+    targetZoom: Double,
     defaultMapBearing: Double,
 ) {
     if (manualLocation == null && locationComponent.isLocationComponentActivated) {
         locationComponent.setCameraMode(
             CameraMode.TRACKING,
             transitionDuration,
-            cameraPosition.zoom,
+            targetZoom,
             defaultMapBearing,
             null,
             null,
@@ -128,6 +134,7 @@ internal fun MapLibreMap.followLocation(
     val update = CameraUpdateFactory.newCameraPosition(
         org.maplibre.android.camera.CameraPosition.Builder(cameraPosition)
             .target(LatLng(location.latitude, location.longitude))
+            .zoom(targetZoom)
             .bearing(defaultMapBearing)
             .build(),
     )

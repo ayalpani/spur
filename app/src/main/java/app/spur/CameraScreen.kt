@@ -4,10 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.os.Build
-import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
-import androidx.activity.enableEdgeToEdge
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -43,7 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -77,15 +73,10 @@ internal fun CameraScreen(
     var capturedPhoto by remember { mutableStateOf<File?>(null) }
     var isCapturing by remember { mutableStateOf(false) }
 
-    DisposableEffect(context) {
-        val activity = context as? ComponentActivity
-        activity?.enableEdgeToEdge(
-            navigationBarStyle = SystemBarStyle.dark(Color.Black.toArgb()),
-        )
-        onDispose {
-            activity?.enableEdgeToEdge()
-        }
-    }
+    ActivityNavigationBar(
+        backgroundColor = Color.Black,
+        priority = ActivityNavigationBarOverlayPriority,
+    )
 
     fun discardAndClose() {
         capturedPhoto?.delete()

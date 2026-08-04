@@ -16,10 +16,12 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.log2
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 internal object SpurRoute {
     const val MAP = "map"
+    const val HOME = "home"
 }
 internal const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
 internal const val SatelliteSource = "satellite-source"
@@ -39,6 +41,8 @@ internal const val MomentClusterMaximumOffset = MomentClusterStackStep * 2f
 internal const val MapPreviewPixels = 180
 internal const val LocationPulseWatchdogMillis = LocationSignalPeriodMillis * 10L
 internal const val LocationPuckHitTargetDp = 60f
+internal const val MovementStartSpeedKilometersPerHour = 1.0
+internal const val MovementStopSpeedKilometersPerHour = 0.5
 internal val LocationPulseEasing = Easing { fraction ->
     (cos((fraction + 1f) * PI) / 2f + 0.5f).toFloat()
 }
@@ -60,10 +64,6 @@ internal const val SelectedTrackPointLayer = "selected-track-point-layer"
 internal const val MapMomentSource = "map-moment-source"
 internal const val MapMomentLayer = "map-moment-layer"
 internal const val MapMomentClusterLayer = "map-moment-cluster-layer"
-internal const val MapPersonaLayer = "map-persona-layer"
-internal const val MapPersonaClusterLayer = "map-persona-cluster-layer"
-internal const val MapPersonaClusterCountBadgeLayer = "map-persona-cluster-count-badge-layer"
-internal const val MapPersonaClusterCountLayer = "map-persona-cluster-count-layer"
 internal const val MapMomentClusterCountBadgeLayer = "map-moment-cluster-count-badge-layer"
 internal const val MapMomentClusterCountLayer = "map-moment-cluster-count-layer"
 internal const val MapMomentClusterCountBadgeRadius = 9f
@@ -85,13 +85,12 @@ internal const val HomeBuildingMinimumSelectionZoom = 15.0
 internal const val MapMomentIdProperty = "moment-id"
 internal const val MapMomentImageProperty = "moment-image"
 internal const val MapMomentRepresentativeProperty = "moment-representative"
-internal const val MapPersonaProperty = "persona"
-internal const val MapPersonaImage = "map-persona-image"
 internal const val MapMomentImagePrefix = "map-moment-"
 internal const val MapMomentClusterImagePrefix = "map-moment-cluster-"
-internal const val MapPersonaClusterImagePrefix = "map-persona-cluster-"
-internal const val MapMomentClusterMaxZoom = 23
+internal const val MapMomentClusterMaxZoom = 16
 internal const val MapMomentClusterRadius = MomentMarkerHeight / 2 - 1
+internal const val MapLibreWorldSizeAtZoomZero = 512.0
+internal const val GoogleMapsWorldSizeAtZoomZero = 256.0
 
 internal enum class MapRotation(val label: String, val bearing: Double) {
     NORTH("Norden", 0.0),
@@ -104,6 +103,25 @@ internal data class SelectedBuilding(
     val coordinate: SpurCoordinate,
     val feature: Feature,
 )
+
+internal data class MapViewport(
+    val center: SpurCoordinate,
+    val zoom: Double,
+    val satellite: Boolean,
+)
+
+internal fun googleMapsViewUrl(viewport: MapViewport): String =
+    "https://www.google.com/maps/@?api=1&map_action=map" +
+        "&center=${viewport.center.latitude}%2C${viewport.center.longitude}" +
+        "&zoom=${googleMapsZoom(viewport.zoom)}" +
+        "&basemap=${if (viewport.satellite) "satellite" else "roadmap"}"
+
+internal fun googleMapsZoom(mapLibreZoom: Double): Int {
+    // MapLibre Native uses a 512 px world at zoom 0; Google Maps uses 256 dp.
+    // The Google Maps URL only accepts whole zoom levels, so use the nearest one.
+    val worldSizeOffset = log2(MapLibreWorldSizeAtZoomZero / GoogleMapsWorldSizeAtZoomZero)
+    return (mapLibreZoom + worldSizeOffset).roundToInt().coerceIn(0, 21)
+}
 
 internal fun mapRotationFromStored(value: String?): MapRotation =
     MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH
@@ -149,6 +167,27 @@ internal fun isWithinLocationHitTarget(
     val radius = hitTargetSize / 2f
     return abs(clickX - locationX) <= radius &&
         abs(clickY - locationY) <= radius
+}
+
+internal fun movingForSpeed(
+    speedKilometersPerHour: Double?,
+    wasMoving: Boolean,
+): Boolean {
+    val threshold = if (wasMoving) {
+        MovementStopSpeedKilometersPerHour
+    } else {
+        MovementStartSpeedKilometersPerHour
+    }
+    return speedKilometersPerHour != null && speedKilometersPerHour >= threshold
+}
+
+internal fun movingForMapSignal(
+    isAtHome: Boolean,
+    speedKilometersPerHour: Double?,
+    wasMoving: Boolean,
+): Boolean {
+    if (isAtHome) return false
+    return movingForSpeed(speedKilometersPerHour, wasMoving)
 }
 
 internal fun mapRotationOptionCenterDistance(
@@ -232,6 +271,9 @@ internal fun clusterStackOffsets(pointCount: Int): List<Float> = when {
     pointCount == 2 -> listOf(MomentClusterStackStep, MomentClusterMaximumOffset)
     else -> listOf(0f, MomentClusterStackStep, MomentClusterMaximumOffset)
 }
+
+internal fun mapMomentClusterExpansionZoom(expansionZoom: Int): Double =
+    expansionZoom.coerceAtMost(MapMomentClusterMaxZoom + 1).toDouble()
 
 internal fun overlappingMomentOffsets(moments: List<MapMoment>): Map<String, Offset> =
     moments

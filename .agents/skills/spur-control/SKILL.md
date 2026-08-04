@@ -57,6 +57,10 @@ which device checks passed and which could not be performed.
 Arash has confirmed that the device IP does not change. Prefer an already-online
 transport for the registered model. Otherwise use ADB mDNS discovery. The
 Wi-Fi debugging port changes and must never be committed to this repository.
+If ADB's own mDNS listing is empty, resolve the registered device's existing
+`_adb-tls-connect` service through macOS DNS-SD and connect its current port at
+the static IP automatically. Do not ask Arash to read out the ordinary changing
+connection port while this paired service can be resolved.
 For the exceptional case where automatic discovery fails, accept a temporary
 override such as `SPUR_ADB_ENDPOINT=192.168.178.162:<port> scripts/spurctl status`.
 

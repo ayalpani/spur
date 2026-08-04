@@ -27,6 +27,7 @@ internal fun SpurPrimaryButton(
     destructive: Boolean = false,
 ) {
     val colors = LocalMapControlColors.current
+    val contentColor = if (destructive) Color.White else colors.foreground
     Button(
         onClick = onClick,
         modifier = modifier
@@ -35,7 +36,7 @@ internal fun SpurPrimaryButton(
         shape = CircleShape,
         colors = ButtonDefaults.buttonColors(
             containerColor = if (destructive) StopRed else colors.background,
-            contentColor = if (destructive) Color.White else colors.foreground,
+            contentColor = contentColor,
         ),
     ) {
         leadingIcon?.let {
@@ -44,6 +45,11 @@ internal fun SpurPrimaryButton(
         }
         Text(
             text = label,
+            color = if (leadingIcon == null) {
+                contentColor
+            } else {
+                contentColor.copy(alpha = IconTextLabelAlpha)
+            },
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
@@ -56,6 +62,7 @@ internal fun SpurSecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     leadingIcon: (@Composable () -> Unit)? = null,
+    compactContent: Boolean = false,
 ) {
     val contentColor = secondaryButtonContentColor(LocalMapControlColors.current)
     OutlinedButton(
@@ -72,12 +79,22 @@ internal fun SpurSecondaryButton(
     ) {
         leadingIcon?.let {
             it()
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(if (compactContent) 8.dp else 10.dp))
         }
         Text(
             text = label,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
+            color = if (leadingIcon == null) {
+                contentColor
+            } else {
+                contentColor.copy(alpha = IconTextLabelAlpha)
+            },
+            style = if (compactContent) {
+                MaterialTheme.typography.titleMedium
+            } else {
+                MaterialTheme.typography.titleLarge
+            },
+            fontWeight = if (compactContent) FontWeight.Normal else FontWeight.SemiBold,
+            maxLines = if (compactContent) 1 else Int.MAX_VALUE,
         )
     }
 }

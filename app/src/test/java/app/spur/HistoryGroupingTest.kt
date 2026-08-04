@@ -28,6 +28,15 @@ class HistoryGroupingTest {
     }
 
     @Test
+    fun relativeSectionsAlsoShowTheirConcreteDate() {
+        assertEquals("29. Juli", dateLabel(0))
+        assertEquals("28. Juli", dateLabel(1))
+        assertEquals("27. Juli", dateLabel(2))
+        assertEquals(null, dateLabel(7))
+        assertEquals(null, dateLabel(30))
+    }
+
+    @Test
     fun historyDurationStaysCompact() {
         assertEquals("< 1 min", formatHistoryDuration(15_000L))
         assertEquals("42 min", formatHistoryDuration(42 * 60_000L))
@@ -53,12 +62,17 @@ class HistoryGroupingTest {
     }
 
     private fun section(ageDays: Long): String {
-        val timestamp = today
+        return historySectionLabel(timestamp(ageDays), now, zone)
+    }
+
+    private fun dateLabel(ageDays: Long): String? =
+        historySectionDateLabel(timestamp(ageDays), now, zone)
+
+    private fun timestamp(ageDays: Long): Long =
+        today
             .minusDays(ageDays)
             .atTime(12, 0)
             .atZone(zone)
             .toInstant()
             .toEpochMilli()
-        return historySectionLabel(timestamp, now, zone)
-    }
 }

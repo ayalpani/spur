@@ -16,14 +16,39 @@ class MapControlColorTest {
         )
         assertEquals(
             TrailColors(
-                fill = MapControlColor.BLUE.color,
-                stroke = Color.Black.copy(alpha = TrailStrokeAlpha),
+                background = MapControlColor.ORANGE.color,
+                foreground = Ink,
+                stroke = MapControlColor.BLUE.color,
             ),
             SpurColorTheme.CLASSIC.trailColors,
         )
         assertEquals(MapControlColor.BLUE, SpurColorTheme.CLASSIC.accent)
-        assertEquals(Color.Black, SpurColorTheme.CLASSIC.signalColor)
-        assertEquals(MapControlColor.GREEN.color, SpurColorTheme.FOREST.signalColor)
+        assertEquals(
+            LocationMarkerColors(
+                fill = MapControlColor.ORANGE.color,
+                outline = MapControlColor.WHITE.color,
+            ),
+            SpurColorTheme.CLASSIC.locationMarkerColors,
+        )
+        SpurColorTheme.entries.forEach { theme ->
+            assertEquals(theme.trailColors.background, theme.locationMarkerColors.fill)
+        }
+        assertEquals(
+            TrailColors(
+                background = MapControlColor.VIOLET.color,
+                foreground = Color.White,
+                stroke = MapControlColor.YELLOW.color,
+            ),
+            SpurColorTheme.FOREST.trailColors,
+        )
+        assertEquals(
+            TrailColors(
+                background = MapControlColor.BLUE.color,
+                foreground = Color.White,
+                stroke = MapControlColor.ORANGE.color,
+            ),
+            SpurColorTheme.ELECTRIC.trailColors,
+        )
     }
 
     @Test
@@ -101,7 +126,13 @@ class MapControlColorTest {
         )
         val secondary = secondaryMapControlStyle(selected)
 
-        assertEquals(selected.inverted, secondary.colors)
+        assertEquals(
+            selected.inverted.copy(
+                background = selected.inverted.background.copy(alpha = 0.75f),
+            ),
+            secondary.colors,
+        )
+        assertEquals(selected.inverted.foreground, secondary.colors.foreground)
         assertEquals(3.dp, secondary.border?.width)
         assertEquals(
             selected.inverted.foreground.copy(alpha = 0.25f),

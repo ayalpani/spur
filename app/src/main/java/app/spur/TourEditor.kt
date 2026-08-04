@@ -164,7 +164,7 @@ private fun TourEditorScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "Keine GPS-Punkte",
+                        text = "Keine Wegpunkte",
                         color = Ink.copy(alpha = 0.58f),
                         style = MaterialTheme.typography.titleMedium,
                     )
@@ -204,7 +204,7 @@ private fun TourEditorScreen(
                                     modifier = Modifier
                                         .size(52.dp)
                                         .semantics {
-                                            contentDescription = "GPS-Punkt löschen"
+                                            contentDescription = "Wegpunkt löschen"
                                         },
                                     contentPadding = PaddingValues(0.dp),
                                     shape = CircleShape,
@@ -231,7 +231,7 @@ private fun TourEditorScreen(
                                         .size(52.dp)
                                         .semantics {
                                             contentDescription =
-                                                "Moment an diesem GPS-Punkt hinzufügen"
+                                                "Moment an diesem Wegpunkt hinzufügen"
                                         },
                                     contentPadding = PaddingValues(0.dp),
                                     shape = CircleShape,
@@ -340,11 +340,11 @@ private fun TourEditorScreen(
     deleteTarget?.let { target ->
         EditorDeleteSheet(
             title = when (target) {
-                is EditorDeleteTarget.Location -> "GPS-Punkt löschen?"
+                is EditorDeleteTarget.Location -> "Wegpunkt löschen?"
                 is EditorDeleteTarget.Moment -> "${target.moment.type.editorLabel()} löschen?"
             },
             primaryLabel = when (target) {
-                is EditorDeleteTarget.Location -> "GPS-Punkt löschen"
+                is EditorDeleteTarget.Location -> "Wegpunkt löschen"
                 is EditorDeleteTarget.Moment -> "${target.moment.type.editorLabel()} löschen"
             },
             onDismiss = { deleteTarget = null },
