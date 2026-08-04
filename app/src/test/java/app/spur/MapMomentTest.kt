@@ -24,6 +24,24 @@ class MapMomentTest {
     }
 
     @Test
+    fun markerImageIdentityIgnoresCoordinateOnlyChanges() {
+        val moment = MapMoment(
+            id = "photo-1",
+            type = MomentType.PHOTO,
+            latitude = 52.52,
+            longitude = 13.405,
+            payload = "/photo.jpg",
+        )
+
+        assertEquals(
+            mapMomentImageKeys(listOf(moment)),
+            mapMomentImageKeys(
+                listOf(moment.copy(latitude = 48.13, longitude = 11.58)),
+            ),
+        )
+    }
+
+    @Test
     fun legacyMomentsRemainReadable() {
         assertEquals(
             MapMoment(

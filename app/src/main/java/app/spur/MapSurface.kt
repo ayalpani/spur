@@ -210,7 +210,11 @@ internal fun MapSurface(
     }
     var pendingMapMoment by remember { mutableStateOf<MapMoment?>(null) }
     var pendingMomentPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
+    var preparedMapMomentImages by remember {
+        mutableStateOf<PreparedMapMomentImages?>(null)
+    }
     var preparedMapMoments by remember { mutableStateOf<PreparedMapMoments?>(null) }
+    var mapMomentImagePreparationGeneration by remember { mutableLongStateOf(0L) }
     var currentLocation by remember { mutableStateOf<SpurCoordinate?>(null) }
     var isAtHome by remember { mutableStateOf(false) }
     var renderedVoicePlaybackId by remember { mutableStateOf<String?>(null) }
@@ -613,7 +617,7 @@ internal fun MapSurface(
             currentOnMomentClick(
                 moment,
                 Offset(screenPoint.x, screenPoint.y),
-                preparedMapMoments
+                preparedMapMomentImages
                     ?.photoPreviews
                     ?.get(moment.id)
                     ?.let {
@@ -1046,12 +1050,35 @@ internal fun MapSurface(
         }
     }
 
-    LaunchedEffect(mapMoments, momentImageRevision) {
-        preparedMapMoments = withContext(Dispatchers.IO) {
-            prepareMapMoments(
+    val mapMomentImagePreparationKey = remember(mapMoments, momentImageRevision) {
+        momentImageRevision to mapMomentImageKeys(mapMoments)
+    }
+    LaunchedEffect(mapMomentImagePreparationKey) {
+        val generation = ++mapMomentImagePreparationGeneration
+        val prepared = withContext(Dispatchers.IO) {
+            prepareMapMomentImages(
                 context = context.applicationContext,
                 moments = mapMoments,
             )
+        }
+        if (generation == mapMomentImagePreparationGeneration) {
+            preparedMapMomentImages = prepared
+        }
+    }
+
+    LaunchedEffect(mapMoments, preparedMapMomentImages) {
+        val preparedImages = preparedMapMomentImages ?: return@LaunchedEffect
+        if (preparedImages.keys != mapMomentImageKeys(mapMoments)) return@LaunchedEffect
+        preparedMapMoments = prepareMapMoments(
+            moments = mapMoments,
+        )
+    }
+
+    LaunchedEffect(preparedMapMomentImages, mapStyleRevision) {
+        val preparedImages = preparedMapMomentImages ?: return@LaunchedEffect
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.style?.showMapMomentImages(preparedImages)
         }
     }
 
@@ -1107,10 +1134,10 @@ internal fun MapSurface(
     LaunchedEffect(
         activeVoiceMoment?.id,
         voiceProgressFrame,
-        preparedMapMoments,
+        preparedMapMomentImages,
         mapStyleRevision,
     ) {
-        val prepared = preparedMapMoments ?: return@LaunchedEffect
+        val prepared = preparedMapMomentImages ?: return@LaunchedEffect
         if (mapStyleRevision == 0) return@LaunchedEffect
         val activeVoice = activeVoiceMoment
         val playbackMarker = activeVoice?.let {

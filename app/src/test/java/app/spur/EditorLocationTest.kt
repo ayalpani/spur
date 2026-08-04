@@ -38,6 +38,20 @@ class EditorLocationTest {
     }
 
     @Test
+    fun presentationPreservesPointOrderAndBuildsConstantTimeSelectionIndex() {
+        val points = listOf(
+            point(8, 52.00030, 3_000L),
+            point(3, 52.00010, 1_000L),
+            point(5, 52.00020, 2_000L),
+        )
+
+        val presentation = tourPresentation(tour, points, emptyList())
+
+        assertEquals(listOf(8L, 3L, 5L), presentation.editorLocations.map { it.point.id })
+        assertEquals(3L, presentation.editorLocationsByPointId.getValue(3L).point.id)
+    }
+
+    @Test
     fun momentFromCollapsedPointMovesToNearestClusterPoint() {
         val points = listOf(
             point(1, 52.0, 1_000L),

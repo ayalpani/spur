@@ -175,31 +175,28 @@ internal fun MapPage(
     val visibleMapMoments = remember(mapMoments, tour) {
         tour?.let { mapMomentsForTour(mapMoments, it) } ?: mapMoments
     }
-    val renderedMapMoments = remember(
-        visibleMapMoments,
-        routePoints,
-        tour,
-        homeSettings,
-    ) {
-        val positionedMoments = if (tour != null) {
-            momentsAttachedToTrackPoints(visibleMapMoments, routePoints)
-        } else {
-            visibleMapMoments
-        }
-        normalizedHomeMoments(positionedMoments, homeSettings)
+    var presentation by remember { mutableStateOf(TourPresentation.Empty) }
+    var presentationGeneration by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(tour, routePoints, visibleMapMoments) {
+        val generation = ++presentationGeneration
+        val result = tour?.let { displayedTour ->
+            withContext(Dispatchers.Default) {
+                tourPresentation(displayedTour, routePoints, visibleMapMoments)
+            }
+        } ?: TourPresentation(
+            mapMoments = visibleMapMoments,
+            editorLocations = emptyList(),
+            editorLocationsByPointId = emptyMap(),
+        )
+        if (generation == presentationGeneration) presentation = result
     }
-    val editorLocations = remember(tour, routePoints, visibleMapMoments) {
-        tour?.let {
-            editorLocations(
-                tour = it,
-                points = routePoints,
-                moments = visibleMapMoments,
-            )
-        }.orEmpty()
+    val renderedMapMoments = remember(presentation.mapMoments, homeSettings) {
+        normalizedHomeMoments(presentation.mapMoments, homeSettings)
     }
-    val selectedEditorLocation = editorLocations.firstOrNull {
-        it.point.id == selectedEditorPointId
-    } ?: editorLocations.lastOrNull()
+    val editorLocations = presentation.editorLocations
+    val selectedEditorLocation = selectedEditorPointId
+        ?.let(presentation.editorLocationsByPointId::get)
+        ?: editorLocations.lastOrNull()
     var activeVoiceMoment by remember { mutableStateOf<MapMoment?>(null) }
     var voicePlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isVoicePlaying by remember { mutableStateOf(false) }

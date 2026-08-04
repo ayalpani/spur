@@ -1,10 +1,5 @@
 package app.spur
 
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
-
 internal data class EditorLocation(
     val point: TrackPoint,
     val routeIndex: Int,
@@ -13,23 +8,46 @@ internal data class EditorLocation(
     val moments: List<MapMoment>,
 )
 
-internal fun editorLocations(
+internal data class TourPresentation(
+    val mapMoments: List<MapMoment>,
+    val editorLocations: List<EditorLocation>,
+    val editorLocationsByPointId: Map<Long, EditorLocation>,
+) {
+    companion object {
+        val Empty = TourPresentation(emptyList(), emptyList(), emptyMap())
+    }
+}
+
+internal fun tourPresentation(
     tour: Tour,
     points: List<TrackPoint>,
     moments: List<MapMoment>,
-): List<EditorLocation> {
-    if (points.isEmpty()) return emptyList()
+): TourPresentation {
+    if (points.isEmpty()) {
+        return TourPresentation(
+            mapMoments = moments,
+            editorLocations = emptyList(),
+            editorLocationsByPointId = emptyMap(),
+        )
+    }
+    val pointsById = points.associateBy(TrackPoint::id)
+    val attachedMoments = moments.map { moment ->
+        val point = moment.trackPointId?.let(pointsById::get)
+            ?: nearestTrackPoint(points, moment.latitude, moment.longitude)
+        moment to point
+    }
+    val momentsByPoint = attachedMoments
+        .filter { it.second != null }
+        .groupBy(
+            keySelector = { requireNotNull(it.second).id },
+            valueTransform = { it.first },
+        )
     val cumulativeDistance = DoubleArray(points.size)
     for (index in 1 until points.size) {
         cumulativeDistance[index] = cumulativeDistance[index - 1] +
             editorDistanceMeters(points[index - 1], points[index])
     }
-
-    val pointIds = points.mapTo(mutableSetOf(), TrackPoint::id)
-    val momentsByPoint = moments.groupBy { moment ->
-        moment.trackPointId?.takeIf { it in pointIds } ?: closestPoint(points, moment)?.id
-    }
-    return points.mapIndexed { index, point ->
+    val editorLocations = points.mapIndexed { index, point ->
         EditorLocation(
             point = point,
             routeIndex = index,
@@ -38,6 +56,23 @@ internal fun editorLocations(
             moments = momentsByPoint[point.id].orEmpty(),
         )
     }
+    return TourPresentation(
+        mapMoments = attachedMoments.map { (moment, point) ->
+            point?.let {
+                moment.copy(latitude = it.latitude, longitude = it.longitude)
+            } ?: moment
+        },
+        editorLocations = editorLocations,
+        editorLocationsByPointId = editorLocations.associateBy { it.point.id },
+    )
+}
+
+internal fun editorLocations(
+    tour: Tour,
+    points: List<TrackPoint>,
+    moments: List<MapMoment>,
+): List<EditorLocation> {
+    return tourPresentation(tour, points, moments).editorLocations
 }
 
 internal fun nearestTrackPoint(
@@ -46,14 +81,11 @@ internal fun nearestTrackPoint(
     longitude: Double,
 ): TrackPoint? =
     points.minByOrNull { point ->
-        editorDistanceMeters(
-            point,
-            TrackPoint(
-                id = -1,
-                latitude = latitude,
-                longitude = longitude,
-                recordedAt = 0,
-            ),
+        coordinateDistanceMeters(
+            fromLatitude = point.latitude,
+            fromLongitude = point.longitude,
+            toLatitude = latitude,
+            toLongitude = longitude,
         )
     }
 
@@ -61,30 +93,20 @@ internal fun momentsAttachedToTrackPoints(
     moments: List<MapMoment>,
     points: List<TrackPoint>,
 ): List<MapMoment> {
-    if (points.isEmpty()) return moments
-    val pointsById = points.associateBy(TrackPoint::id)
-    return moments.map { moment ->
-        val point = moment.trackPointId?.let(pointsById::get)
-            ?: nearestTrackPoint(points, moment.latitude, moment.longitude)
-            ?: return@map moment
-        moment.copy(
-            latitude = point.latitude,
-            longitude = point.longitude,
-        )
-    }
+    val syntheticTour = Tour(
+        id = 0L,
+        startedAt = points.firstOrNull()?.recordedAt ?: 0L,
+        endedAt = null,
+        distanceMeters = 0.0,
+        pointCount = points.size,
+    )
+    return tourPresentation(syntheticTour, points, moments).mapMoments
 }
 
-private fun closestPoint(points: List<TrackPoint>, moment: MapMoment): TrackPoint? =
-    nearestTrackPoint(points, moment.latitude, moment.longitude)
-
-private fun editorDistanceMeters(from: TrackPoint, to: TrackPoint): Double {
-    val earthRadius = 6_371_000.0
-    val latitudeDelta = Math.toRadians(to.latitude - from.latitude)
-    val longitudeDelta = Math.toRadians(to.longitude - from.longitude)
-    val startLatitude = Math.toRadians(from.latitude)
-    val endLatitude = Math.toRadians(to.latitude)
-    val a = sin(latitudeDelta / 2) * sin(latitudeDelta / 2) +
-        cos(startLatitude) * cos(endLatitude) *
-        sin(longitudeDelta / 2) * sin(longitudeDelta / 2)
-    return earthRadius * 2 * atan2(sqrt(a), sqrt(1 - a))
-}
+private fun editorDistanceMeters(from: TrackPoint, to: TrackPoint): Double =
+    coordinateDistanceMeters(
+        fromLatitude = from.latitude,
+        fromLongitude = from.longitude,
+        toLatitude = to.latitude,
+        toLongitude = to.longitude,
+    )
