@@ -171,6 +171,10 @@ confirming that the command preserves app data.
   measured departure point before the live tour so the route never starts with
   one synthetic line across the Home Zone. Activity recognition is optional;
   when its runtime permission is missing, retain the geofence fallback.
+- During an automatic return, preserve every measured tour waypoint inside the
+  100 m Home Zone. Only append the canonical Home point after the independent
+  6-of-10 arrival confirmation inside the 25 m arrival radius; never snap live
+  track points to Home merely because they crossed the broader geofence.
 - Confirm every successfully created tour with one short vibration and every
   successfully completed tour with a short double vibration. Apply the same
   haptics to manual and Home-Zone-driven lifecycle transitions; service restarts

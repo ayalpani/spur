@@ -177,23 +177,9 @@ class TrackingService : Service() {
             return
         }
         val id = tourId ?: return
-        val settings = loadHomeAutoStartSettings()
-        val storedCoordinate = normalizedHomeCoordinate(
-            settings = settings,
-            coordinate = SpurCoordinate(location.latitude, location.longitude),
-        )
-        val storedLocation = if (
-            storedCoordinate.latitude == location.latitude &&
-            storedCoordinate.longitude == location.longitude
-        ) {
-            location
-        } else {
-            Location(location).apply {
-                latitude = storedCoordinate.latitude
-                longitude = storedCoordinate.longitude
-            }
-        }
-        val appended = store.appendLocation(id, storedLocation)
+        // Preserve the measured return route inside the Home Zone. The canonical
+        // home point is appended only after the separate arrival confirmation.
+        val appended = store.appendLocation(id, location)
         if (appended) {
             store.tour(id)?.let {
                 getSystemService(NotificationManager::class.java)
