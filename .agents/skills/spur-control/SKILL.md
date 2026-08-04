@@ -5,9 +5,10 @@ description: Control the Spur Android app on Arash's registered Galaxy A54 over 
 
 # Spur Control
 
-Use `scripts/spurctl` as the control plane. Run the copy bundled with the
-current checkout. From anywhere inside a Spur worktree, it resolves and builds
-that worktree rather than the checkout containing the script.
+Use `scripts/spurctl` from the repository or worktree root as the control
+plane. This stable wrapper delegates to the implementation bundled with the
+local `spur-control` skill. The implementation resolves and builds the current
+worktree rather than another checkout.
 
 ## Commands
 
@@ -89,4 +90,8 @@ recover.
 
 ## Evolving the control plane
 
-When Arash establishes a recurring Spur-control preference, update this skill and, when execution behavior changes, `scripts/spurctl`. Keep device-specific facts here and deterministic operations in the script.
+When Arash establishes a recurring Spur-control preference, update this skill
+and, when execution behavior changes, the implementation at
+`.agents/skills/spur-control/scripts/spurctl`. Keep the public command at
+`scripts/spurctl`, device-specific facts here, and deterministic operations in
+the implementation.

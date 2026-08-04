@@ -83,7 +83,7 @@ moments were lost and no restorable backup had been created. This was a test
 procedure failure, not an application migration. The repository rule now
 forbids instrumentation tasks on a data-bearing personal device; those tests
 must use a disposable emulator or dedicated test profile. Normal branch
-deployment continues through the data-preserving `spurctl start` path.
+deployment continues through the data-preserving `scripts/spurctl start` path.
 
 The existing-data compatibility check had passed on the TourEditor-v2 baseline
 before the reset. It could not be repeated at final branch acceptance because
