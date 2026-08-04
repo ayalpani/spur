@@ -1,5 +1,6 @@
 package app.spur
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.platform.LocalContext
@@ -8,7 +9,6 @@ import androidx.compose.ui.platform.LocalContext
 @Composable
 private fun MapPagePreview() {
     MapPage(
-        store = TourStore(LocalContext.current),
         tour = null,
         activeTour = null,
         tourDisplayRequest = 0,
@@ -18,11 +18,9 @@ private fun MapPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
-        isTourEditing = false,
-        onEditTour = {},
-        onCloseTourEditor = {},
-        onRoutePointsChanged = {},
+        onCloseDisplayedTour = {},
         onDeleteTour = {},
+        onDeleteWaypoint = { _, _ -> true },
     )
 }
 
@@ -37,7 +35,6 @@ private fun ActiveTourPagePreview() {
         pointCount = 42,
     )
     MapPage(
-        store = TourStore(LocalContext.current),
         tour = tour,
         activeTour = tour,
         tourDisplayRequest = 0,
@@ -47,22 +44,20 @@ private fun ActiveTourPagePreview() {
         onSimulatedLocation = {},
         onEndTour = {},
         onOpenHistory = {},
-        isTourEditing = false,
-        onEditTour = {},
-        onCloseTourEditor = {},
-        onRoutePointsChanged = {},
+        onCloseDisplayedTour = {},
         onDeleteTour = {},
+        onDeleteWaypoint = { _, _ -> true },
     )
 }
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
-private fun HistoryPagePreview() {
-    HistoryPage(
+private fun HistoryBottomSheetPreview() {
+    HistoryBottomSheet(
         store = TourStore(LocalContext.current),
         revision = 0,
-        onBack = {},
-        onEditTour = {},
+        onOpenTour = {},
+        onOpenPhoto = { _, _ -> },
     )
 }
 
@@ -70,4 +65,36 @@ private fun HistoryPagePreview() {
 @Composable
 private fun LocationOnboardingPreview() {
     LocationOnboarding(permissionRequested = false, onRequestLocation = {})
+}
+
+@Preview(showBackground = true, widthDp = 412)
+@Composable
+private fun StartTourBottomSheetPreview() {
+    CompositionLocalProvider(
+        LocalMapControlColors provides MapControlColors(
+            background = MapControlColor.BLACK.color,
+            foreground = MapControlColor.WHITE.color,
+        ),
+    ) {
+        StartTourBottomSheet(onStartTour = {})
+    }
+}
+
+@Preview(showBackground = true, widthDp = 412)
+@Composable
+private fun VoiceRecorderBottomSheetPreview() {
+    CompositionLocalProvider(
+        LocalMapControlColors provides MapControlColors(
+            background = MapControlColor.BLACK.color,
+            foreground = MapControlColor.WHITE.color,
+        ),
+    ) {
+        VoiceRecorderBottomSheet(
+            startRecordingRequest = 0,
+            hasRecordPermission = true,
+            onRequestPermission = {},
+            onRecordingAccepted = {},
+            onDismiss = {},
+        )
+    }
 }

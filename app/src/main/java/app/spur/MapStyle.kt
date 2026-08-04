@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.selected
+import java.io.File
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.location.LocationComponentConstants
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.Property
@@ -36,6 +38,7 @@ import org.maplibre.android.style.layers.PropertyFactory.textTranslateAnchor
 import org.maplibre.android.style.layers.PropertyFactory.visibility
 import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.layers.Layer
 import org.maplibre.android.style.sources.GeoJsonOptions
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.sources.RasterSource
@@ -56,6 +59,7 @@ internal fun setMapStyle(
     defaultMapBearing: Double,
     routePoints: List<TrackPoint>,
     trailColors: TrailColors,
+    locationPulseColor: Color,
     onLoaded: () -> Unit,
 ) {
     val cameraPosition = map.cameraPosition
@@ -74,7 +78,7 @@ internal fun setMapStyle(
             manualLocation = manualLocation,
             initialMapZoom = initialMapZoom,
             defaultMapBearing = defaultMapBearing,
-            pulseColor = trailColors.fill,
+            pulseColor = locationPulseColor,
         )
         style.showTourRoute(routePoints, trailColors)
         if (!centerOnLocation) {
@@ -119,21 +123,48 @@ internal fun Style.showOutlinedBuildings() {
 internal data class PreparedMapMoments(
     val moments: List<MapMoment>,
     val images: HashMap<String, android.graphics.Bitmap>,
+    val photoPreviews: Map<String, PreparedPhotoPreview>,
     val features: List<Feature>,
+)
+
+internal data class PreparedPhotoPreview(
+    val bitmap: android.graphics.Bitmap,
+    val aspectRatio: Float,
 )
 
 internal fun prepareMapMoments(
     context: Context,
     moments: List<MapMoment>,
+    personaColors: MapControlColors,
 ): PreparedMapMoments {
-    val images = HashMap<String, android.graphics.Bitmap>(moments.size * 3)
+    val images = HashMap<String, android.graphics.Bitmap>(moments.size * 5 + 1)
+    val photoPreviews = HashMap<String, PreparedPhotoPreview>()
+    val personaMarker = createPersonaMarkerBitmap(context, personaColors)
+    images[MapPersonaImage] = personaMarker
     val features = moments.mapIndexed { index, moment ->
         val imageId = MapMomentImagePrefix + moment.id
-        val marker = createMomentMarkerBitmap(context, moment, selected = false)
+        val marker = createMomentMarkerBitmap(
+            context = context,
+            moment = moment,
+            selected = false,
+            onPhotoDecoded = { bitmap ->
+                photoPreviews[moment.id] = PreparedPhotoPreview(
+                    bitmap = bitmap,
+                    aspectRatio = photoAspectRatio(File(moment.payload)),
+                )
+            },
+        )
         images[imageId] = marker
         listOf(2, 3).forEach { stackSize ->
             images[clusterMomentImageId(moment, stackSize)] =
                 createMomentClusterBitmap(context, marker, stackSize)
+            images[personaClusterImageId(moment, stackSize)] =
+                createPersonaClusterBitmap(
+                    context = context,
+                    momentMarker = marker,
+                    personaMarker = personaMarker,
+                    stackSize = stackSize,
+                )
         }
         Feature.fromGeometry(
             Point.fromLngLat(moment.longitude, moment.latitude),
@@ -141,16 +172,21 @@ internal fun prepareMapMoments(
             addStringProperty(MapMomentIdProperty, moment.id)
             addStringProperty(MapMomentImageProperty, imageId)
             addNumberProperty(MapMomentRepresentativeProperty, index)
+            addNumberProperty(MapPersonaProperty, 0)
         }
     }
     return PreparedMapMoments(
         moments = moments,
         images = images,
+        photoPreviews = photoPreviews,
         features = features,
     )
 }
 
-internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
+internal fun Style.showMapMoments(
+    prepared: PreparedMapMoments,
+    persona: SpurCoordinate?,
+) {
     val moments = prepared.moments
     val images = prepared.images
     val features = prepared.features
@@ -171,18 +207,32 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
                         Expression.get(MapMomentRepresentativeProperty),
                     ),
                     Expression.get(MapMomentRepresentativeProperty),
+                )
+                .withClusterProperty(
+                    MapPersonaProperty,
+                    Expression.max(
+                        Expression.accumulated(),
+                        Expression.get(MapPersonaProperty),
+                    ),
+                    Expression.get(MapPersonaProperty),
                 ),
         ).also(::addSource)
-    source.setGeoJson(FeatureCollection.fromFeatures(features))
+    source.setGeoJson(
+        FeatureCollection.fromFeatures(
+            features + listOfNotNull(personaFeature(persona)),
+        ),
+    )
 
     val momentOffset = momentOffsetExpression(moments)
+    val unclusteredMomentFilter = Expression.all(
+        Expression.neq(Expression.get("cluster"), true),
+        Expression.neq(Expression.toNumber(Expression.get(MapPersonaProperty)), 1),
+    )
     val momentLayer = getLayerAs<SymbolLayer>(MapMomentLayer)
     if (momentLayer == null) {
-        addLayer(
+        addLayerBelowLocationPulse(
             SymbolLayer(MapMomentLayer, MapMomentSource)
-                .withFilter(
-                    Expression.neq(Expression.get("cluster"), true),
-                )
+                .withFilter(unclusteredMomentFilter)
                 .withProperties(
                     iconImage(Expression.get(MapMomentImageProperty)),
                     iconOffset(momentOffset),
@@ -199,11 +249,15 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
     }
 
     val clusterImage = clusterMomentImageExpression(moments)
+    val regularClusterFilter = Expression.all(
+        Expression.has("point_count"),
+        Expression.neq(Expression.toNumber(Expression.get(MapPersonaProperty)), 1),
+    )
     val clusterLayer = getLayerAs<SymbolLayer>(MapMomentClusterLayer)
     if (clusterLayer == null) {
-        addLayer(
+        addLayerBelowLocationPulse(
             SymbolLayer(MapMomentClusterLayer, MapMomentSource)
-                .withFilter(Expression.has("point_count"))
+                .withFilter(regularClusterFilter)
                 .withProperties(
                     iconImage(clusterImage),
                     iconAnchor(Property.ICON_ANCHOR_BOTTOM),
@@ -221,7 +275,7 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
     if (getLayer(MapMomentClusterCountBadgeLayer) == null) {
         val countBadgeLayer =
             CircleLayer(MapMomentClusterCountBadgeLayer, MapMomentSource)
-                .withFilter(Expression.has("point_count"))
+                .withFilter(regularClusterFilter)
                 .withProperties(
                     circleRadius(MapMomentClusterCountBadgeRadius),
                     circleColor(Ink.toArgb()),
@@ -234,16 +288,16 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
                     circleTranslateAnchor(Property.CIRCLE_TRANSLATE_ANCHOR_VIEWPORT),
                 )
         if (getLayer(MapMomentClusterCountLayer) == null) {
-            addLayer(countBadgeLayer)
+            addLayerBelowLocationPulse(countBadgeLayer)
         } else {
             addLayerBelow(countBadgeLayer, MapMomentClusterCountLayer)
         }
     }
 
     if (getLayer(MapMomentClusterCountLayer) == null) {
-        addLayer(
+        addLayerBelowLocationPulse(
             SymbolLayer(MapMomentClusterCountLayer, MapMomentSource)
-                .withFilter(Expression.has("point_count"))
+                .withFilter(regularClusterFilter)
                 .withProperties(
                     textField(Expression.toString(Expression.get("point_count_abbreviated"))),
                     textFont(arrayOf("Noto Sans Bold")),
@@ -260,10 +314,107 @@ internal fun Style.showMapMoments(prepared: PreparedMapMoments) {
                     textAllowOverlap(true),
                     textIgnorePlacement(true),
                     symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
+            ),
+        )
+    }
+
+    val unclusteredPersonaFilter = Expression.all(
+        Expression.neq(Expression.get("cluster"), true),
+        Expression.eq(Expression.toNumber(Expression.get(MapPersonaProperty)), 1),
+    )
+    if (getLayer(MapPersonaLayer) == null) {
+        addLayer(
+            SymbolLayer(MapPersonaLayer, MapMomentSource)
+                .withFilter(unclusteredPersonaFilter)
+                .withProperties(
+                    iconImage(MapPersonaImage),
+                    iconOffset(arrayOf(0f, MapPersonaVerticalOffsetDp)),
+                    iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+                    iconAllowOverlap(true),
+                    iconIgnorePlacement(true),
+                    iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                    iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                    symbolZOrder(Property.SYMBOL_Z_ORDER_SOURCE),
+                ),
+        )
+    }
+
+    val personaClusterFilter = Expression.all(
+        Expression.has("point_count"),
+        Expression.eq(Expression.toNumber(Expression.get(MapPersonaProperty)), 1),
+    )
+    if (getLayer(MapPersonaClusterLayer) == null) {
+        addLayer(
+            SymbolLayer(MapPersonaClusterLayer, MapMomentSource)
+                .withFilter(personaClusterFilter)
+                .withProperties(
+                    iconImage(personaClusterImageExpression(moments)),
+                    iconOffset(arrayOf(0f, MapPersonaVerticalOffsetDp)),
+                    iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+                    iconAllowOverlap(true),
+                    iconIgnorePlacement(true),
+                    iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                    iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                    symbolZOrder(Property.SYMBOL_Z_ORDER_SOURCE),
+                ),
+        )
+    } else {
+        getLayerAs<SymbolLayer>(MapPersonaClusterLayer)?.setProperties(
+            iconImage(personaClusterImageExpression(moments)),
+        )
+    }
+    if (getLayer(MapPersonaClusterCountBadgeLayer) == null) {
+        addLayer(
+            CircleLayer(MapPersonaClusterCountBadgeLayer, MapMomentSource)
+                .withFilter(personaClusterFilter)
+                .withProperties(
+                    circleRadius(MapMomentClusterCountBadgeRadius),
+                    circleColor(Ink.toArgb()),
+                    circleTranslate(
+                        arrayOf(
+                            MapMomentClusterCountPositionX,
+                            MapMomentClusterCountPositionY + MapPersonaVerticalOffsetDp,
+                        ),
+                    ),
+                    circleTranslateAnchor(Property.CIRCLE_TRANSLATE_ANCHOR_VIEWPORT),
+                ),
+        )
+    }
+    if (getLayer(MapPersonaClusterCountLayer) == null) {
+        addLayer(
+            SymbolLayer(MapPersonaClusterCountLayer, MapMomentSource)
+                .withFilter(personaClusterFilter)
+                .withProperties(
+                    textField(Expression.toString(Expression.get("point_count_abbreviated"))),
+                    textFont(arrayOf("Noto Sans Bold")),
+                    textSize(13f),
+                    textColor(android.graphics.Color.WHITE),
+                    textTranslate(
+                        arrayOf(
+                            MapMomentClusterCountPositionX,
+                            MapMomentClusterCountPositionY + MapPersonaVerticalOffsetDp,
+                        ),
+                    ),
+                    textTranslateAnchor(Property.TEXT_TRANSLATE_ANCHOR_VIEWPORT),
+                    textAnchor(Property.TEXT_ANCHOR_CENTER),
+                    textAllowOverlap(true),
+                    textIgnorePlacement(true),
+                    symbolZOrder(Property.SYMBOL_Z_ORDER_SOURCE),
                 ),
         )
     }
 }
+
+internal fun personaFeature(persona: SpurCoordinate?): Feature? =
+    persona?.let {
+        Feature.fromGeometry(
+            Point.fromLngLat(it.longitude, it.latitude),
+        ).apply {
+            addStringProperty(MapMomentImageProperty, MapPersonaImage)
+            addNumberProperty(MapMomentRepresentativeProperty, -1)
+            addNumberProperty(MapPersonaProperty, 1)
+        }
+    }
 
 private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression =
     Expression.switchCase(
@@ -295,6 +446,36 @@ private fun representativeClusterImageExpression(
 private fun clusterMomentImageId(moment: MapMoment, stackSize: Int): String =
     "$MapMomentClusterImagePrefix$stackSize-${moment.id}"
 
+private fun personaClusterImageExpression(moments: List<MapMoment>): Expression =
+    Expression.switchCase(
+        Expression.eq(
+            Expression.toNumber(Expression.get("point_count")),
+            Expression.literal(2),
+        ),
+        representativePersonaClusterImageExpression(moments, 2),
+        representativePersonaClusterImageExpression(moments, 3),
+    )
+
+private fun representativePersonaClusterImageExpression(
+    moments: List<MapMoment>,
+    stackSize: Int,
+): Expression {
+    val fallback = moments.firstOrNull()?.let {
+        personaClusterImageId(it, stackSize)
+    }.orEmpty()
+    val stops = moments.mapIndexed { index, moment ->
+        Expression.stop(index, personaClusterImageId(moment, stackSize))
+    }.toTypedArray()
+    return Expression.match(
+        Expression.toNumber(Expression.get(MapMomentRepresentativeProperty)),
+        Expression.literal(fallback),
+        *stops,
+    )
+}
+
+private fun personaClusterImageId(moment: MapMoment, stackSize: Int): String =
+    "$MapPersonaClusterImagePrefix$stackSize-${moment.id}"
+
 private fun momentOffsetExpression(moments: List<MapMoment>): Expression {
     val offsets = overlappingMomentOffsets(moments)
     val center = Expression.literal(arrayOf(0f, 0f))
@@ -307,4 +488,13 @@ private fun momentOffsetExpression(moments: List<MapMoment>): Expression {
         center,
         *stops,
     )
+}
+
+internal fun Style.addLayerBelowLocationPulse(layer: Layer) {
+    val pulseLayer = LocationComponentConstants.PULSING_CIRCLE_LAYER
+    if (getLayer(pulseLayer) == null) {
+        addLayer(layer)
+    } else {
+        addLayerBelow(layer, pulseLayer)
+    }
 }

@@ -36,15 +36,12 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -73,7 +70,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -169,6 +165,7 @@ internal fun PhotoDetailPage(
     photos: List<MapMoment>,
     initialPhotoId: String,
     openOrigin: Offset? = null,
+    openPreview: PhotoOpenPreview? = null,
     photoRevision: Long = 0L,
     showFeedbackNotice: ShowFeedbackNotice,
     onPhotoChanged: (MapMoment) -> Unit = {},
@@ -197,8 +194,12 @@ internal fun PhotoDetailPage(
     val openProgress = remember(openOrigin) {
         Animatable(if (openOrigin == null) 1f else 0f)
     }
-    var openingPhotoAspectRatio by remember(openOrigin) { mutableFloatStateOf(1f) }
-    var openingThumbnail by remember(openOrigin) { mutableStateOf<ImageBitmap?>(null) }
+    var openingPhotoAspectRatio by remember(openOrigin, openPreview) {
+        mutableFloatStateOf(openPreview?.aspectRatio ?: 1f)
+    }
+    var openingThumbnail by remember(openOrigin, openPreview) {
+        mutableStateOf(openPreview?.image)
+    }
     var isVisible by remember { mutableStateOf(false) }
     var isClosing by remember { mutableStateOf(false) }
     var showPhotoActionsSheet by remember { mutableStateOf(false) }
@@ -312,14 +313,19 @@ internal fun PhotoDetailPage(
         }
     }
 
-    LaunchedEffect(openOrigin) {
+    LaunchedEffect(openOrigin, openPreview) {
         if (openOrigin == null) return@LaunchedEffect
-        val photo = File(photos[initialPage].payload)
-        val (aspectRatio, thumbnail) = withContext(Dispatchers.IO) {
-            photoAspectRatio(photo) to decodeMarkerPhoto(photo.absolutePath)?.asImageBitmap()
+        if (openPreview == null) {
+            launch {
+                val photo = File(photos[initialPage].payload)
+                val (aspectRatio, thumbnail) = withContext(Dispatchers.IO) {
+                    photoAspectRatio(photo) to
+                        decodeMarkerPhoto(photo.absolutePath)?.asImageBitmap()
+                }
+                openingPhotoAspectRatio = aspectRatio
+                openingThumbnail = thumbnail
+            }
         }
-        openingPhotoAspectRatio = aspectRatio
-        openingThumbnail = thumbnail
         openProgress.animateTo(
             targetValue = 1f,
             animationSpec = tween(
@@ -511,7 +517,7 @@ internal fun PhotoDetailPage(
                                 contentDescription = "Foto 90 Grad nach links drehen",
                                 onClick = ::rotatePhotoLeft,
                             ) {
-                                PhotoRotateLeftIcon()
+                                PhotoRotateCcwSquareIcon()
                             }
                         }
                         PhotoActionButton(
@@ -606,32 +612,24 @@ internal fun PhotoDetailPage(
                     textAlign = TextAlign.Center,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Button(
+                SpurPrimaryButton(
+                    label = "Bild endgültig löschen",
                     onClick = { deleteAnimated(currentPhoto) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = StopRed,
-                        contentColor = Color.White,
-                    ),
-                    shape = CircleShape,
-                ) {
-                    Text(
-                        text = "Bild endgültig löschen",
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                TextButton(
+                    destructive = true,
+                )
+                SpurSecondaryButton(
+                    label = "Abbrechen",
                     onClick = { showDeletePhotoSheet = false },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Abbrechen", color = Ink)
-                }
+                )
             }
         }
     }
 }
+
+internal data class PhotoOpenPreview(
+    val image: ImageBitmap,
+    val aspectRatio: Float,
+)
 
 @Composable
 private fun PhotoActionButton(
@@ -689,10 +687,11 @@ internal fun PhotoDeleteIcon(color: Color = LocalContentColor.current) = LucideI
 )
 
 @Composable
-private fun PhotoRotateLeftIcon() = LucideIcon(
+private fun PhotoRotateCcwSquareIcon() = LucideIcon(
     paths = listOf(
-        "M3 12a9 9 0 1 0 3-6.7L3 8",
-        "M3 3v5h5",
+        "M20 9V7a2 2 0 0 0-2-2h-6",
+        "m15 2-3 3 3 3",
+        "M20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2",
     ),
 )
 

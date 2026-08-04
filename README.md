@@ -24,7 +24,7 @@ Die startfähige Compose-App nutzt MapLibre mit OpenStreetMap-Vektorkacheln für
 ihre primäre Kartenansicht. Ein kurzes Standort-Onboarding führt zur
 Android-Freigabe; danach folgt die Karte Position und Gerätekompass. Touren
 werden über einen Foreground Service aufgezeichnet, lokal in SQLite gespeichert
-und als Route auf der Karte dargestellt. Fotomomente nutzt CameraX.
+und als Route auf der Karte dargestellt. Foto- und Videomomente nutzen CameraX.
 
 ## Starten
 

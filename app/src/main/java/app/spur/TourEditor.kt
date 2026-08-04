@@ -143,6 +143,7 @@ private fun TourEditorScreen(
                 MapIconButton(
                     contentDescription = "Editor schließen",
                     onClick = onBack,
+                    secondary = true,
                 ) {
                     BackIcon()
                 }
@@ -303,7 +304,7 @@ private fun TourEditorScreen(
                         }
                     }
                 }
-                EditorLocationRail(
+                WaypointRail(
                     locations = locations,
                     selectedPointId = selectedLocation.point.id,
                     onSelected = { selectedPointId = it },

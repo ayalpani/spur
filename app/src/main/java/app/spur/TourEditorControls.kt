@@ -1,6 +1,8 @@
 package app.spur
 
 import android.location.Location
+import android.media.AudioManager
+import android.media.ToneGenerator
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,27 +28,33 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.Locale
@@ -80,42 +88,72 @@ internal fun EditorDeleteSheet(
                 title = title,
                 modifier = Modifier.padding(bottom = 10.dp),
             )
-            OutlinedButton(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = CircleShape,
-            ) {
-                Text("Abbrechen", color = Ink)
-            }
-            Button(
+            SpurPrimaryButton(
+                label = primaryLabel,
                 onClick = onConfirm,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Ink,
-                    contentColor = Color.White,
-                ),
-            ) {
-                Text(primaryLabel)
-            }
+                destructive = true,
+            )
+            SpurSecondaryButton(
+                label = "Abbrechen",
+                onClick = onDismiss,
+            )
         }
     }
 }
 
 @Composable
-internal fun EditorLocationRail(
+internal fun WaypointRail(
     locations: List<EditorLocation>,
-    selectedPointId: Long,
+    selectedPointId: Long?,
+    focusRequest: Long = 0L,
+    emptyText: String = "Keine Wegpunkte aufgezeichnet.",
     onSelected: (Long) -> Unit,
 ) {
-    val initialIndex = locations.indexOfFirst { it.point.id == selectedPointId }
+    if (locations.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(WaypointRailHeight)
+                .background(Color.White)
+                .padding(horizontal = 24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = emptyText,
+                color = Ink.copy(alpha = 0.46f),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        }
+        return
+    }
+
+    val resolvedSelectedPointId = selectedPointId ?: locations.last().point.id
+    val initialIndex = locations.indexOfFirst {
+        it.point.id == resolvedSelectedPointId
+    }
         .coerceAtLeast(0)
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val scope = rememberCoroutineScope()
+    val tickTone = remember {
+        runCatching {
+            ToneGenerator(
+                AudioManager.STREAM_MUSIC,
+                WaypointTickVolumePercent,
+            )
+        }.getOrNull()
+    }
+    DisposableEffect(tickTone) {
+        onDispose { tickTone?.release() }
+    }
+    var isProgrammaticScroll by remember { mutableStateOf(false) }
+    var lastTickedIndex by remember(
+        locations.first().point.id,
+        locations.last().point.id,
+        locations.size,
+    ) {
+        mutableIntStateOf(initialIndex)
+    }
     val fling = rememberSnapFlingBehavior(
         lazyListState = state,
         snapPosition = SnapPosition.Center,
@@ -147,8 +185,34 @@ internal fun EditorLocationRail(
         }
     }
 
+    fun selectAndCenter(index: Int) {
+        val pointId = locations.getOrNull(index)?.point?.id ?: return
+        isProgrammaticScroll = true
+        onSelected(pointId)
+        scope.launch {
+            try {
+                centerVisibleItem(index, animated = true)
+            } finally {
+                isProgrammaticScroll = false
+            }
+        }
+    }
+
     LaunchedEffect(state, locations.size) {
         centerVisibleItem(initialIndex, animated = false)
+    }
+
+    LaunchedEffect(state, focusRequest) {
+        if (focusRequest == 0L) return@LaunchedEffect
+        val index = locations.indexOfFirst {
+            it.point.id == selectedPointId
+        }.takeIf { it >= 0 } ?: return@LaunchedEffect
+        isProgrammaticScroll = true
+        try {
+            centerVisibleItem(index, animated = true)
+        } finally {
+            isProgrammaticScroll = false
+        }
     }
 
     LaunchedEffect(state, locations) {
@@ -162,7 +226,15 @@ internal fun EditorLocationRail(
         }
             .distinctUntilChanged()
             .collect { index ->
-                index?.let {
+                if (!isProgrammaticScroll) index?.let {
+                    if (it != lastTickedIndex) {
+                        tickTone?.stopTone()
+                        tickTone?.startTone(
+                            ToneGenerator.TONE_CDMA_PIP,
+                            WaypointTickDurationMillis,
+                        )
+                    }
+                    lastTickedIndex = it
                     locations.getOrNull(it)?.point?.id?.let(onSelected)
                 }
             }
@@ -171,18 +243,30 @@ internal fun EditorLocationRail(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .height(EditorLocationRailHeight)
+            .height(WaypointRailHeight)
             .background(Color.White),
     ) {
         val selectedIndex = locations.indexOfFirst {
-            it.point.id == selectedPointId
+            it.point.id == resolvedSelectedPointId
         }.coerceAtLeast(0)
         val itemWidth = 10.dp
         val edgePadding = (maxWidth - itemWidth) / 2
+        val density = LocalDensity.current
+        val endpointCenters by remember(state, locations.size) {
+            derivedStateOf {
+                val visibleItems = state.layoutInfo.visibleItemsInfo
+                val start = visibleItems.firstOrNull { it.index == 0 }
+                    ?.let { it.offset + it.size / 2 }
+                val end = visibleItems.firstOrNull { it.index == locations.lastIndex }
+                    ?.let { it.offset + it.size / 2 }
+                start to end
+            }
+        }
         Text(
             text = "${selectedIndex + 1} von ${locations.size}",
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .zIndex(1f)
                 .padding(top = 10.dp),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
@@ -194,7 +278,7 @@ internal fun EditorLocationRail(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(56.dp),
+                .fillMaxHeight(),
         ) {
             items(
                 count = locations.size,
@@ -206,7 +290,7 @@ internal fun EditorLocationRail(
                         .width(itemWidth)
                         .fillMaxHeight()
                         .clickable {
-                            scope.launch { centerVisibleItem(index, animated = true) }
+                            selectAndCenter(index)
                         }
                         .semantics {
                             contentDescription =
@@ -214,32 +298,6 @@ internal fun EditorLocationRail(
                         },
                     contentAlignment = Alignment.BottomCenter,
                 ) {
-                    if (index == 0) {
-                        Text(
-                            text = "Start",
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .offset(x = (-26).dp, y = (-10).dp)
-                                .requiredWidth(40.dp),
-                            color = Ink.copy(alpha = 0.28f),
-                            textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
-                    if (index == locations.lastIndex) {
-                        Text(
-                            text = "Ende",
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .offset(x = 26.dp, y = (-10).dp)
-                                .requiredWidth(40.dp),
-                            color = Ink.copy(alpha = 0.28f),
-                            textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -262,6 +320,32 @@ internal fun EditorLocationRail(
                 }
             }
         }
+        endpointCenters.first?.let { center ->
+            WaypointEndpointLabel(
+                label = "Start",
+                timestamp = locations.first().point.recordedAt,
+                onClick = { selectAndCenter(0) },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(
+                        x = edgePadding + with(density) { center.toDp() } - 69.dp,
+                        y = (-2).dp,
+                    ),
+            )
+        }
+        endpointCenters.second?.let { center ->
+            WaypointEndpointLabel(
+                label = "Ende",
+                timestamp = locations.last().point.recordedAt,
+                onClick = { selectAndCenter(locations.lastIndex) },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(
+                        x = edgePadding + with(density) { center.toDp() } - 3.dp,
+                        y = (-2).dp,
+                    ),
+            )
+        }
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -269,6 +353,38 @@ internal fun EditorLocationRail(
                 .width(2.dp)
                 .height(32.dp)
                 .background(Ink, CircleShape),
+        )
+    }
+}
+
+@Composable
+private fun WaypointEndpointLabel(
+    label: String,
+    timestamp: Long,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .requiredWidth(72.dp)
+            .height(48.dp)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "$label der Tour" },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = label,
+            color = Ink.copy(alpha = 0.28f),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = formatClock(timestamp),
+            color = Ink.copy(alpha = 0.46f),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelSmall,
         )
     }
 }

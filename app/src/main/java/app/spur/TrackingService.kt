@@ -87,7 +87,7 @@ class TrackingService : Service() {
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 4_000L)
             .setMinUpdateIntervalMillis(2_000L)
             .setMinUpdateDistanceMeters(4f)
-            .setWaitForAccurateLocation(true)
+            .setWaitForAccurateLocation(false)
             .build()
         locationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
     }

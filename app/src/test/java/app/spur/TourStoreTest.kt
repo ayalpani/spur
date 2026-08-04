@@ -19,24 +19,27 @@ class TourStoreTest {
     }
 
     @Test
-    fun gpsStartRequiresThreeAccurateClusteredFixes() {
-        val stabilizer = GpsStartStabilizer()
+    fun accurateGpsFixStartsImmediately() {
+        val gate = GpsStartGate()
 
-        assertFalse(stabilizer.isReady(fix(latitude = 52.52000, accuracy = 8f)))
-        assertFalse(stabilizer.isReady(fix(latitude = 52.52005, accuracy = 10f)))
-        assertTrue(stabilizer.isReady(fix(latitude = 52.52010, accuracy = 7f)))
+        assertTrue(gate.isReady(fix(latitude = 52.52000, accuracy = 8f), observedAtMillis = 0L))
     }
 
     @Test
-    fun inaccurateOrDistantFixRestartsGpsStabilization() {
-        val stabilizer = GpsStartStabilizer()
+    fun usableGpsFixStartsAfterShortFallbackDelay() {
+        val gate = GpsStartGate()
 
-        assertFalse(stabilizer.isReady(fix(latitude = 52.52000, accuracy = 8f)))
-        assertFalse(stabilizer.isReady(fix(latitude = 52.52005, accuracy = 13f)))
-        assertFalse(stabilizer.isReady(fix(latitude = 52.52010, accuracy = 8f)))
-        assertFalse(stabilizer.isReady(fix(latitude = 52.52100, accuracy = 8f)))
-        assertFalse(stabilizer.isReady(fix(latitude = 52.52105, accuracy = 8f)))
-        assertTrue(stabilizer.isReady(fix(latitude = 52.52110, accuracy = 8f)))
+        assertFalse(gate.isReady(fix(latitude = 52.52000, accuracy = 24f), observedAtMillis = 0L))
+        assertFalse(gate.isReady(fix(latitude = 52.52005, accuracy = 24f), observedAtMillis = 9_999L))
+        assertTrue(gate.isReady(fix(latitude = 52.52010, accuracy = 24f), observedAtMillis = 10_000L))
+    }
+
+    @Test
+    fun unusableGpsFixNeverStartsTour() {
+        val gate = GpsStartGate()
+
+        assertFalse(gate.isReady(fix(latitude = 52.52000, accuracy = 80f), observedAtMillis = 0L))
+        assertFalse(gate.isReady(fix(latitude = 52.52005, accuracy = 80f), observedAtMillis = 60_000L))
     }
 
     @Test

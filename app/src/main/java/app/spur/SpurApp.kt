@@ -6,20 +6,17 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableLongStateOf
@@ -30,7 +27,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
@@ -41,11 +37,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 internal fun SpurApp(splashExitComplete: Boolean) {
     val context = LocalContext.current
     val store = remember { TourStore(context) }
@@ -55,9 +51,10 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var displayedTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var displayedTourRequest by rememberSaveable { mutableLongStateOf(0L) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
-    var isTourEditing by rememberSaveable { mutableStateOf(false) }
     var historyRevision by remember { mutableLongStateOf(0L) }
     var photoRevision by remember { mutableLongStateOf(0L) }
+    var historyPhotoDetail by remember { mutableStateOf<MapMoment?>(null) }
+    var historyPhotos by remember { mutableStateOf(emptyList<MapMoment>()) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var initialMapLoadingComplete by rememberSaveable { mutableStateOf(false) }
@@ -78,18 +75,27 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         hasLocationPermission = context.hasLocationPermission()
     }
 
-    LaunchedEffect(hasLocationPermission) {
-        if (!hasLocationPermission) return@LaunchedEffect
-        val restored = withContext(Dispatchers.IO) { store.activeTour() }
-        activeTour = restored
-        if (restored != null) {
-            displayedTour = restored
-            displayedTourId = restored.id
+    LaunchedEffect(hasLocationPermission, activeTour?.id, displayedTourId) {
+        if (!hasLocationPermission || activeTour != null) return@LaunchedEffect
+        while (true) {
+            val restored = withContext(Dispatchers.IO) { store.activeTour() }
+            if (restored == null) {
+                delay(1_000L)
+                continue
+            }
+            activeTour = restored
+            if (displayedTourId == null) {
+                displayedTour = restored
+                displayedTourId = restored.id
+                displayedTourRequest++
+            }
+            historyRevision++
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, TrackingService::class.java)
                     .putExtra(TrackingService.EXTRA_TOUR_ID, restored.id),
             )
+            break
         }
     }
 
@@ -139,7 +145,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                 displayedTour = null
                 displayedTourId = null
                 routePoints = emptyList()
-                isTourEditing = false
             }
             historyRevision++
         }
@@ -205,7 +210,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                     ) {
                         composable(SpurRoute.MAP) {
                             MapPage(
-                                store = store,
                                 tour = displayedTour,
                                 activeTour = activeTour,
                                 tourDisplayRequest = displayedTourRequest,
@@ -214,14 +218,16 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 onStartTour = {
                                     scope.launch {
                                         val id = withContext(Dispatchers.IO) {
-                                            val startedId = store.startTour()
-                                            context.loadManualLocation()?.let { coordinate ->
-                                                store.appendSimulatedLocation(
-                                                    startedId,
-                                                    coordinate,
-                                                )
+                                            val start = store.activeTourOrStart()
+                                            if (start.created) {
+                                                context.loadManualLocation()?.let { coordinate ->
+                                                    store.appendSimulatedLocation(
+                                                        start.id,
+                                                        coordinate,
+                                                    )
+                                                }
                                             }
-                                            startedId
+                                            start.id
                                         }
                                         ContextCompat.startForegroundService(
                                             context,
@@ -266,19 +272,45 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                         routePoints = result.second
                                         now = System.currentTimeMillis()
                                         historyRevision++
+                                        result.first?.let { finishedTour ->
+                                            if (
+                                                context.ensureTourHistoryAssets(
+                                                    finishedTour,
+                                                    result.second,
+                                                )
+                                            ) {
+                                                historyRevision++
+                                            }
+                                        }
                                     }
                                 },
                                 onOpenHistory = {
                                     isHistoryVisible = true
                                 },
-                                isTourEditing = isTourEditing,
-                                onEditTour = { isTourEditing = true },
-                                onCloseTourEditor = { isTourEditing = false },
-                                onRoutePointsChanged = {
-                                    routePoints = it
-                                    historyRevision++
+                                onCloseDisplayedTour = {
+                                    val currentActiveTour = activeTour
+                                    displayedTour = currentActiveTour
+                                    displayedTourId = currentActiveTour?.id
+                                    displayedTourRequest++
+                                    routePoints = emptyList()
                                 },
                                 onDeleteTour = deleteTour,
+                                onDeleteWaypoint = { tourId, retainedIds ->
+                                    runCatching {
+                                        val result = withContext(Dispatchers.IO) {
+                                            store.updateTourPoints(tourId, retainedIds)
+                                            store.tour(tourId) to store.points(tourId)
+                                        }
+                                        if (displayedTourId == tourId) {
+                                            displayedTour = result.first
+                                            routePoints = result.second
+                                        }
+                                        if (activeTour?.id == tourId) {
+                                            activeTour = result.first
+                                        }
+                                        historyRevision++
+                                    }.isSuccess
+                                },
                                 showFeedbackNotice = showFeedbackNotice,
                                 photoRevision = photoRevision,
                                 onPhotoRotated = { photoRevision++ },
@@ -291,50 +323,65 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         }
                     }
 
-                    val historyPanelOffset by animateFloatAsState(
-                        targetValue = if (isHistoryVisible) 0f else 1f,
-                        animationSpec = tween(
-                            durationMillis = PanelMotionDurationMillis,
-                            easing = FastOutSlowInEasing,
-                        ),
-                        label = "History panel offset",
-                    )
-                    BoxWithConstraints(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .zIndex(2f),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .offset {
-                                    IntOffset(
-                                        x = (constraints.maxWidth * historyPanelOffset)
-                                            .roundToInt(),
-                                        y = 0,
-                                    )
-                                },
+                    if (isHistoryVisible) {
+                        val historySheetState =
+                            rememberModalBottomSheetState(skipPartiallyExpanded = false)
+                        SpurModalBottomSheet(
+                            onDismissRequest = { isHistoryVisible = false },
+                            sheetState = historySheetState,
                         ) {
-                            HistoryPage(
+                            HistoryBottomSheet(
                                 store = store,
                                 revision = historyRevision,
-                                isVisible = isHistoryVisible,
-                                onBack = { isHistoryVisible = false },
-                                onEditTour = { id ->
+                                onOpenTour = { id ->
                                     if (displayedTourId != id) {
                                         displayedTour = null
                                         routePoints = emptyList()
                                     }
                                     displayedTourId = id
                                     displayedTourRequest++
-                                    isTourEditing = true
                                     isHistoryVisible = false
                                 },
-                                showFeedbackNotice = showFeedbackNotice,
-                                photoRevision = photoRevision,
-                                onPhotoRotated = { photoRevision++ },
+                                onOpenPhoto = { photo, photos ->
+                                    historyPhotos = photos
+                                    historyPhotoDetail = photo
+                                },
                             )
                         }
+                    }
+                    historyPhotoDetail?.let { photo ->
+                        PhotoDetailPage(
+                            photos = historyPhotos,
+                            initialPhotoId = photo.id,
+                            photoRevision = photoRevision,
+                            showFeedbackNotice = showFeedbackNotice,
+                            onPhotoChanged = { historyPhotoDetail = it },
+                            onPhotoRotated = {
+                                photoRevision++
+                                historyRevision++
+                            },
+                            onPhotoDeleted = { deletedPhoto ->
+                                scope.launch {
+                                    val updatedMoments = context.deleteMapMoment(
+                                        moment = deletedPhoto,
+                                        moments = context.loadMapMoments(),
+                                    )
+                                    if (updatedMoments == null) {
+                                        showFeedbackNotice(
+                                            FeedbackNoticeKind.ERROR,
+                                            "Das Bild konnte nicht gelöscht werden.",
+                                        )
+                                    } else {
+                                        photoRevision++
+                                        historyRevision++
+                                    }
+                                }
+                            },
+                            onDismiss = {
+                                historyPhotoDetail = null
+                                historyPhotos = emptyList()
+                            },
+                        )
                     }
                     FeedbackNoticeHost(
                         notice = feedbackNotice,

@@ -11,7 +11,7 @@ import java.io.File
 internal val Sand = Color(0xFFF7F5F0)
 internal val Ink = Color(0xFF18201C)
 internal val Moss = Color(0xFF23614A)
-private val FollowGreen = Color(0xFF43A873)
+internal val FollowGreen = Color(0xFF43A873)
 internal val StopRed = Color(0xFFE53935)
 internal val MapPinRed = Color(0xFFEA4335)
 private val MomentMarkerGreen = Color(0xFF43A047)
@@ -23,11 +23,13 @@ internal val ImageDetailControlForeground = Color.White
 internal const val DefaultMapZoom = 17.5
 internal const val MapControlGapDp = 10
 internal const val MapControlSizeDp = 60
+internal const val MapControlIconSizeDp = 32
 internal const val MapControlHorizontalPaddingDp = 18
 private const val MapControlVerticalPaddingDp = 16
 internal const val MapPlayerMinimumWidthDp = 180
 internal val MapControlGap = MapControlGapDp.dp
 internal val MapControlSize = MapControlSizeDp.dp
+internal val MapControlIconSize = MapControlIconSizeDp.dp
 internal val MapControlHorizontalPadding = MapControlHorizontalPaddingDp.dp
 internal val MapControlVerticalPadding = MapControlVerticalPaddingDp.dp
 internal val MomentSheetHeaderGap = 24.dp
@@ -36,8 +38,12 @@ internal val SheetMenuTextSize = 24.sp
 internal val StopSwipeHandleSize = 52.dp
 internal val MapRotationOptionGap = 16.dp
 internal val FilterChipVisualInset = 8.dp
+internal const val MapOutlineWidthDp = 3f
 internal const val MotionDurationDefaultMillis = 200
-internal const val EditorPointTransitionDurationMillis = 10
+internal const val EditorPointTransitionDurationMillis = 50
+internal const val ManualWaypointVibrationMillis = 40L
+internal const val WaypointTickDurationMillis = 24
+internal const val WaypointTickVolumePercent = 55
 internal const val FeedbackNoticeDurationMillis = 2_500L
 internal const val PendingPhotoRevealDelayMillis = 1_000L
 internal const val MinimumSystemSplashDurationMillis = 3_000L
@@ -53,18 +59,19 @@ internal const val LoaderAsteriskAccelerationDegrees =
 internal val PhotoMapPreviewSize = 96.dp
 internal val LoaderAsteriskSize = 128.dp
 internal val LoaderTextGap = 20.dp
-internal val EditorLocationRailHeight = 96.dp
-internal val EditorMetricBarHeight = 68.dp
+internal val WaypointRailHeight = 96.dp
 internal const val PhotoMapPreviewZoom = 17.5
 internal const val TourRouteWidthPixels = 6f
 internal const val TourRouteBorderPerSidePixels = 4f
 internal const val TourRouteBorderWidthPixels =
     TourRouteWidthPixels + TourRouteBorderPerSidePixels * 2f
+internal const val TourWaypointRadiusPixels = 2f
 internal const val TrailStrokeAlpha = 0.5f
 internal const val LocationPulseAlpha = 0.48f
-internal const val LocationPulseDurationMillis = 3_000
+internal const val LocationSignalPeriodMillis = 3_000
+internal const val LocationSignalIconMinimumAlpha = 0.5f
 internal const val LocationPulseMaxRadius = 35f
-internal const val LocationPulseScale = 1.15f
+internal const val MapPersonaVerticalOffsetDp = -16f
 internal const val MapPinTipY = 21.799f
 internal val MapPinIconPaths = listOf(
     "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
@@ -130,6 +137,50 @@ internal enum class MapControlColor(
         get() = if (color.luminance() > 0.3f) Ink else Color.White
 }
 
+internal val HomeBuildingGold = MapControlColor.YELLOW.color
+
+internal enum class SpurColorTheme(
+    val label: String,
+    val primary: MapControlColor,
+    val secondary: MapControlColor,
+    val accent: MapControlColor,
+) {
+    CLASSIC(
+        label = "Klassisch",
+        primary = MapControlColor.BLACK,
+        secondary = MapControlColor.WHITE,
+        accent = MapControlColor.BLUE,
+    ),
+    FOREST(
+        label = "Wald",
+        primary = MapControlColor.GREEN,
+        secondary = MapControlColor.WHITE,
+        accent = MapControlColor.YELLOW,
+    ),
+    ELECTRIC(
+        label = "Elektrisch",
+        primary = MapControlColor.INDIGO,
+        secondary = MapControlColor.WHITE,
+        accent = MapControlColor.ORANGE,
+    ),
+    ;
+
+    val mapControlColors: MapControlColors
+        get() = MapControlColors(
+            background = primary.color,
+            foreground = secondary.color,
+        )
+
+    val signalColor: Color
+        get() = primary.color
+
+    val trailColors: TrailColors
+        get() = TrailColors(
+            fill = accent.color,
+            stroke = primary.color.copy(alpha = TrailStrokeAlpha),
+        )
+}
+
 internal fun momentMarkerColor(type: MomentType): Color = when (type) {
     MomentType.PHOTO -> MomentMarkerGreen
     MomentType.VIDEO -> MapControlColor.BLUE.color
@@ -178,13 +229,19 @@ internal data class TrailColors(
 )
 
 internal val LocalMapControlColors = staticCompositionLocalOf {
-    MapControlColors(background = Color.White, foreground = Ink)
+    MapControlColors(
+        background = MapControlColor.BLACK.color,
+        foreground = MapControlColor.WHITE.color,
+    )
+}
+internal val LocalAccentColor = staticCompositionLocalOf {
+    SpurColorTheme.CLASSIC.accent.color
+}
+internal val LocalSignalColor = staticCompositionLocalOf {
+    SpurColorTheme.CLASSIC.signalColor
 }
 internal val LocalTrailColors = staticCompositionLocalOf {
-    TrailColors(
-        fill = MapControlColor.YELLOW.color,
-        stroke = MapControlColor.BLACK.color.copy(alpha = TrailStrokeAlpha),
-    )
+    SpurColorTheme.CLASSIC.trailColors
 }
 internal val LocalLucideStrokeWidth = staticCompositionLocalOf { LucideRegularStrokeWidth }
 

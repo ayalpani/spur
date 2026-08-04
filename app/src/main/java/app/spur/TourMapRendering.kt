@@ -2,8 +2,10 @@ package app.spur
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.toArgb
+import org.maplibre.android.location.LocationComponentConstants
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.Layer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
@@ -19,28 +21,47 @@ import org.maplibre.android.style.expressions.Expression
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
+import org.maplibre.geojson.MultiPoint
 import org.maplibre.geojson.Point
 
 internal fun Style.showTourRoute(
     points: List<TrackPoint>,
     colors: TrailColors,
 ) {
-    showTourRoute(tourRouteFeature(points), colors)
+    showTourRoute(tourRouteFeatures(points), colors)
 }
 
-internal fun tourRouteFeature(points: List<TrackPoint>): Feature? =
-    if (points.size >= 2) {
+internal fun tourRouteFeature(points: List<TrackPoint>): Feature? {
+    val coordinates = points.map { Point.fromLngLat(it.longitude, it.latitude) }
+    return if (coordinates.size >= 2) {
         Feature.fromGeometry(
-            LineString.fromLngLats(
-                points.map { Point.fromLngLat(it.longitude, it.latitude) },
-            ),
+            LineString.fromLngLats(coordinates),
         )
     } else {
         null
     }
+}
+
+internal fun tourRouteFeatures(points: List<TrackPoint>): FeatureCollection {
+    val coordinates = points.map { Point.fromLngLat(it.longitude, it.latitude) }
+    return FeatureCollection.fromFeatures(
+        buildList {
+            if (coordinates.size >= 2) {
+                add(Feature.fromGeometry(LineString.fromLngLats(coordinates)))
+            }
+            if (coordinates.isNotEmpty()) {
+                add(
+                    Feature.fromGeometry(
+                        MultiPoint.fromLngLats(coordinates),
+                    ),
+                )
+            }
+        },
+    )
+}
 
 internal fun Style.showTourRoute(
-    route: Feature?,
+    route: FeatureCollection,
     colors: TrailColors,
 ) {
     val source = getSourceAs<GeoJsonSource>(TourRouteSource)
@@ -52,9 +73,9 @@ internal fun Style.showTourRoute(
             lineWidth(TourRouteBorderWidthPixels),
             lineCap(Property.LINE_CAP_ROUND),
             lineJoin(Property.LINE_JOIN_ROUND),
-        )
+        ).withFilter(Expression.eq(Expression.geometryType(), "LineString"))
         if (getLayer(TourRouteLayer) == null) {
-            addLayer(borderLayer)
+            addTourLayerBelowMarkers(borderLayer)
         } else {
             addLayerBelow(borderLayer, TourRouteLayer)
         }
@@ -63,21 +84,43 @@ internal fun Style.showTourRoute(
     }
     val routeLayer = getLayerAs<LineLayer>(TourRouteLayer)
     if (routeLayer == null) {
-        addLayer(
+        addTourLayerBelowMarkers(
             LineLayer(TourRouteLayer, TourRouteSource).withProperties(
                 lineColor(colors.fill.toArgb()),
                 lineWidth(TourRouteWidthPixels),
                 lineCap(Property.LINE_CAP_ROUND),
                 lineJoin(Property.LINE_JOIN_ROUND),
-            ),
+            ).withFilter(Expression.eq(Expression.geometryType(), "LineString")),
         )
     } else {
         routeLayer.setProperties(lineColor(colors.fill.toArgb()))
     }
-    if (route != null) {
-        source.setGeoJson(route)
+    val waypointLayer = getLayerAs<CircleLayer>(TourWaypointLayer)
+    if (waypointLayer == null) {
+        addLayerAbove(
+            CircleLayer(TourWaypointLayer, TourRouteSource).withProperties(
+                circleColor(colors.stroke.toArgb()),
+                circleRadius(TourWaypointRadiusPixels),
+            ).withFilter(Expression.eq(Expression.geometryType(), "Point")),
+            TourRouteLayer,
+        )
     } else {
-        source.setGeoJson("""{"type":"FeatureCollection","features":[]}""")
+        waypointLayer.setProperties(circleColor(colors.stroke.toArgb()))
+    }
+    source.setGeoJson(route)
+}
+
+private fun Style.addTourLayerBelowMarkers(layer: Layer) {
+    val markerLayer = when {
+        getLayer(MapMomentLayer) != null -> MapMomentLayer
+        getLayer(LocationComponentConstants.PULSING_CIRCLE_LAYER) != null ->
+            LocationComponentConstants.PULSING_CIRCLE_LAYER
+        else -> null
+    }
+    if (markerLayer == null) {
+        addLayer(layer)
+    } else {
+        addLayerBelow(layer, markerLayer)
     }
 }
 
@@ -115,7 +158,7 @@ internal fun Style.showTourEndpoints(
         ?: GeoJsonSource(TourEndpointSource).also(::addSource)
     val ringLayer = getLayerAs<CircleLayer>(TourEndpointRingLayer)
     if (ringLayer == null) {
-        addLayer(
+        addLayerBelowLocationPulse(
             CircleLayer(TourEndpointRingLayer, TourEndpointSource).withProperties(
                 circleColor(colors.fill.toArgb()),
                 circleRadius(TourEndpointRadius),
@@ -133,7 +176,7 @@ internal fun Style.showTourEndpoints(
     }
     val endLayer = getLayerAs<CircleLayer>(TourEndpointEndLayer)
     if (endLayer == null) {
-        addLayer(
+        addLayerBelowLocationPulse(
             CircleLayer(TourEndpointEndLayer, TourEndpointSource)
                 .withFilter(
                     Expression.eq(

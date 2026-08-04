@@ -30,20 +30,22 @@ internal const val SatelliteTileUrl =
 internal const val SatelliteMapStyleJson =
     """{"version":8,"glyphs":"https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf","sources":{"satellite-source":{"type":"raster","tiles":["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],"tileSize":256,"attribution":"Esri, Maxar, Earthstar Geographics, and the GIS User Community"}},"layers":[{"id":"satellite-layer","type":"raster","source":"satellite-source"}]}"""
 internal const val MomentMarkerWidth = 62
-internal const val MomentMarkerHeight = 58
+internal const val MomentMarkerHeight = 62
 internal const val MomentMarkerStroke = 3f
-internal const val MomentMarkerEdgeWidth = 1f
+internal const val MomentMarkerEdgeWidth = MapOutlineWidthDp
+internal const val MomentMarkerVerticalOffset = MomentMarkerEdgeWidth - 2f
+internal const val MomentClusterStackStep = 6f
+internal const val MomentClusterMaximumOffset = MomentClusterStackStep * 2f
 internal const val MapPreviewPixels = 180
-internal const val LocationPulseWatchdogMillis = LocationPulseDurationMillis * 10L
-internal const val CurrentLocationFootprintsImage = "current-location-footprints-image"
-internal const val CurrentLocationFootprintsLayer = "current-location-footprints-layer"
-internal const val CurrentLocationFootprintsLiftPixels = 16f
+internal const val LocationPulseWatchdogMillis = LocationSignalPeriodMillis * 10L
+internal const val LocationPuckHitTargetDp = 60f
 internal val LocationPulseEasing = Easing { fraction ->
     (cos((fraction + 1f) * PI) / 2f + 0.5f).toFloat()
 }
 internal const val TourRouteSource = "tour-route-source"
 internal const val TourRouteBorderLayer = "tour-route-border-layer"
 internal const val TourRouteLayer = "tour-route-layer"
+internal const val TourWaypointLayer = "tour-waypoint-layer"
 internal const val TourEndpointSource = "tour-endpoint-source"
 internal const val TourEndpointRingLayer = "tour-endpoint-ring-layer"
 internal const val TourEndpointEndLayer = "tour-endpoint-end-layer"
@@ -51,13 +53,17 @@ internal const val TourEndpointTypeProperty = "endpoint-type"
 internal const val TourEndpointEnd = "end"
 private const val TourEndpointScale = 1.25f * 1.5f
 internal const val TourEndpointRadius = 7f * TourEndpointScale
-internal const val TourEndpointStrokeWidth = TourRouteBorderPerSidePixels
-internal const val TourEndpointEndRadius = 3f * TourEndpointScale
+internal const val TourEndpointStrokeWidth = 4f
+internal const val TourEndpointEndRadius = 5f * TourEndpointScale
 internal const val SelectedTrackPointSource = "selected-track-point-source"
 internal const val SelectedTrackPointLayer = "selected-track-point-layer"
 internal const val MapMomentSource = "map-moment-source"
 internal const val MapMomentLayer = "map-moment-layer"
 internal const val MapMomentClusterLayer = "map-moment-cluster-layer"
+internal const val MapPersonaLayer = "map-persona-layer"
+internal const val MapPersonaClusterLayer = "map-persona-cluster-layer"
+internal const val MapPersonaClusterCountBadgeLayer = "map-persona-cluster-count-badge-layer"
+internal const val MapPersonaClusterCountLayer = "map-persona-cluster-count-layer"
 internal const val MapMomentClusterCountBadgeLayer = "map-moment-cluster-count-badge-layer"
 internal const val MapMomentClusterCountLayer = "map-moment-cluster-count-layer"
 internal const val MapMomentClusterCountBadgeRadius = 9f
@@ -70,15 +76,21 @@ internal const val MapBuildingMaxZoom = 24f
 internal const val HomeBuildingSource = "home-building-source"
 internal const val HomeBuildingFillLayer = "home-building-fill-layer"
 internal const val HomeBuildingOutlineLayer = "home-building-outline-layer"
+internal const val SelectedBuildingSource = "selected-building-source"
+internal const val SelectedBuildingFillLayer = "selected-building-fill-layer"
+internal const val SelectedBuildingOutlineLayer = "selected-building-outline-layer"
 internal const val SelectableHomeBuildingsLayer = "selectable-home-buildings-layer"
 internal const val HomeBuildingSelectionZoom = 18.5
-internal const val HomeBuildingSelectionSearchRadiusDp = 64
+internal const val HomeBuildingMinimumSelectionZoom = 15.0
 internal const val MapMomentIdProperty = "moment-id"
 internal const val MapMomentImageProperty = "moment-image"
 internal const val MapMomentRepresentativeProperty = "moment-representative"
+internal const val MapPersonaProperty = "persona"
+internal const val MapPersonaImage = "map-persona-image"
 internal const val MapMomentImagePrefix = "map-moment-"
 internal const val MapMomentClusterImagePrefix = "map-moment-cluster-"
-internal const val MapMomentClusterMaxZoom = 18
+internal const val MapPersonaClusterImagePrefix = "map-persona-cluster-"
+internal const val MapMomentClusterMaxZoom = 23
 internal const val MapMomentClusterRadius = MomentMarkerHeight / 2 - 1
 
 internal enum class MapRotation(val label: String, val bearing: Double) {
@@ -95,6 +107,15 @@ internal data class SelectedBuilding(
 
 internal fun mapRotationFromStored(value: String?): MapRotation =
     MapRotation.entries.firstOrNull { it.name == value } ?: MapRotation.NORTH
+
+internal fun waypointEmptyText(
+    hasActiveTour: Boolean,
+    hasDisplayedTour: Boolean,
+): String = when {
+    hasActiveTour -> "Warte auf GPS-Signal …"
+    hasDisplayedTour -> "Keine Wegpunkte aufgezeichnet."
+    else -> ""
+}
 
 internal fun mapControlColorFromStored(
     value: String?,
@@ -116,6 +137,18 @@ internal fun nearestCompassRotation(current: Float, target: Float): Float {
         delta <= -180f -> delta + 360f
         else -> delta
     }
+}
+
+internal fun isWithinLocationHitTarget(
+    clickX: Float,
+    clickY: Float,
+    locationX: Float,
+    locationY: Float,
+    hitTargetSize: Float,
+): Boolean {
+    val radius = hitTargetSize / 2f
+    return abs(clickX - locationX) <= radius &&
+        abs(clickY - locationY) <= radius
 }
 
 internal fun mapRotationOptionCenterDistance(
@@ -191,10 +224,13 @@ internal fun stopSwipePromptAlpha(offset: Float, maximum: Float): Float {
     return ((0.82f - progress) / 0.22f).coerceIn(0f, 1f)
 }
 
+internal fun canSelectHomeBuilding(mapZoom: Double): Boolean =
+    mapZoom >= HomeBuildingMinimumSelectionZoom
+
 internal fun clusterStackOffsets(pointCount: Int): List<Float> = when {
-    pointCount <= 1 -> listOf(8f)
-    pointCount == 2 -> listOf(4f, 8f)
-    else -> listOf(0f, 4f, 8f)
+    pointCount <= 1 -> listOf(MomentClusterMaximumOffset)
+    pointCount == 2 -> listOf(MomentClusterStackStep, MomentClusterMaximumOffset)
+    else -> listOf(0f, MomentClusterStackStep, MomentClusterMaximumOffset)
 }
 
 internal fun overlappingMomentOffsets(moments: List<MapMoment>): Map<String, Offset> =

@@ -19,6 +19,27 @@ boundaries, not behavior or state architecture.
 | Home automation | home building/start point, geofence registration and exit receiver | SharedPreferences + Android geofencing |
 | History/editor/player | reading, displaying, trimming and playing stored tours | Compose + `TourStore` |
 
+Map overlay controls share `MapIconButton`. Its secondary variant swaps the
+user-selected map-control foreground and background colors and uses the soft
+3 dp outline from `secondaryMapControlStyle`, derived from the secondary font
+color at 25% opacity. Its round clickable `Surface` keeps pressed feedback
+bounded to, and filling, the complete control. The map-style switcher and
+inactive tour-start control use the same style. The location/follow control
+remains primary; the blue secondary moment-add control sits immediately above
+it, while manual-location reset sits above the map-style switcher.
+During direct map gestures, the main control rails fade out and back in over
+`MotionDurationDefaultMillis`; the map does not abruptly cover them via z-index.
+The MapLibre accuracy circle is hidden. The location pulse is black while the
+map is free and switches to the selected trail color only while location
+following is active; interrupting follow with a map gesture restores black.
+The entire active follow button fades between full and half GPU-layer opacity
+on the same shared signal period as that map pulse, revealing the map beneath
+instead of merely darkening its inner colors.
+MapLibre keeps ownership of moment clustering and coordinates. Moment and
+cluster layers are inserted below the MapLibre location stack, making
+`MapPersonaLayer` the topmost map renderer. There is deliberately no custom
+collision detection or visual marker displacement.
+
 ## Data flow
 
 ```mermaid
@@ -57,7 +78,19 @@ service is destroyed.
 
 Audio recording and playback are Compose-owned resources. Disposal stops and
 releases the current `MediaRecorder`/`MediaPlayer`. CameraX remains isolated in
-`CameraScreen` and binds to the current lifecycle owner.
+`CameraScreen` and `VideoCameraScreen`; both bind to the current lifecycle
+owner. `VideoConfirmationScreen` owns preview playback. Video recordings are
+finalized before preview, deleted when discarded, and retained only after the
+user confirms them. Photo preview and capture belong to the same CameraX
+`UseCaseGroup` and share the `PreviewView` viewport, so the saved photo contains
+exactly the framing shown in the camera. Photo and video confirmation share
+`AnimatedMediaConfirmationPanel`: the complete medium is fitted into the
+remaining top-centered preview area, with both dimensions constrained by its
+actual aspect ratio, while the fixed, non-draggable action panel occupies its
+own space below instead of covering the medium. On entry the panel expands and
+slides upward while the preview area shrinks in the same 420 ms transition. The
+panel stops above the Android navigation area and therefore has rounded corners
+on all four sides.
 
 ## Intended file boundaries
 

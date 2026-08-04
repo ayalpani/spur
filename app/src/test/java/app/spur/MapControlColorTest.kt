@@ -1,10 +1,38 @@
 package app.spur
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MapControlColorTest {
+    @Test
+    fun curatedThemesExposePrimarySecondaryAccentAndTrailColors() {
+        assertEquals(3, SpurColorTheme.entries.size)
+        assertEquals(
+            MapControlColors(background = Color.Black, foreground = Color.White),
+            SpurColorTheme.CLASSIC.mapControlColors,
+        )
+        assertEquals(
+            TrailColors(
+                fill = MapControlColor.BLUE.color,
+                stroke = Color.Black.copy(alpha = TrailStrokeAlpha),
+            ),
+            SpurColorTheme.CLASSIC.trailColors,
+        )
+        assertEquals(MapControlColor.BLUE, SpurColorTheme.CLASSIC.accent)
+        assertEquals(Color.Black, SpurColorTheme.CLASSIC.signalColor)
+        assertEquals(MapControlColor.GREEN.color, SpurColorTheme.FOREST.signalColor)
+    }
+
+    @Test
+    fun storedThemeFallsBackToClassic() {
+        assertEquals(SpurColorTheme.FOREST, colorThemeFromStored("FOREST"))
+        assertEquals(SpurColorTheme.CLASSIC, colorThemeFromStored("invalid"))
+        assertEquals(SpurColorTheme.CLASSIC, colorThemeFromStored(null))
+    }
+
     @Test
     fun paletteHasSixteenRainbowOrderedPersistentOptionsAndDefaultsToBlack() {
         assertEquals(16, MapControlColor.entries.size)
@@ -63,5 +91,43 @@ class MapControlColorTest {
 
         assertEquals(Color.White, selected.inverted.background)
         assertEquals(Color(0xFF2563EB), selected.inverted.foreground)
+    }
+
+    @Test
+    fun secondaryMapButtonInvertsTheSelectedColors() {
+        val selected = MapControlColors(
+            background = Color.Black,
+            foreground = Color.White,
+        )
+        val secondary = secondaryMapControlStyle(selected)
+
+        assertEquals(selected.inverted, secondary.colors)
+        assertEquals(3.dp, secondary.border?.width)
+        assertEquals(
+            selected.inverted.foreground.copy(alpha = 0.25f),
+            (secondary.border?.brush as SolidColor).value,
+        )
+    }
+
+    @Test
+    fun secondaryButtonUsesASelectedColorThatStaysVisibleOnWhite() {
+        assertEquals(
+            Color.Black,
+            secondaryButtonContentColor(
+                MapControlColors(background = Color.Black, foreground = Color.White),
+            ),
+        )
+        assertEquals(
+            Color.Black,
+            secondaryButtonContentColor(
+                MapControlColors(background = Color.White, foreground = Color.Black),
+            ),
+        )
+        assertEquals(
+            Ink,
+            secondaryButtonContentColor(
+                MapControlColors(background = Color.White, foreground = Color.Yellow),
+            ),
+        )
     }
 }

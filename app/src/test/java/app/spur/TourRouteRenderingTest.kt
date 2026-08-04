@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.maplibre.geojson.LineString
+import org.maplibre.geojson.MultiPoint
 import org.maplibre.geojson.Point
 
 class TourRouteRenderingTest {
@@ -42,6 +43,36 @@ class TourRouteRenderingTest {
         assertEquals(13.42, end.longitude(), 0.0)
         assertEquals(52.54, end.latitude(), 0.0)
         assertEquals("end", endpoints[1].getStringProperty("endpoint-type"))
+    }
+
+    @Test
+    fun routeGeometryIncludesOneWaypointForEveryGpsPoint() {
+        val features = tourRouteFeatures(
+            listOf(
+                point(1, 52.52, 13.40),
+                point(2, 52.53, 13.41),
+                point(3, 52.54, 13.42),
+            ),
+        ).features().orEmpty()
+        val waypoints = (features.single { it.geometry() is MultiPoint }.geometry() as MultiPoint)
+            .coordinates()
+
+        assertEquals(3, waypoints.size)
+        assertEquals(13.40, waypoints[0].longitude(), 0.0)
+        assertEquals(52.54, waypoints[2].latitude(), 0.0)
+    }
+
+    @Test
+    fun thousandsOfWaypointsStayInOneMultiPointFeature() {
+        val features = tourRouteFeatures(
+            (1L..5_000L).map { id ->
+                point(id, 52.52 + id / 1_000_000.0, 13.40)
+            },
+        ).features().orEmpty()
+        val waypoints = features.single { it.geometry() is MultiPoint }.geometry() as MultiPoint
+
+        assertEquals(2, features.size)
+        assertEquals(5_000, waypoints.coordinates().size)
     }
 
     private fun point(

@@ -23,7 +23,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -69,6 +69,21 @@ internal fun VoiceRecorderBottomSheet(
             recording?.delete()
             recording = null
         }
+    }
+
+    fun finishRecording() {
+        stopRecording(keep = true)
+        val completed = recording
+        if (completed == null) {
+            onDismiss()
+            showFeedbackNotice(
+                FeedbackNoticeKind.ERROR,
+                "Die Sprachaufnahme konnte nicht gespeichert werden.",
+            )
+            return
+        }
+        accepted = true
+        onRecordingAccepted(completed)
     }
 
     @Suppress("DEPRECATION")
@@ -135,7 +150,6 @@ internal fun VoiceRecorderBottomSheet(
         Text(
             text = when {
                 isRecording -> formatPlayerDuration(elapsedSeconds * 1_000)
-                recording != null -> "Aufnahme bereit"
                 else -> "Spur benötigt das Mikrofon nur während dieser Aufnahme."
             },
             color = Ink,
@@ -146,66 +160,45 @@ internal fun VoiceRecorderBottomSheet(
             },
             textAlign = TextAlign.Center,
         )
-        recording?.takeIf { !isRecording }?.let { AudioPlaybackControl(it) }
-        Button(
-            onClick = {
-                when {
-                    isRecording -> stopRecording(keep = true)
-                    hasRecordPermission -> startRecording()
-                    else -> onRequestPermission()
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isRecording) StopRed else Ink,
-                contentColor = Color.White,
-            ),
-            shape = CircleShape,
-        ) {
-            if (isRecording) {
-                LucideStopIcon(Color.White)
-                Spacer(modifier = Modifier.width(10.dp))
-                Text("Aufnahme beenden", style = MaterialTheme.typography.titleMedium)
-            } else {
-                MicrophoneIcon()
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    if (recording == null) "Aufnahme starten" else "Neu aufnehmen",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
-        }
-        if (recording != null && !isRecording) {
+        if (isRecording) {
             Button(
-                onClick = {
-                    recording?.let {
-                        accepted = true
-                        onRecordingAccepted(it)
-                    }
-                },
+                onClick = ::finishRecording,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .height(60.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Ink,
+                    containerColor = StopRed,
                     contentColor = Color.White,
                 ),
                 shape = CircleShape,
             ) {
-                Text("Auf der Karte ablegen", style = MaterialTheme.typography.titleMedium)
+                LucideStopIcon(
+                    color = Color.White,
+                    contentDescription = null,
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Aufnahme abschließen",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
+        } else {
+            SpurPrimaryButton(
+                label = "Aufnahme starten",
+                onClick = {
+                    if (hasRecordPermission) startRecording() else onRequestPermission()
+                },
+                leadingIcon = { MicrophoneIcon() },
+            )
         }
-        TextButton(
+        SpurSecondaryButton(
+            label = "Abbrechen",
             onClick = {
                 stopRecording(keep = false)
                 onDismiss()
             },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Abbrechen", color = Ink)
-        }
+        )
     }
 }
 

@@ -11,9 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -21,10 +19,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -48,8 +43,8 @@ internal fun MomentComposer(
     var showPicker by remember(target) { mutableStateOf(target != null) }
     var showEmojiPicker by remember(target) { mutableStateOf(false) }
     var showCamera by remember(target) { mutableStateOf(false) }
+    var showVideoCamera by remember(target) { mutableStateOf(false) }
     var showVoiceRecorder by remember(target) { mutableStateOf(false) }
-    var pendingVideoCapturePath by rememberSaveable(target) { mutableStateOf<String?>(null) }
     var audioPermissionGranted by remember(target) {
         mutableStateOf(context.hasAudioRecordingPermission())
     }
@@ -73,45 +68,15 @@ internal fun MomentComposer(
             onDismiss()
         }
     }
-    val videoCaptureLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CaptureVideo(),
-    ) { saved ->
-        val video = pendingVideoCapturePath?.let(::File)
-        pendingVideoCapturePath = null
-        if (saved && video?.isFile == true && video.length() > 0L) {
-            scope.launch {
-                withContext(Dispatchers.IO) { ensureVideoThumbnail(video) }
-                accept(PendingMapMoment(MomentType.VIDEO, video))
-            }
-        } else {
-            video?.delete()
-            onDismiss()
-        }
-    }
-    val startVideoCapture: () -> Unit = {
-        val video = context.createMomentFile(MomentType.VIDEO)
-        pendingVideoCapturePath = video.absolutePath
-        runCatching {
-            videoCaptureLauncher.launch(context.momentContentUri(video))
-        }.onFailure {
-            pendingVideoCapturePath = null
-            video.delete()
-            showFeedbackNotice(
-                FeedbackNoticeKind.ERROR,
-                "Auf diesem Gerät ist keine Videoaufnahme verfügbar.",
-            )
-            onDismiss()
-        }
-    }
     val videoPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
-            startVideoCapture()
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        if (context.hasCameraPermission() && context.hasAudioRecordingPermission()) {
+            showVideoCamera = true
         } else {
             showFeedbackNotice(
                 FeedbackNoticeKind.PERMISSION,
-                "Für Videos braucht Spur Zugriff auf die Kamera.",
+                "Für Videos braucht Spur Zugriff auf Kamera und Mikrofon.",
             )
             onDismiss()
         }
@@ -150,10 +115,18 @@ internal fun MomentComposer(
                         }
                         MomentType.VIDEO -> {
                             showPicker = false
-                            if (context.hasCameraPermission()) {
-                                startVideoCapture()
+                            if (
+                                context.hasCameraPermission() &&
+                                context.hasAudioRecordingPermission()
+                            ) {
+                                showVideoCamera = true
                             } else {
-                                videoPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                videoPermissionLauncher.launch(
+                                    arrayOf(
+                                        Manifest.permission.CAMERA,
+                                        Manifest.permission.RECORD_AUDIO,
+                                    ),
+                                )
                             }
                         }
                         MomentType.VOICE -> {
@@ -200,6 +173,20 @@ internal fun MomentComposer(
         )
     }
 
+    if (showVideoCamera) {
+        VideoCameraScreen(
+            showFeedbackNotice = showFeedbackNotice,
+            onClose = onDismiss,
+            onVideoAccepted = { video ->
+                showVideoCamera = false
+                scope.launch {
+                    withContext(Dispatchers.IO) { ensureVideoThumbnail(video) }
+                    accept(PendingMapMoment(MomentType.VIDEO, video))
+                }
+            },
+        )
+    }
+
     if (showVoiceRecorder) {
         SpurModalBottomSheet(
             onDismissRequest = onDismiss,
@@ -232,23 +219,6 @@ private fun MomentPickerSheetContent(
             .padding(horizontal = 24.dp)
             .padding(bottom = 20.dp),
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            MapPinIcon(
-                color = MapPinRed,
-                modifier = Modifier.size(64.dp),
-            )
-            Text(
-                text = "Auf der Karte ablegen",
-                color = Ink,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        Spacer(modifier = Modifier.height(MomentSheetHeaderGap))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),

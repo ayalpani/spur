@@ -17,6 +17,24 @@ internal data class MapMoment(
     val trackPointId: Long? = null,
 )
 
+internal fun normalizedHomeMoments(
+    moments: List<MapMoment>,
+    settings: HomeAutoStartSettings,
+): List<MapMoment> = moments.map { moment ->
+    val coordinate = normalizedHomeCoordinate(
+        settings = settings,
+        coordinate = SpurCoordinate(moment.latitude, moment.longitude),
+    )
+    if (coordinate.latitude == moment.latitude && coordinate.longitude == moment.longitude) {
+        moment
+    } else {
+        moment.copy(
+            latitude = coordinate.latitude,
+            longitude = coordinate.longitude,
+        )
+    }
+}
+
 internal fun encodeMapMoment(moment: MapMoment): String =
     "${moment.id}|${moment.type.name}|${moment.latitude}|${moment.longitude}|" +
         "${moment.tourId.orEmpty()}|${moment.trackPointId.orEmpty()}|${moment.payload}"

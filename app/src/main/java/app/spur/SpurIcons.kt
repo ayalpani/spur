@@ -26,7 +26,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser as ComposePathParser
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -124,6 +123,16 @@ internal fun PlusIcon() = LucideIcon(
 )
 
 @Composable
+internal fun HistoryIcon() = LucideIcon(
+    paths = listOf(
+        "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
+        "M3 3v5h5",
+        "M12 7v5l4 2",
+    ),
+    strokeWidth = LucideRegularStrokeWidth,
+)
+
+@Composable
 internal fun MicrophoneIcon(
     modifier: Modifier = Modifier.size(24.dp),
     color: Color = LocalContentColor.current,
@@ -153,51 +162,40 @@ internal fun PauseIcon() = LucideIcon(
 )
 
 @Composable
-internal fun FollowLocationIcon(
+internal fun locationSignalButtonAlpha(
     selected: Boolean,
     pulseGeneration: Long?,
-) {
-    val trailColor = LocalTrailColors.current.fill
-    val rippleProgress = if (selected && pulseGeneration != null) {
+): Float =
+    if (selected && pulseGeneration != null) {
         key(pulseGeneration) {
             val transition = rememberInfiniteTransition(label = "Location following signal")
             transition.animateFloat(
-                initialValue = 0f,
-                targetValue = 1f,
+                initialValue = 1f,
+                targetValue = LocationSignalIconMinimumAlpha,
                 animationSpec = infiniteRepeatable(
                     animation = tween(
-                        durationMillis = LocationPulseDurationMillis,
+                        durationMillis = LocationSignalPeriodMillis / 2,
                         easing = LocationPulseEasing,
                     ),
-                    repeatMode = RepeatMode.Restart,
+                    repeatMode = RepeatMode.Reverse,
                 ),
-                label = "Location following white ripple",
-            )
+                label = "Location following icon opacity",
+            ).value
         }
     } else {
-        null
+        1f
     }
+
+@Composable
+internal fun FollowLocationIcon(selected: Boolean) {
+    val signalColor = LocalSignalColor.current
     Box(
         modifier = Modifier
             .size(MapControlSize)
             .clip(CircleShape)
-            .background(if (selected) trailColor else Color.Transparent),
+            .background(if (selected) signalColor else Color.Transparent),
         contentAlignment = Alignment.Center,
     ) {
-        if (rippleProgress != null) {
-            Box(
-                modifier = Modifier
-                    .size(MapControlSize)
-                    .graphicsLayer {
-                        val phase = rippleProgress.value
-                        val rippleScale = phase * LocationPulseScale
-                        scaleX = rippleScale
-                        scaleY = rippleScale
-                        alpha = (1f - phase) * LocationPulseAlpha
-                    }
-                    .background(Color.White, CircleShape),
-            )
-        }
         FootprintsIcon(
             color = if (selected) Color.White else LocalContentColor.current,
         )
@@ -215,16 +213,6 @@ private fun FootprintsIcon(
         "M4 13h4",
     ),
     color = color,
-    strokeWidth = LucideRegularStrokeWidth,
-)
-
-@Composable
-internal fun HistoryIcon() = LucideIcon(
-    paths = listOf(
-        "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
-        "M3 3v5h5",
-        "M12 7v5l4 2",
-    ),
     strokeWidth = LucideRegularStrokeWidth,
 )
 
@@ -257,7 +245,7 @@ internal fun LucideLocateOffIcon() = LucideIcon(
 internal fun LucideIcon(
     paths: List<String>,
     color: Color = LocalContentColor.current,
-    modifier: Modifier = Modifier.size(32.dp),
+    modifier: Modifier = Modifier.size(MapControlIconSize),
     strokeWidth: Float = LocalLucideStrokeWidth.current,
 ) {
     val parsedPaths = paths.map { path ->

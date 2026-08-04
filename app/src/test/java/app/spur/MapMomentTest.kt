@@ -49,6 +49,20 @@ class MapMomentTest {
     }
 
     @Test
+    fun personaUsesItsOwnExactMapCoordinate() {
+        assertNull(personaFeature(null))
+
+        val feature = personaFeature(
+            SpurCoordinate(latitude = 52.52, longitude = 13.405),
+        )!!
+        val point = feature.geometry() as org.maplibre.geojson.Point
+
+        assertEquals(13.405, point.longitude(), 0.0)
+        assertEquals(52.52, point.latitude(), 0.0)
+        assertEquals(1, feature.getNumberProperty(MapPersonaProperty))
+    }
+
+    @Test
     fun fileBackedMomentsExposeTheirCaptureTime() {
         MomentType.entries
             .filterNot { it == MomentType.EMOJI }
@@ -127,10 +141,10 @@ class MapMomentTest {
 
     @Test
     fun clusterStackShowsAtMostThreeMarkers() {
-        assertEquals(listOf(8f), clusterStackOffsets(1))
-        assertEquals(listOf(4f, 8f), clusterStackOffsets(2))
-        assertEquals(listOf(0f, 4f, 8f), clusterStackOffsets(3))
-        assertEquals(listOf(0f, 4f, 8f), clusterStackOffsets(12))
+        assertEquals(listOf(12f), clusterStackOffsets(1))
+        assertEquals(listOf(6f, 12f), clusterStackOffsets(2))
+        assertEquals(listOf(0f, 6f, 12f), clusterStackOffsets(3))
+        assertEquals(listOf(0f, 6f, 12f), clusterStackOffsets(12))
     }
 
     @Test

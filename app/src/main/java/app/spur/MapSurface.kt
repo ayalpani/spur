@@ -1,9 +1,17 @@
 package app.spur
 
+import android.annotation.SuppressLint
+import android.content.Context
 import android.graphics.PointF
-import android.view.HapticFeedbackConstants
+import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.view.MotionEvent
 import android.view.ViewConfiguration
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -17,6 +25,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
@@ -32,6 +41,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -52,6 +66,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 @Composable
+@SuppressLint("MissingPermission")
 internal fun MapSurface(
     modifier: Modifier = Modifier,
     tourId: Long?,
@@ -71,6 +86,9 @@ internal fun MapSurface(
     trailColors: TrailColors,
     homeBuilding: Feature?,
     selectedBuilding: Feature?,
+    isBuildingSelectionMode: Boolean,
+    isHomeStartPointSelection: Boolean,
+    homeStartPointFocus: SpurCoordinate?,
     selectedTrackPoint: TrackPoint?,
     selectedTrackPointRequest: Long,
     momentToPlace: PendingMapMoment?,
@@ -81,8 +99,10 @@ internal fun MapSurface(
     onAlternateMapPreviewLoadingChanged: (Boolean) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onMomentPlacementFailed: (PendingMapMoment) -> Unit,
-    onMomentClick: (MapMoment, Offset) -> Unit,
+    onMomentClick: (MapMoment, Offset, PhotoOpenPreview?) -> Unit,
+    onLocationClick: () -> Unit,
     onBuildingClick: (SelectedBuilding) -> Unit,
+    onHomeStartPointChanged: (SpurCoordinate) -> Unit,
     onManualLocationChanged: (SpurCoordinate) -> Unit,
     onFollowingInterrupted: () -> Unit,
     onLocationPulseStarted: (Long) -> Unit,
@@ -95,7 +115,9 @@ internal fun MapSurface(
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnMomentPlacementFailed by rememberUpdatedState(onMomentPlacementFailed)
     val currentOnMomentClick by rememberUpdatedState(onMomentClick)
+    val currentOnLocationClick by rememberUpdatedState(onLocationClick)
     val currentOnBuildingClick by rememberUpdatedState(onBuildingClick)
+    val currentOnHomeStartPointChanged by rememberUpdatedState(onHomeStartPointChanged)
     val currentOnManualLocationChanged by rememberUpdatedState(onManualLocationChanged)
     val currentOnFollowingInterrupted by rememberUpdatedState(onFollowingInterrupted)
     val currentOnLocationPulseStarted by rememberUpdatedState(onLocationPulseStarted)
@@ -113,26 +135,30 @@ internal fun MapSurface(
     val currentTrailColors by rememberUpdatedState(trailColors)
     val currentHomeBuilding by rememberUpdatedState(homeBuilding)
     val currentSelectedBuilding by rememberUpdatedState(selectedBuilding)
+    val currentIsBuildingSelectionMode by rememberUpdatedState(isBuildingSelectionMode)
+    val currentIsHomeStartPointSelection by rememberUpdatedState(isHomeStartPointSelection)
     val currentSelectedTrackPoint by rememberUpdatedState(selectedTrackPoint)
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
     val currentLocationPulseGeneration by rememberUpdatedState(locationPulseGeneration)
+    val personaColors = LocalMapControlColors.current
+    val signalColor = LocalSignalColor.current
+    val currentLocationPulseColor by rememberUpdatedState(signalColor)
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
     val currentDefaultMapBearing by rememberUpdatedState(defaultMapBearing)
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
-    var selectedTrackPointPosition by remember {
-        mutableStateOf<android.graphics.PointF?>(null)
-    }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
     }
     var pendingMapMoment by remember { mutableStateOf<MapMoment?>(null) }
     var pendingMomentPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var preparedMapMoments by remember { mutableStateOf<PreparedMapMoments?>(null) }
+    var personaLocation by remember { mutableStateOf<SpurCoordinate?>(null) }
     var renderedVoicePlaybackId by remember { mutableStateOf<String?>(null) }
     var mapStyleRevision by remember { mutableStateOf(0) }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
+    var isSelectedTrackPointVisible by remember { mutableStateOf(false) }
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
     var fittedTourDisplayRequest by remember { mutableLongStateOf(-1L) }
     var lastMapSettingsBearing by remember { mutableStateOf(defaultMapBearing) }
@@ -140,6 +166,55 @@ internal fun MapSurface(
         MapLibre.getInstance(context)
         MapView(context).apply {
             onCreate(null)
+        }
+    }
+
+    DisposableEffect(context, manualLocation) {
+        if (!context.hasLocationPermission() || manualLocation != null) {
+            personaLocation = null
+            onDispose {}
+        } else {
+            var active = true
+            val client = LocationServices.getFusedLocationProviderClient(context)
+            val callback = object : LocationCallback() {
+                override fun onLocationResult(result: LocationResult) {
+                    val location = result.lastLocation ?: return
+                    val normalizedCoordinate = normalizedHomeCoordinate(
+                        settings = context.loadHomeAutoStartSettings(),
+                        coordinate = SpurCoordinate(location.latitude, location.longitude),
+                    )
+                    personaLocation = normalizedCoordinate
+                    mapView.getMapAsync { map ->
+                        if (map.locationComponent.isLocationComponentActivated) {
+                            map.locationComponent.forceLocationUpdate(
+                                android.location.Location(location).apply {
+                                    latitude = normalizedCoordinate.latitude
+                                    longitude = normalizedCoordinate.longitude
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            client.lastLocation.addOnSuccessListener { location ->
+                if (active && location != null) {
+                    personaLocation = normalizedHomeCoordinate(
+                        settings = context.loadHomeAutoStartSettings(),
+                        coordinate = SpurCoordinate(location.latitude, location.longitude),
+                    )
+                }
+            }
+            client.requestLocationUpdates(
+                LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1_000L)
+                    .setMinUpdateIntervalMillis(1_000L)
+                    .build(),
+                callback,
+                Looper.getMainLooper(),
+            )
+            onDispose {
+                active = false
+                client.removeLocationUpdates(callback)
+            }
         }
     }
 
@@ -218,9 +293,16 @@ internal fun MapSurface(
                 defaultMapBearing = defaultMapBearing,
                 routePoints = currentRoutePoints,
                 trailColors = currentTrailColors,
+                locationPulseColor = currentLocationPulseColor,
                 onLoaded = {
                     mapStyleRevision++
                     hasLoadedMapStyle = true
+                    if (currentManualLocation == null) {
+                        personaLocation = map.currentSpurCoordinate(
+                            context = context,
+                            manual = null,
+                        )
+                    }
                     previewCameraPosition = map.cameraPosition
                     if (currentIsFollowingLocation) {
                         map.followLocation(
@@ -328,6 +410,9 @@ internal fun MapSurface(
         var isCameraMoving = false
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
         var holdStart = PointF()
+        var isTapCandidate = false
+        var immediatePhotoId: String? = null
+        var immediatePhotoExpiresAt = 0L
         var manualLocationHold: Runnable? = null
         fun cancelManualLocationHold() {
             manualLocationHold?.let(mapView::removeCallbacks)
@@ -351,26 +436,54 @@ internal fun MapSurface(
             }
         }
 
-        fun publishSelectedTrackPointPosition() {
-            val readyMap = map ?: return
-            selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
-                readyMap.projection.toScreenLocation(
-                    LatLng(point.latitude, point.longitude),
-                )
-            }
+        fun publishHomeStartPoint() {
+            if (!currentIsHomeStartPointSelection) return
+            val target = map?.cameraPosition?.target ?: return
+            currentOnHomeStartPointChanged(
+                SpurCoordinate(
+                    latitude = target.latitude,
+                    longitude = target.longitude,
+                ),
+            )
+        }
+
+        fun momentAt(readyMap: MapLibreMap, screenPoint: PointF): MapMoment? {
+            val momentId = readyMap.queryRenderedFeatures(
+                screenPoint,
+                MapMomentLayer,
+            ).firstOrNull()?.getStringProperty(MapMomentIdProperty)
+            return currentMapMoments.firstOrNull { it.id == momentId }
+        }
+
+        fun dispatchMomentClick(moment: MapMoment, screenPoint: PointF) {
+            currentOnMomentClick(
+                moment,
+                Offset(screenPoint.x, screenPoint.y),
+                preparedMapMoments
+                    ?.photoPreviews
+                    ?.get(moment.id)
+                    ?.let {
+                        PhotoOpenPreview(
+                            image = it.bitmap.asImageBitmap(),
+                            aspectRatio = it.aspectRatio,
+                        )
+                    },
+            )
         }
 
         val moveListener = MapLibreMap.OnCameraMoveListener {
             if (currentManualLocation != null) publishManualLocationPosition()
             if (pendingMapMoment != null) publishPendingMomentPosition()
-            if (currentSelectedTrackPoint != null) publishSelectedTrackPointPosition()
         }
         var cameraMoveReason =
             MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
         val moveStartedListener = MapLibreMap.OnCameraMoveStartedListener { reason ->
             isCameraMoving = true
             cameraMoveReason = reason
-            if (shouldStopFollowing(reason)) currentOnMapGestureActiveChanged(true)
+            if (shouldStopFollowing(reason)) {
+                isSelectedTrackPointVisible = false
+                currentOnMapGestureActiveChanged(true)
+            }
             if (shouldShowMapPreviewLoading(currentIsFollowingLocation, reason)) {
                 currentOnAlternateMapPreviewLoadingChanged(true)
             }
@@ -384,7 +497,7 @@ internal fun MapSurface(
             if (!isMapTouchActive) currentOnMapGestureActiveChanged(false)
             publishManualLocationPosition()
             publishPendingMomentPosition()
-            publishSelectedTrackPointPosition()
+            publishHomeStartPoint()
             previewCameraPosition = map?.cameraPosition
             if (shouldStopFollowing(cameraMoveReason)) {
                 map?.cameraPosition?.zoom?.let(context::saveDefaultMapZoom)
@@ -395,8 +508,32 @@ internal fun MapSurface(
         val clickListener = MapLibreMap.OnMapClickListener { point ->
             val readyMap = map ?: return@OnMapClickListener false
             val screenPoint = readyMap.projection.toScreenLocation(point)
+            if (currentIsBuildingSelectionMode) {
+                if (!canSelectHomeBuilding(readyMap.cameraPosition.zoom)) {
+                    return@OnMapClickListener false
+                }
+                val building = readyMap.queryRenderedFeatures(
+                    screenPoint,
+                    MapBuildingLayer,
+                ).firstOrNull() ?: return@OnMapClickListener false
+                val coordinate = SpurCoordinate(
+                    latitude = point.latitude,
+                    longitude = point.longitude,
+                )
+                val selectedFeature = buildingFeatureAt(building, coordinate)
+                    ?: return@OnMapClickListener false
+                currentOnBuildingClick(
+                    SelectedBuilding(
+                        coordinate = homeCoordinate(selectedFeature) ?: coordinate,
+                        feature = selectedFeature,
+                    ),
+                )
+                return@OnMapClickListener true
+            }
+            if (currentIsHomeStartPointSelection) return@OnMapClickListener true
             val cluster = readyMap.queryRenderedFeatures(
                 screenPoint,
+                MapPersonaClusterLayer,
                 MapMomentClusterLayer,
             ).firstOrNull()
             if (cluster != null) {
@@ -409,16 +546,39 @@ internal fun MapSurface(
                 )
                 return@OnMapClickListener true
             }
-            val momentId = readyMap.queryRenderedFeatures(
-                screenPoint,
-                MapMomentLayer,
-            ).firstOrNull()?.getStringProperty(MapMomentIdProperty)
-            val moment = currentMapMoments.firstOrNull { it.id == momentId }
-            if (moment != null) {
-                currentOnMomentClick(
-                    moment,
-                    Offset(screenPoint.x, screenPoint.y),
+            val location = if (
+                currentManualLocation == null &&
+                currentSelectedTrackPoint == null
+            ) {
+                readyMap.currentSpurCoordinate(context, manual = null)
+            } else {
+                null
+            }
+            val locationPoint = location?.let {
+                readyMap.projection.toScreenLocation(
+                    LatLng(it.latitude, it.longitude),
                 )
+            }
+            if (
+                locationPoint != null &&
+                isWithinLocationHitTarget(
+                    clickX = screenPoint.x,
+                    clickY = screenPoint.y,
+                    locationX = locationPoint.x,
+                    locationY = locationPoint.y,
+                    hitTargetSize = LocationPuckHitTargetDp *
+                        context.resources.displayMetrics.density,
+                )
+            ) {
+                currentOnLocationClick()
+                return@OnMapClickListener true
+            }
+            val moment = momentAt(readyMap, screenPoint)
+            if (moment != null) {
+                val now = android.os.SystemClock.uptimeMillis()
+                if (moment.id != immediatePhotoId || now > immediatePhotoExpiresAt) {
+                    dispatchMomentClick(moment, screenPoint)
+                }
                 return@OnMapClickListener true
             }
             val building = readyMap.queryRenderedFeatures(
@@ -446,12 +606,15 @@ internal fun MapSurface(
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     isMapTouchActive = true
+                    isTapCandidate = true
                     cancelManualLocationHold()
                     holdStart = PointF(event.x, event.y)
                     manualLocationHold = Runnable {
+                        if (currentIsBuildingSelectionMode) return@Runnable
+                        isTapCandidate = false
                         val point = map?.projection?.fromScreenLocation(holdStart)
                             ?: return@Runnable
-                        mapView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        context.vibrateManualWaypoint()
                         currentOnManualLocationChanged(
                             SpurCoordinate(
                                 latitude = point.latitude,
@@ -472,15 +635,38 @@ internal fun MapSurface(
                     val deltaX = event.x - holdStart.x
                     val deltaY = event.y - holdStart.y
                     if (deltaX * deltaX + deltaY * deltaY > touchSlop * touchSlop) {
+                        isTapCandidate = false
                         cancelManualLocationHold()
                     }
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> {
+                    isTapCandidate = false
                     cancelManualLocationHold()
                 }
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL,
-                -> {
+                MotionEvent.ACTION_UP -> {
+                    cancelManualLocationHold()
+                    if (
+                        isTapCandidate &&
+                        !currentIsBuildingSelectionMode &&
+                        !currentIsHomeStartPointSelection
+                    ) {
+                        val screenPoint = PointF(event.x, event.y)
+                        val photo = map?.let { momentAt(it, screenPoint) }
+                            ?.takeIf { it.type == MomentType.PHOTO }
+                        if (photo != null) {
+                            immediatePhotoId = photo.id
+                            immediatePhotoExpiresAt =
+                                android.os.SystemClock.uptimeMillis() +
+                                    ViewConfiguration.getDoubleTapTimeout() * 2L
+                            dispatchMomentClick(photo, screenPoint)
+                        }
+                    }
+                    isTapCandidate = false
+                    isMapTouchActive = false
+                    if (!isCameraMoving) currentOnMapGestureActiveChanged(false)
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    isTapCandidate = false
                     cancelManualLocationHold()
                     isMapTouchActive = false
                     if (!isCameraMoving) currentOnMapGestureActiveChanged(false)
@@ -496,7 +682,6 @@ internal fun MapSurface(
             readyMap.addOnMapClickListener(clickListener)
             publishManualLocationPosition()
             publishPendingMomentPosition()
-            publishSelectedTrackPointPosition()
         }
         onDispose {
             cancelManualLocationHold()
@@ -608,35 +793,29 @@ internal fun MapSurface(
             map.style?.let { style ->
                 style.showSelectedTrackPoint(null)
                 style.showTourEndpoints(
-                    if (currentSelectedTrackPoint == null) {
-                        emptyList()
-                    } else {
-                        currentRoutePoints
-                    },
+                    currentRoutePoints,
                     currentTrailColors,
                 )
             }
-            selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
-                map.projection.toScreenLocation(
-                    LatLng(point.latitude, point.longitude),
-                )
-            }
-            if (selectedTrackPointRequest == 0L) return@getMapAsync
             currentSelectedTrackPoint?.let { point ->
                 map.locationComponent.cameraMode = CameraMode.NONE
-                map.animateCamera(
-                    CameraUpdateFactory.newLatLng(
-                        LatLng(point.latitude, point.longitude),
-                    ),
-                    EditorPointTransitionDurationMillis,
+                val update = CameraUpdateFactory.newCameraPosition(
+                    org.maplibre.android.camera.CameraPosition.Builder(map.cameraPosition)
+                        .target(LatLng(point.latitude, point.longitude))
+                        .padding(0.0, 0.0, 0.0, 0.0)
+                        .build(),
                 )
-            }
-            selectedTrackPointPosition = currentSelectedTrackPoint?.let { point ->
-                map.projection.toScreenLocation(
-                    LatLng(point.latitude, point.longitude),
-                )
+                if (selectedTrackPointRequest == 0L) {
+                    map.moveCamera(update)
+                } else {
+                    map.animateCamera(update, EditorPointTransitionDurationMillis)
+                }
             }
         }
+    }
+
+    LaunchedEffect(selectedTrackPoint?.id, selectedTrackPointRequest) {
+        isSelectedTrackPointVisible = selectedTrackPoint != null
     }
 
     LaunchedEffect(manualLocation, selectedTrackPoint == null) {
@@ -653,17 +832,28 @@ internal fun MapSurface(
         }
     }
 
-    LaunchedEffect(mapMoments, momentImageRevision) {
+    LaunchedEffect(mapMoments, momentImageRevision, personaColors) {
         preparedMapMoments = withContext(Dispatchers.IO) {
-            prepareMapMoments(context.applicationContext, mapMoments)
+            prepareMapMoments(
+                context = context.applicationContext,
+                moments = mapMoments,
+                personaColors = personaColors,
+            )
         }
     }
 
-    LaunchedEffect(preparedMapMoments, mapStyleRevision) {
+    val visiblePersonaLocation = personaLocation.takeIf {
+        manualLocation == null && selectedTrackPoint == null
+    }
+    LaunchedEffect(
+        preparedMapMoments,
+        visiblePersonaLocation,
+        mapStyleRevision,
+    ) {
         val prepared = preparedMapMoments ?: return@LaunchedEffect
         if (mapStyleRevision == 0) return@LaunchedEffect
         mapView.getMapAsync { map ->
-            map.style?.showMapMoments(prepared)
+            map.style?.showMapMoments(prepared, visiblePersonaLocation)
             val pending = pendingMapMoment
             if (pending != null && prepared.moments.any { it.id == pending.id }) {
                 pendingMapMoment = null
@@ -678,6 +868,27 @@ internal fun MapSurface(
             map.style?.showHighlightedBuildings(
                 home = currentHomeBuilding,
                 selected = currentSelectedBuilding,
+            )
+        }
+    }
+
+    LaunchedEffect(isBuildingSelectionMode, mapStyleRevision) {
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.style?.showSelectableHomeBuildings(isBuildingSelectionMode)
+        }
+    }
+
+    LaunchedEffect(isHomeStartPointSelection, homeStartPointFocus) {
+        if (!isHomeStartPointSelection) return@LaunchedEffect
+        val focus = homeStartPointFocus ?: return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    LatLng(focus.latitude, focus.longitude),
+                    HomeBuildingSelectionZoom,
+                ),
+                MapRotationAnimationMillis.toInt(),
             )
         }
     }
@@ -718,18 +929,29 @@ internal fun MapSurface(
 
     LaunchedEffect(routePoints, trailColors) {
         val points = routePoints
-        val routeFeature = withContext(Dispatchers.Default) {
-            tourRouteFeature(points)
+        val routeFeatures = withContext(Dispatchers.Default) {
+            tourRouteFeatures(points)
         }
         mapView.getMapAsync { map ->
             if (points !== currentRoutePoints) return@getMapAsync
             map.style?.let { style ->
-                style.showTourRoute(routeFeature, currentTrailColors)
+                style.showTourRoute(routeFeatures, currentTrailColors)
                 style.showTourEndpoints(
-                    if (currentSelectedTrackPoint == null) emptyList() else points,
+                    points,
                     currentTrailColors,
                 )
             }
+        }
+    }
+
+    LaunchedEffect(
+        mapStyleRevision,
+        isFollowingLocation,
+        signalColor,
+    ) {
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.restartLocationPulse(currentLocationPulseColor)
         }
     }
 
@@ -745,7 +967,7 @@ internal fun MapSurface(
         ) return@LaunchedEffect
         mapView.getMapAsync { map ->
             if (generation != currentLocationPulseGeneration) return@getMapAsync
-            map.restartLocationPulse(currentTrailColors.fill)
+            map.restartLocationPulse(currentLocationPulseColor)
             currentOnLocationPulseStarted(generation)
         }
     }
@@ -788,22 +1010,20 @@ internal fun MapSurface(
         )
 
         val density = LocalDensity.current
-        val selectedPointSizePx = with(density) { 20.dp.roundToPx() }
-        selectedTrackPointPosition
-            ?.takeUnless {
-                selectedTrackPoint?.id == routePoints.firstOrNull()?.id ||
-                    selectedTrackPoint?.id == routePoints.lastOrNull()?.id
+        selectedTrackPoint?.let {
+            AnimatedVisibility(
+                visible = isSelectedTrackPointVisible,
+                modifier = Modifier.align(Alignment.Center),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
+            ) {
+                SelectedTrackPointPuck()
             }
-            ?.let { position ->
-                SelectedTrackPointPuck(
-                    modifier = Modifier.offset {
-                        IntOffset(
-                            x = position.x.roundToInt() - selectedPointSizePx / 2,
-                            y = position.y.roundToInt() - selectedPointSizePx / 2,
-                        )
-                    },
-                )
-            }
+        }
+
+        if (isHomeStartPointSelection) {
+            HomeStartPointCrosshair(modifier = Modifier.align(Alignment.Center))
+        }
 
         val manualPuckSizePx = with(density) { 52.dp.roundToPx() }
         manualLocationPosition?.let { position ->
@@ -833,4 +1053,15 @@ internal fun MapSurface(
             }
         }
     }
+}
+
+private fun Context.vibrateManualWaypoint() {
+    val vibrator = getSystemService(Vibrator::class.java) ?: return
+    if (!vibrator.hasVibrator()) return
+    vibrator.vibrate(
+        VibrationEffect.createOneShot(
+            ManualWaypointVibrationMillis,
+            VibrationEffect.DEFAULT_AMPLITUDE,
+        ),
+    )
 }
