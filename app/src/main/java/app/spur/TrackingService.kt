@@ -33,7 +33,7 @@ class TrackingService : Service() {
     private var isDepartureCandidate = false
     private var candidateAt: Long? = null
     private val departureSamples = ArrayDeque<BufferedHomeLocation>()
-    private val arrivalTracker = AutomaticHomeArrivalTracker()
+    private var automaticTourSignalProcessor: AutomaticTourSignalProcessor<Location>? = null
     private val handler = Handler(Looper.getMainLooper())
     private val departureTimeout = Runnable {
         if (isDepartureCandidate) cancelDepartureCandidate()
@@ -107,8 +107,21 @@ class TrackingService : Service() {
         isDepartureCandidate = false
         candidateAt = null
         departureSamples.clear()
-        arrivalTracker.reset()
         tourId = tour.id
+        automaticTourSignalProcessor = automaticTourOutsideSince(tour.id)?.let { outsideSince ->
+            AutomaticTourSignalProcessor(
+                settings = loadHomeAutoStartSettings(),
+                outsideSince = outsideSince,
+                appendMeasured = { location -> store.appendLocation(tour.id, location) },
+                finishAtHome = { homeEndpoint, recordedAt ->
+                    store.finishTourAt(
+                        id = tour.id,
+                        endPoint = homeEndpoint,
+                        now = recordedAt,
+                    )
+                },
+            )
+        }
         ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
@@ -139,7 +152,7 @@ class TrackingService : Service() {
             .filter { it.recordedAt >= requestedAt }
             .sortedBy(BufferedHomeLocation::recordedAt)
             .forEach(departureSamples::addLast)
-        arrivalTracker.reset()
+        automaticTourSignalProcessor = null
         ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
@@ -177,39 +190,18 @@ class TrackingService : Service() {
             return
         }
         val id = tourId ?: return
-        val settings = loadHomeAutoStartSettings()
-        val update = arrivalTracker.observe(
+        val automaticResult = automaticTourSignalProcessor?.record(
             sample = sample,
-            settings = settings,
-            outsideSince = automaticTourOutsideSince(id),
+            measured = location,
         )
-        // Preserve the measured return route inside the Home Zone. The canonical
-        // home point is appended only after the separate arrival confirmation.
-        val recordedLocation = if (
-            update.recordedCoordinate.latitude == location.latitude &&
-            update.recordedCoordinate.longitude == location.longitude
-        ) {
-            location
-        } else {
-            Location(location).apply {
-                latitude = update.recordedCoordinate.latitude
-                longitude = update.recordedCoordinate.longitude
-            }
-        }
-        val appended = store.appendLocation(id, recordedLocation)
+        val appended = automaticResult?.appended ?: store.appendLocation(id, location)
         if (appended) {
             store.tour(id)?.let {
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, notification(it))
             }
         }
-        update.confirmedHomeEndpoint?.let { homeEndpoint ->
-            finishAutomaticTourAtHome(
-                id = id,
-                recordedAt = sample.recordedAt,
-                homeEndpoint = homeEndpoint,
-            )
-        }
+        if (automaticResult?.finished == true) finishAutomaticTourAtHome(id)
     }
 
     private fun recordDepartureCandidate(sample: BufferedHomeLocation) {
@@ -257,12 +249,7 @@ class TrackingService : Service() {
         }
     }
 
-    private fun finishAutomaticTourAtHome(
-        id: Long,
-        recordedAt: Long,
-        homeEndpoint: SpurCoordinate,
-    ) {
-        if (!store.finishTourAt(id = id, endPoint = homeEndpoint, now = recordedAt)) return
+    private fun finishAutomaticTourAtHome(id: Long) {
         applicationContext.markTourCompletionPending(id)
         applicationContext.vibrateTourEnded()
         clearAutomaticTourState()
@@ -287,6 +274,7 @@ class TrackingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun stopTracking() {
+        automaticTourSignalProcessor = null
         locationClient.removeLocationUpdates(locationCallback)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()

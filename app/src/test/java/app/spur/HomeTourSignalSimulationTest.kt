@@ -1,7 +1,7 @@
 package app.spur
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -47,18 +47,24 @@ class HomeTourSignalSimulationTest {
             signal(52.00009, at = 392_000L),
             signal(52.0001, at = 396_000L),
         )
-        val arrivalTracker = AutomaticHomeArrivalTracker()
+        val signalProcessor = AutomaticTourSignalProcessor<BufferedHomeLocation>(
+            settings = settings,
+            outsideSince = 1L,
+            appendMeasured = { measured ->
+                route += measured.coordinate()
+                true
+            },
+            finishAtHome = { homeEndpoint, _ ->
+                route += homeEndpoint
+                true
+            },
+        )
         returnSignals.forEachIndexed { index, sample ->
-            val update = arrivalTracker.observe(
-                sample = sample,
-                settings = settings,
-                outsideSince = 0L,
-            )
-            route += update.recordedCoordinate
+            val result = signalProcessor.record(sample = sample, measured = sample)
             if (index < returnSignals.lastIndex) {
-                assertNull(update.confirmedHomeEndpoint)
+                assertFalse(result.finished)
             } else {
-                route += requireNotNull(update.confirmedHomeEndpoint)
+                assertTrue(result.finished)
             }
         }
 
@@ -77,14 +83,19 @@ class HomeTourSignalSimulationTest {
         val settings = HomeAutoStartSettings(enabled = true, home = home, startPoint = home)
         val measuredInsideBroadZone = signal(52.0006, at = 360_000L)
 
-        val update = AutomaticHomeArrivalTracker().observe(
-            sample = measuredInsideBroadZone,
+        var recorded: BufferedHomeLocation? = null
+        val result = AutomaticTourSignalProcessor<BufferedHomeLocation>(
             settings = settings,
-            outsideSince = 0L,
-        )
+            outsideSince = 1L,
+            appendMeasured = {
+                recorded = it
+                true
+            },
+            finishAtHome = { _, _ -> error("The tour must not finish here") },
+        ).record(sample = measuredInsideBroadZone, measured = measuredInsideBroadZone)
 
-        assertEquals(measuredInsideBroadZone.coordinate(), update.recordedCoordinate)
-        assertNull(update.confirmedHomeEndpoint)
+        assertEquals(measuredInsideBroadZone, recorded)
+        assertFalse(result.finished)
     }
 
     private fun signal(latitude: Double, at: Long) = BufferedHomeLocation(

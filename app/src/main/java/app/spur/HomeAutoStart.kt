@@ -78,37 +78,48 @@ internal data class BufferedHomeLocation(
     val accuracyMeters: Float,
 )
 
-internal data class AutomaticTourLocationUpdate(
-    val recordedCoordinate: SpurCoordinate,
-    val confirmedHomeEndpoint: SpurCoordinate?,
+internal data class AutomaticTourSignalResult(
+    val appended: Boolean,
+    val finished: Boolean,
 )
 
 internal class AutomaticHomeArrivalTracker {
     private val samples = ArrayDeque<BufferedHomeLocation>()
 
-    fun reset() {
-        samples.clear()
-    }
-
     fun observe(
         sample: BufferedHomeLocation,
         settings: HomeAutoStartSettings,
-        outsideSince: Long?,
-    ): AutomaticTourLocationUpdate {
+        outsideSince: Long,
+    ): SpurCoordinate? {
         samples.addLast(sample)
         while (samples.size > HomeConfirmationSampleCount) {
             samples.removeFirst()
         }
-        val homeEndpoint = automaticTourHomePoint(settings)
-            ?.takeIf {
-                outsideSince != null &&
-                    stayedOutsideHomeLongEnough(outsideSince, sample.recordedAt) &&
-                    confirmedHomeArrival(samples.toList(), settings)
-            }
-        return AutomaticTourLocationUpdate(
-            recordedCoordinate = SpurCoordinate(sample.latitude, sample.longitude),
-            confirmedHomeEndpoint = homeEndpoint,
-        )
+        return automaticTourHomePoint(settings)?.takeIf {
+            stayedOutsideHomeLongEnough(outsideSince, sample.recordedAt) &&
+                confirmedHomeArrival(samples.toList(), settings)
+        }
+    }
+}
+
+internal class AutomaticTourSignalProcessor<T>(
+    private val settings: HomeAutoStartSettings,
+    private val outsideSince: Long,
+    private val appendMeasured: (T) -> Boolean,
+    private val finishAtHome: (SpurCoordinate, Long) -> Boolean,
+) {
+    private val arrivalTracker = AutomaticHomeArrivalTracker()
+
+    fun record(
+        sample: BufferedHomeLocation,
+        measured: T,
+    ): AutomaticTourSignalResult {
+        val homeEndpoint = arrivalTracker.observe(sample, settings, outsideSince)
+        val appended = appendMeasured(measured)
+        val finished = homeEndpoint?.let {
+            finishAtHome(it, sample.recordedAt)
+        } ?: false
+        return AutomaticTourSignalResult(appended = appended, finished = finished)
     }
 }
 
