@@ -200,7 +200,7 @@ case "${1:-}" in
         status
         ;;
     *)
-        echo "Verwendung: spurctl {start|build|install|launch|stop|restart|status}" >&2
+        echo "Verwendung: scripts/spurctl {start|build|install|launch|stop|restart|status}" >&2
         exit 2
         ;;
 esac
