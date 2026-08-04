@@ -33,7 +33,7 @@ class TrackingService : Service() {
     private var isDepartureCandidate = false
     private var candidateAt: Long? = null
     private val departureSamples = ArrayDeque<BufferedHomeLocation>()
-    private val arrivalSamples = ArrayDeque<BufferedHomeLocation>()
+    private val arrivalTracker = AutomaticHomeArrivalTracker()
     private val handler = Handler(Looper.getMainLooper())
     private val departureTimeout = Runnable {
         if (isDepartureCandidate) cancelDepartureCandidate()
@@ -107,7 +107,7 @@ class TrackingService : Service() {
         isDepartureCandidate = false
         candidateAt = null
         departureSamples.clear()
-        arrivalSamples.clear()
+        arrivalTracker.reset()
         tourId = tour.id
         ServiceCompat.startForeground(
             this,
@@ -139,7 +139,7 @@ class TrackingService : Service() {
             .filter { it.recordedAt >= requestedAt }
             .sortedBy(BufferedHomeLocation::recordedAt)
             .forEach(departureSamples::addLast)
-        arrivalSamples.clear()
+        arrivalTracker.reset()
         ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
@@ -177,20 +177,39 @@ class TrackingService : Service() {
             return
         }
         val id = tourId ?: return
+        val settings = loadHomeAutoStartSettings()
+        val update = arrivalTracker.observe(
+            sample = sample,
+            settings = settings,
+            outsideSince = automaticTourOutsideSince(id),
+        )
         // Preserve the measured return route inside the Home Zone. The canonical
         // home point is appended only after the separate arrival confirmation.
-        val appended = store.appendLocation(id, location)
+        val recordedLocation = if (
+            update.recordedCoordinate.latitude == location.latitude &&
+            update.recordedCoordinate.longitude == location.longitude
+        ) {
+            location
+        } else {
+            Location(location).apply {
+                latitude = update.recordedCoordinate.latitude
+                longitude = update.recordedCoordinate.longitude
+            }
+        }
+        val appended = store.appendLocation(id, recordedLocation)
         if (appended) {
             store.tour(id)?.let {
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, notification(it))
             }
         }
-        arrivalSamples.addLast(sample)
-        while (arrivalSamples.size > HomeConfirmationSampleCount) {
-            arrivalSamples.removeFirst()
+        update.confirmedHomeEndpoint?.let { homeEndpoint ->
+            finishAutomaticTourAtHome(
+                id = id,
+                recordedAt = sample.recordedAt,
+                homeEndpoint = homeEndpoint,
+            )
         }
-        finishAutomaticTourIfHome(id, sample.recordedAt)
     }
 
     private fun recordDepartureCandidate(sample: BufferedHomeLocation) {
@@ -238,13 +257,12 @@ class TrackingService : Service() {
         }
     }
 
-    private fun finishAutomaticTourIfHome(id: Long, recordedAt: Long) {
-        val outsideSince = automaticTourOutsideSince(id) ?: return
-        if (!stayedOutsideHomeLongEnough(outsideSince, recordedAt)) return
-        val settings = loadHomeAutoStartSettings()
-        if (!confirmedHomeArrival(arrivalSamples.toList(), settings)) return
-        val homePoint = automaticTourHomePoint(settings) ?: return
-        if (!store.finishTourAt(id = id, endPoint = homePoint, now = recordedAt)) return
+    private fun finishAutomaticTourAtHome(
+        id: Long,
+        recordedAt: Long,
+        homeEndpoint: SpurCoordinate,
+    ) {
+        if (!store.finishTourAt(id = id, endPoint = homeEndpoint, now = recordedAt)) return
         applicationContext.markTourCompletionPending(id)
         applicationContext.vibrateTourEnded()
         clearAutomaticTourState()

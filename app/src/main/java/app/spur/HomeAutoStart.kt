@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.maplibre.geojson.Feature
+import java.util.ArrayDeque
 
 internal data class HomeAutoStartSettings(
     val enabled: Boolean,
@@ -76,6 +77,40 @@ internal data class BufferedHomeLocation(
     val recordedAt: Long,
     val accuracyMeters: Float,
 )
+
+internal data class AutomaticTourLocationUpdate(
+    val recordedCoordinate: SpurCoordinate,
+    val confirmedHomeEndpoint: SpurCoordinate?,
+)
+
+internal class AutomaticHomeArrivalTracker {
+    private val samples = ArrayDeque<BufferedHomeLocation>()
+
+    fun reset() {
+        samples.clear()
+    }
+
+    fun observe(
+        sample: BufferedHomeLocation,
+        settings: HomeAutoStartSettings,
+        outsideSince: Long?,
+    ): AutomaticTourLocationUpdate {
+        samples.addLast(sample)
+        while (samples.size > HomeConfirmationSampleCount) {
+            samples.removeFirst()
+        }
+        val homeEndpoint = automaticTourHomePoint(settings)
+            ?.takeIf {
+                outsideSince != null &&
+                    stayedOutsideHomeLongEnough(outsideSince, sample.recordedAt) &&
+                    confirmedHomeArrival(samples.toList(), settings)
+            }
+        return AutomaticTourLocationUpdate(
+            recordedCoordinate = SpurCoordinate(sample.latitude, sample.longitude),
+            confirmedHomeEndpoint = homeEndpoint,
+        )
+    }
+}
 
 internal fun Location.toBufferedHomeLocation() = BufferedHomeLocation(
     latitude = latitude,
