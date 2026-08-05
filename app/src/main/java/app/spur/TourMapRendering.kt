@@ -90,16 +90,8 @@ internal fun tourRouteFeatures(points: List<TrackPoint>): FeatureCollection {
     )
 }
 
-internal fun formatTourPauseDuration(durationMillis: Long): String {
-    val totalMinutes = durationMillis.coerceAtLeast(0L) / 60_000L
-    val hours = totalMinutes / 60L
-    val minutes = totalMinutes % 60L
-    return if (hours > 0L) {
-        "$hours h ${minutes.toString().padStart(2, '0')} min"
-    } else {
-        "$minutes min"
-    }
-}
+internal fun formatTourPauseDuration(durationMillis: Long): String =
+    formatDurationMinutes(durationMillis, zeroMinutesLabel = "0 min")
 
 internal fun tourPauseFeatures(points: List<TrackPoint>): FeatureCollection =
     FeatureCollection.fromFeatures(
