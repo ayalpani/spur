@@ -600,7 +600,7 @@ class TourStore(context: Context) :
         previous: Location?,
     ) {
         var previousLocation = previous
-        var addedDistance = 0f
+        var addedDistance = 0.0
         db.beginTransaction()
         try {
             locations.forEach { location ->
@@ -622,10 +622,17 @@ class TourStore(context: Context) :
                         )
                     },
                 )
-                previousLocation?.let { addedDistance += it.distanceTo(location) }
+                previousLocation?.let {
+                    addedDistance += haversineDistanceMeters(
+                        fromLatitude = it.latitude,
+                        fromLongitude = it.longitude,
+                        toLatitude = location.latitude,
+                        toLongitude = location.longitude,
+                    )
+                }
                 previousLocation = location
             }
-            if (addedDistance > 0f) {
+            if (addedDistance > 0.0) {
                 db.execSQL(
                     "UPDATE tours SET distance_meters = distance_meters + ? WHERE id = ?",
                     arrayOf(addedDistance, tourId),
@@ -784,13 +791,27 @@ class TourStore(context: Context) :
                 time = cursor.getLong(2)
             }
         }
-        val oldDistance = previousPoint?.distanceTo(clusterPoint.asLocation()) ?: 0f
+        val oldDistance = previousPoint?.let {
+            haversineDistanceMeters(
+                fromLatitude = it.latitude,
+                fromLongitude = it.longitude,
+                toLatitude = clusterPoint.latitude,
+                toLongitude = clusterPoint.longitude,
+            )
+        } ?: 0.0
         val newLocation = Location("cluster").apply {
             this.latitude = latitude
             this.longitude = longitude
             time = recordedAt
         }
-        val newDistance = previousPoint?.distanceTo(newLocation) ?: 0f
+        val newDistance = previousPoint?.let {
+            haversineDistanceMeters(
+                fromLatitude = it.latitude,
+                fromLongitude = it.longitude,
+                toLatitude = newLocation.latitude,
+                toLongitude = newLocation.longitude,
+            )
+        } ?: 0.0
         db.beginTransaction()
         try {
             db.update(
