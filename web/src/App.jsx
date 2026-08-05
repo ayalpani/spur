@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 const screens = [
   {
     src: '/screens/01-map.webp',
@@ -32,8 +34,38 @@ const screens = [
 ]
 
 function SpurMark() {
+  const markRef = useRef(null)
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    let previousScrollY = Math.max(window.scrollY, 0)
+    let rotation = 0
+    let frameId = null
+
+    const updateRotation = () => {
+      const scrollY = Math.max(window.scrollY, 0)
+      rotation += (scrollY - previousScrollY) * 0.35
+      previousScrollY = scrollY
+      markRef.current.style.transform = `rotate(${rotation}deg)`
+      frameId = null
+    }
+
+    const handleScroll = () => {
+      if (frameId === null) frameId = window.requestAnimationFrame(updateRotation)
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      if (frameId !== null) window.cancelAnimationFrame(frameId)
+    }
+  }, [])
+
   return (
     <svg
+      ref={markRef}
       className="spur-mark"
       viewBox="0 0 64 64"
       aria-hidden="true"

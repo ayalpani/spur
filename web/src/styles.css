@@ -57,6 +57,8 @@ a {
 .spur-mark {
   width: 30px;
   height: 30px;
+  transform-origin: center;
+  will-change: transform;
 }
 
 .hero {
