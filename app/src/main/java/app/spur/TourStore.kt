@@ -559,7 +559,12 @@ class TourStore(context: Context) :
         val cluster = stationaryCluster(recent) ?: return
         val representative = recent.last()
         val removedIds = recent.dropLast(1).map(TrackPoint::id)
-        val previous = pointBefore(db, tourId, recent.first())
+        val previous = pointBefore(
+            db = db,
+            tourId = tourId,
+            recordedAt = recent.first().recordedAt,
+            pointId = recent.first().id,
+        )
         val distanceDelta = stationaryCollapseDistanceDelta(
             previous = previous,
             replaced = recent,
@@ -603,7 +608,8 @@ class TourStore(context: Context) :
     private fun pointBefore(
         db: SQLiteDatabase,
         tourId: Long,
-        point: TrackPoint,
+        recordedAt: Long,
+        pointId: Long,
     ): TrackPoint? =
         db.rawQuery(
             """
@@ -615,9 +621,9 @@ class TourStore(context: Context) :
             """.trimIndent(),
             arrayOf(
                 tourId.toString(),
-                point.recordedAt.toString(),
-                point.recordedAt.toString(),
-                point.id.toString(),
+                recordedAt.toString(),
+                recordedAt.toString(),
+                pointId.toString(),
             ),
         ).use { cursor ->
             if (!cursor.moveToFirst()) {
@@ -672,27 +678,12 @@ class TourStore(context: Context) :
         sampleCount: Int,
         clusterStartedAt: Long? = clusterPoint.clusterStartedAt,
     ) {
-        val previousPoint = db.rawQuery(
-            """
-            SELECT latitude, longitude, recorded_at
-            FROM track_points
-            WHERE tour_id = ? AND (recorded_at < ? OR (recorded_at = ? AND id < ?))
-            ORDER BY recorded_at DESC, id DESC
-            LIMIT 1
-            """.trimIndent(),
-            arrayOf(
-                tourId.toString(),
-                clusterPoint.recordedAt.toString(),
-                clusterPoint.recordedAt.toString(),
-                clusterPoint.id.toString(),
-            ),
-        ).use { cursor ->
-            if (!cursor.moveToFirst()) null else Location("stored").apply {
-                this.latitude = cursor.getDouble(0)
-                this.longitude = cursor.getDouble(1)
-                time = cursor.getLong(2)
-            }
-        }
+        val previousPoint = pointBefore(
+            db = db,
+            tourId = tourId,
+            recordedAt = clusterPoint.recordedAt,
+            pointId = clusterPoint.id,
+        )
         val oldDistance = previousPoint?.let {
             haversineDistanceMeters(
                 fromLatitude = it.latitude,
@@ -701,17 +692,12 @@ class TourStore(context: Context) :
                 toLongitude = clusterPoint.longitude,
             )
         } ?: 0.0
-        val newLocation = Location("cluster").apply {
-            this.latitude = latitude
-            this.longitude = longitude
-            time = recordedAt
-        }
         val newDistance = previousPoint?.let {
             haversineDistanceMeters(
                 fromLatitude = it.latitude,
                 fromLongitude = it.longitude,
-                toLatitude = newLocation.latitude,
-                toLongitude = newLocation.longitude,
+                toLatitude = latitude,
+                toLongitude = longitude,
             )
         } ?: 0.0
         db.beginTransaction()
