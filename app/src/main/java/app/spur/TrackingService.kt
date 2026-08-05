@@ -394,7 +394,7 @@ class TrackingService : Service() {
         }
         if (automaticResult?.finished == true) {
             handler.post {
-                if (isCurrent(session)) finishAutomaticTourAtHome(session.tourId)
+                finishAutomaticTourAtHome(session.tourId)
             }
         }
     }
@@ -442,6 +442,7 @@ class TrackingService : Service() {
     private fun finishAutomaticTourAtHome(id: Long) {
         applicationContext.markTourCompletionPending(id)
         applicationContext.vibrateTourEnded()
+        if (!shouldTransitionAfterAutomaticCompletion(id, activeTrackingSession?.tourId)) return
         clearAutomaticTourState()
         returnToArmedWaitingOrStop()
     }
@@ -564,3 +565,8 @@ private data class ActiveTrackingSession(
     var notificationText: String,
     val automaticProcessor: AutomaticTourSignalProcessor<Location>?,
 )
+
+internal fun shouldTransitionAfterAutomaticCompletion(
+    completedTourId: Long,
+    activeTourId: Long?,
+): Boolean = completedTourId == activeTourId

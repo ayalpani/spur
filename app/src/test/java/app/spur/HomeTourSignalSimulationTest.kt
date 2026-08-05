@@ -34,6 +34,28 @@ class HomeTourSignalSimulationTest {
     }
 
     @Test
+    fun committedAutomaticCompletionSurvivesSessionReplacement() {
+        assertTrue(
+            shouldTransitionAfterAutomaticCompletion(
+                completedTourId = 7L,
+                activeTourId = 7L,
+            ),
+        )
+        assertFalse(
+            shouldTransitionAfterAutomaticCompletion(
+                completedTourId = 7L,
+                activeTourId = 8L,
+            ),
+        )
+        assertFalse(
+            shouldTransitionAfterAutomaticCompletion(
+                completedTourId = 7L,
+                activeTourId = null,
+            ),
+        )
+    }
+
+    @Test
     fun serviceRestartRestoresActiveConfirmationOrArmedState() {
         assertEquals(
             HomeDepartureTrackingMode.ACTIVE,
