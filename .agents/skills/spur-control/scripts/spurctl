@@ -125,7 +125,7 @@ install() {
     serial="$(connect_device)"
 
     if "$ADB" -s "$serial" shell pm path "$LEGACY_PACKAGE" >/dev/null 2>&1; then
-        "$ADB" -s "$serial" uninstall "$LEGACY_PACKAGE" >/dev/null
+        echo "Legacy-Paket $LEGACY_PACKAGE bleibt zum Schutz lokaler Daten installiert." >&2
     fi
 
     if output="$("$ADB" -s "$serial" install -r "$APK" 2>&1)"; then
@@ -134,10 +134,9 @@ install() {
     fi
 
     if [[ "$output" == *"INSTALL_FAILED_UPDATE_INCOMPATIBLE"* ]]; then
-        "$ADB" -s "$serial" uninstall "$PACKAGE" >/dev/null
-        "$ADB" -s "$serial" install "$APK" >/dev/null
-        printf '%s\n' "$serial"
-        return
+        printf '%s\n' "$output" >&2
+        echo "Abbruch: Signaturkonflikt. $PACKAGE wird nicht deinstalliert; lokale Daten bleiben unangetastet." >&2
+        exit 1
     fi
 
     printf '%s\n' "$output" >&2

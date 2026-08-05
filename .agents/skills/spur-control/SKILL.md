@@ -82,9 +82,12 @@ recover.
   phone. Never merge other branches into a preview.
 - Preserve every other thread in its own worktree, branch, and pull request;
   replacing its installed build is not permission to alter its code.
-- Remove legacy `app.spur.debug` when installing.
-- Preserve `app.spur` data when an in-place update works.
-- If Android reports an incompatible signature, uninstall `app.spur` and retry. Arash has explicitly accepted losing local Spur data during this development phase.
+- Do not uninstall or clear either `app.spur` or the legacy `app.spur.debug`
+  package as part of deployment. Existing local tours and media must survive.
+- Install `app.spur` only as an in-place update with `adb install -r`.
+- If Android reports an incompatible signature or another failure that would
+  require uninstalling or clearing data, stop and report it. Never retry with a
+  destructive fallback.
 - Never uninstall unrelated packages or target a device that does not match the registered model.
 - If the phone is unreachable, state that Wi-Fi debugging must be enabled and stop; do not silently switch to another device.
 
