@@ -122,6 +122,12 @@ class FollowLocationTest {
     }
 
     @Test
+    fun directMapGestureHidesTourChrome() {
+        assertFalse(shouldShowTourChrome(isMapGestureActive = true))
+        assertTrue(shouldShowTourChrome(isMapGestureActive = false))
+    }
+
+    @Test
     fun startupLoaderDoesNotReturnAfterLeavingTheMap() {
         assertTrue(
             shouldShowInitialMapLoading(

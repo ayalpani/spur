@@ -236,6 +236,9 @@ internal fun shouldStackMapPlayer(screenWidthDp: Int): Boolean =
 internal fun shouldStopFollowing(cameraMoveReason: Int): Boolean =
     cameraMoveReason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE
 
+internal fun shouldShowTourChrome(isMapGestureActive: Boolean): Boolean =
+    !isMapGestureActive
+
 internal fun shouldRefreshAlternateMapPreview(
     isFollowingLocation: Boolean,
     hasPreviewCameraPosition: Boolean,

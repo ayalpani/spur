@@ -347,7 +347,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         tourDisplayRequest = displayedTourRequest,
                         routePoints = routePoints,
                         pendingDeparturePreview = pendingDeparturePreview,
-                        mapChromeVisible = !homeVisible,
                         roadHistoryStore = store,
                         roadHistoryFingerprint = roadHistoryFingerprint,
                         roadTraversalFingerprint = roadTraversalFingerprint,

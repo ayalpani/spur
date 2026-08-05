@@ -83,7 +83,6 @@ internal fun MapPage(
     tourDisplayRequest: Long,
     routePoints: List<TrackPoint>,
     pendingDeparturePreview: PendingDeparturePreview? = null,
-    mapChromeVisible: Boolean = true,
     roadHistoryStore: TourStore? = null,
     roadHistoryFingerprint: RoadHistoryFingerprint = RoadHistoryFingerprint(),
     roadTraversalFingerprint: RoadHistoryFingerprint? = null,
@@ -120,10 +119,12 @@ internal fun MapPage(
         routePoints
     }
     val archivedTour = tour?.takeIf { it.endedAt != null }
+    var isMapGestureActive by remember { mutableStateOf(false) }
+    val showTourChrome = shouldShowTourChrome(isMapGestureActive)
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
     )
-    val isWaypointRailVisible = mapChromeVisible &&
+    val isWaypointRailVisible = showTourChrome &&
         !isHomeSelectionMode &&
         (tour != null || activeTour != null)
     val mapActionsBottomPadding =
@@ -149,7 +150,7 @@ internal fun MapPage(
     var showStartTourBottomSheet by rememberSaveable { mutableStateOf(false) }
     var isStartingTour by rememberSaveable { mutableStateOf(false) }
     var momentTarget by remember { mutableStateOf<MomentPlacementTarget?>(null) }
-    ActiveTourNavigationBar(active = mapChromeVisible && isDisplayedActiveTour)
+    ActiveTourNavigationBar(active = isDisplayedActiveTour)
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
     var showSettingsMenu by rememberSaveable { mutableStateOf(false) }
     var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
@@ -237,15 +238,13 @@ internal fun MapPage(
     }
     var mapInitializationStarted by remember { mutableStateOf(false) }
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
-    val isTourModeHeaderVisible = mapChromeVisible &&
+    val isTourModeHeaderVisible = showTourChrome &&
         tour != null &&
         isMapReady &&
         !isHomeSelectionMode &&
         (!isDisplayedActiveTour || dismissedActiveTourHeaderId != tour?.id)
-    var isMapGestureActive by remember { mutableStateOf(false) }
-    val areMapControlsVisible = mapChromeVisible &&
+    val areMapControlsVisible = showTourChrome &&
         isMapReady &&
-        !isMapGestureActive &&
         !isHomeSelectionMode
     val startTourBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
