@@ -546,6 +546,21 @@ class TourStore(context: Context) :
         }
     }
 
+    private fun adjustTourDistance(
+        db: SQLiteDatabase,
+        tourId: Long,
+        distanceDelta: Double,
+    ) {
+        db.execSQL(
+            """
+            UPDATE tours
+            SET distance_meters = MAX(0, distance_meters + ?)
+            WHERE id = ?
+            """.trimIndent(),
+            arrayOf(distanceDelta, tourId),
+        )
+    }
+
     private fun collapseStationaryWindow(
         db: SQLiteDatabase,
         tourId: Long,
@@ -591,14 +606,7 @@ class TourStore(context: Context) :
                 "tour_id = ? AND id = ?",
                 arrayOf(tourId.toString(), representative.id.toString()),
             )
-            db.execSQL(
-                """
-                UPDATE tours
-                SET distance_meters = MAX(0, distance_meters + ?)
-                WHERE id = ?
-                """.trimIndent(),
-                arrayOf(distanceDelta, tourId),
-            )
+            adjustTourDistance(db, tourId, distanceDelta)
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -715,14 +723,7 @@ class TourStore(context: Context) :
                 "tour_id = ? AND id = ?",
                 arrayOf(tourId.toString(), clusterPoint.id.toString()),
             )
-            db.execSQL(
-                """
-                UPDATE tours
-                SET distance_meters = MAX(0, distance_meters + ?)
-                WHERE id = ?
-                """.trimIndent(),
-                arrayOf(newDistance - oldDistance, tourId),
-            )
+            adjustTourDistance(db, tourId, newDistance - oldDistance)
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
