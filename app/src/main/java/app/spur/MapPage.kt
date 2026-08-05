@@ -142,7 +142,6 @@ internal fun MapPage(
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
     var mapViewport by remember { mutableStateOf<MapViewport?>(null) }
     var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
-    var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
     var isWaypointRailScrolling by remember { mutableStateOf(false) }
     var isZoomControlInteracting by remember { mutableStateOf(false) }
     var showStartTourBottomSheet by rememberSaveable { mutableStateOf(false) }
@@ -482,7 +481,8 @@ internal fun MapPage(
                 isTourActive = isTourActive,
                 showTourEndpoints = !isDisplayedActiveTour && !showsPendingDeparture,
                 departureCheckActive = showsPendingDeparture,
-                deferAlternateMapPreview = isWaypointRailScrolling ||
+                deferAlternateMapPreview =
+                    (isWaypointRailScrolling && !isFollowingLocation) ||
                     isMapGestureActive ||
                     isZoomControlInteracting,
                 isZoomControlInteracting = isZoomControlInteracting,
@@ -526,9 +526,6 @@ internal fun MapPage(
                 activeVoiceMoment = activeVoiceMoment,
                 voicePlaybackProgress = voiceProgress,
                 onAlternateMapPreviewChanged = { alternateMapPreview = it },
-                onAlternateMapPreviewLoadingChanged = {
-                    isAlternateMapPreviewLoading = it
-                },
                 onViewportChanged = {
                     mapViewport = it
                     displayedMapZoom = it.zoom.coerceIn(MapZoomMinimum, MapZoomMaximum)
@@ -809,12 +806,10 @@ internal fun MapPage(
                             "Satellitenansicht anzeigen"
                         },
                         onClick = {
-                            isAlternateMapPreviewLoading = true
                             alternateMapPreview = null
                             isSatelliteView = !isSatelliteView
                         },
                         preview = alternateMapPreview,
-                        isLoading = isAlternateMapPreviewLoading,
                         fallbackPreview = if (isSatelliteView) {
                             R.drawable.map_preview_street
                         } else {
@@ -966,7 +961,6 @@ internal fun MapPage(
                         },
                         onScrollInProgressChanged = { isScrolling ->
                             isWaypointRailScrolling = isScrolling
-                            if (isScrolling) isAlternateMapPreviewLoading = true
                         },
                         onSelected = { pointId ->
                             if (pointId != selectedEditorPointId) {

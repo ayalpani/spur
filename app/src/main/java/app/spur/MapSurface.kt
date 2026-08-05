@@ -112,7 +112,6 @@ internal fun MapSurface(
     activeVoiceMoment: MapMoment?,
     voicePlaybackProgress: Float,
     onAlternateMapPreviewChanged: (ImageBitmap) -> Unit,
-    onAlternateMapPreviewLoadingChanged: (Boolean) -> Unit,
     onViewportChanged: (MapViewport) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onMomentPlacementFailed: (PendingMapMoment) -> Unit,
@@ -146,9 +145,6 @@ internal fun MapSurface(
     val currentIsZoomControlInteracting by rememberUpdatedState(isZoomControlInteracting)
     val currentOnAlternateMapPreviewChanged by rememberUpdatedState(
         onAlternateMapPreviewChanged,
-    )
-    val currentOnAlternateMapPreviewLoadingChanged by rememberUpdatedState(
-        onAlternateMapPreviewLoadingChanged,
     )
     val currentOnViewportChanged by rememberUpdatedState(onViewportChanged)
     val currentMapMoments by rememberUpdatedState(mapMoments)
@@ -212,6 +208,7 @@ internal fun MapSurface(
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
     }
+    val currentPreviewCameraPosition by rememberUpdatedState(previewCameraPosition)
     var pendingMapMoment by remember { mutableStateOf<MapMoment?>(null) }
     var pendingMomentPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
     var preparedMapMomentImages by remember {
@@ -340,8 +337,10 @@ internal fun MapSurface(
         }
     }
 
-    LaunchedEffect(isFollowingLocation) {
-        if (isFollowingLocation) currentOnAlternateMapPreviewLoadingChanged(false)
+    LaunchedEffect(isFollowingLocation, hasLoadedMapStyle) {
+        if (!isFollowingLocation && hasLoadedMapStyle) {
+            mapView.getMapAsync { map -> previewCameraPosition = map.cameraPosition }
+        }
     }
 
     LaunchedEffect(
@@ -415,7 +414,6 @@ internal fun MapSurface(
     }
 
     LaunchedEffect(isSatelliteView) {
-        currentOnAlternateMapPreviewLoadingChanged(true)
         mapView.getMapAsync { map ->
             map.uiSettings.isCompassEnabled = false
             if (hasLoadedMapStyle) {
@@ -519,14 +517,9 @@ internal fun MapSurface(
                                 currentOnAlternateMapPreviewChanged(
                                     snapshot.bitmap.asImageBitmap(),
                                 )
-                                currentOnAlternateMapPreviewLoadingChanged(false)
                             }
                         },
-                        { _ ->
-                            if (!disposed) {
-                                currentOnAlternateMapPreviewLoadingChanged(false)
-                            }
-                        },
+                        { _ -> Unit },
                     )
                 }
             }
@@ -637,20 +630,14 @@ internal fun MapSurface(
             if (currentManualLocation != null) publishManualLocationPosition()
             if (pendingMapMoment != null) publishPendingMomentPosition()
         }
-        var cameraMoveReason =
-            MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
         val moveStartedListener = MapLibreMap.OnCameraMoveStartedListener { reason ->
             isCameraMoving = true
             roadNetworkNeedsLoad = true
             roadNetworkReadyCameraKey = null
             roadNetworkReadyViewportKey = null
-            cameraMoveReason = reason
             if (shouldStopFollowing(reason)) {
                 isSelectedTrackPointVisible = false
                 currentOnMapGestureActiveChanged(true)
-            }
-            if (shouldShowMapPreviewLoading(currentIsFollowingLocation, reason)) {
-                currentOnAlternateMapPreviewLoadingChanged(true)
             }
             if (currentIsFollowingLocation && shouldStopFollowing(reason)) {
                 map?.locationComponent?.cameraMode = CameraMode.NONE
@@ -668,10 +655,15 @@ internal fun MapSurface(
                     readyMap.roadNetworkCameraKey() != currentRoadHistoryCameraKey
                 if (shouldRefreshRoadHistory) roadHistoryMapRevision++
             }
-            previewCameraPosition = map?.cameraPosition
+            if (
+                shouldRefreshAlternateMapPreview(
+                    isFollowingLocation = currentIsFollowingLocation,
+                    hasPreviewCameraPosition = currentPreviewCameraPosition != null,
+                )
+            ) {
+                previewCameraPosition = map?.cameraPosition
+            }
             map?.mapViewport(currentIsSatelliteView)?.let(currentOnViewportChanged)
-            cameraMoveReason =
-                MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION
         }
         val clickListener = MapLibreMap.OnMapClickListener { point ->
             val readyMap = map ?: return@OnMapClickListener false

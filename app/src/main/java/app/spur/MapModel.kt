@@ -227,10 +227,10 @@ internal fun shouldStackMapPlayer(screenWidthDp: Int): Boolean =
 internal fun shouldStopFollowing(cameraMoveReason: Int): Boolean =
     cameraMoveReason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE
 
-internal fun shouldShowMapPreviewLoading(
+internal fun shouldRefreshAlternateMapPreview(
     isFollowingLocation: Boolean,
-    cameraMoveReason: Int,
-): Boolean = !isFollowingLocation || shouldStopFollowing(cameraMoveReason)
+    hasPreviewCameraPosition: Boolean,
+): Boolean = !isFollowingLocation || !hasPreviewCameraPosition
 
 internal fun shouldShowInitialMapLoading(
     initialLoadingComplete: Boolean,
