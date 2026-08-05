@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -28,9 +29,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -113,6 +116,8 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     val homeVisible = currentRoute == SpurRoute.HOME
     val homePanelOpen = shouldKeepHomePanelOpen(currentRoute, previousRoute)
     val tourCoversHome = homePanelOpen && !homeVisible
+    val tourOverlayOffsetFraction = remember { Animatable(0f) }
+    var isTourOverlayTransitioning by remember { mutableStateOf(false) }
     var feedbackNotice by remember { mutableStateOf<FeedbackNotice?>(null) }
     var feedbackNoticeId by remember { mutableLongStateOf(0L) }
     val showFeedbackNotice: ShowFeedbackNotice = { kind, message ->
@@ -280,6 +285,22 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         feedbackNotice = null
     }
 
+    suspend fun animateTourOverlayTo(targetValue: Float) {
+        tourOverlayOffsetFraction.animateTo(
+            targetValue = targetValue,
+            animationSpec = tween(HomePanelMotionDurationMillis),
+        )
+    }
+
+    val restoreMapAfterDisplayedTour: () -> Unit = {
+        val currentActiveTour = activeTour
+        displayedTour = currentActiveTour
+        displayedTourId = currentActiveTour?.id
+        displayedTourRevision = null
+        displayedTourRequest++
+        routePoints = emptyList()
+    }
+
     val deleteTour: (Long) -> Unit = { id ->
         val revealHomeBeforeDeletion = shouldRevealHomeBeforeDeletingTour(
             deletedTourId = id,
@@ -288,12 +309,10 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         )
         scope.launch {
             if (revealHomeBeforeDeletion) {
-                displayedTour = activeTour
-                displayedTourId = activeTour?.id
-                displayedTourRevision = null
-                routePoints = emptyList()
+                animateTourOverlayTo(1f)
+                restoreMapAfterDisplayedTour()
                 navController.popBackStack()
-                delay(HomePanelMotionDurationMillis.toLong())
+                tourOverlayOffsetFraction.snapTo(0f)
             }
             if (!context.deleteStoredTour(store, id)) {
                 showFeedbackNotice(
@@ -470,12 +489,21 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 navController.previousBackStackEntry
                                     ?.destination
                                     ?.route == SpurRoute.HOME
-                            val currentActiveTour = activeTour
-                            displayedTour = currentActiveTour
-                            displayedTourId = currentActiveTour?.id
-                            displayedTourRequest++
-                            routePoints = emptyList()
-                            if (returnToHome) navController.popBackStack()
+                            if (returnToHome && !isTourOverlayTransitioning) {
+                                isTourOverlayTransitioning = true
+                                scope.launch {
+                                    try {
+                                        animateTourOverlayTo(1f)
+                                        restoreMapAfterDisplayedTour()
+                                        navController.popBackStack()
+                                        tourOverlayOffsetFraction.snapTo(0f)
+                                    } finally {
+                                        isTourOverlayTransitioning = false
+                                    }
+                                }
+                            } else if (!returnToHome) {
+                                restoreMapAfterDisplayedTour()
+                            }
                         },
                         onDeleteTour = deleteTour,
                         onDeleteWaypoint = { tourId, retainedIds ->
@@ -504,7 +532,15 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         onInitialLoadingComplete = {
                             initialMapLoadingComplete = true
                         },
-                        modifier = Modifier.zIndex(if (tourCoversHome) 1f else 0f),
+                        modifier = Modifier
+                            .zIndex(if (tourCoversHome) 1f else 0f)
+                            .graphicsLayer {
+                                translationX = if (tourCoversHome) {
+                                    size.width * tourOverlayOffsetFraction.value
+                                } else {
+                                    0f
+                                }
+                            },
                     )
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         val panelWidth = with(LocalDensity.current) {
@@ -529,14 +565,25 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 loadingEnabled = initialMapLoadingComplete,
                                 backEnabled = homeVisible,
                                 onBack = { navController.popBackStack() },
-                                onOpenTour = { id ->
-                                    if (displayedTourId != id) {
-                                        displayedTour = null
-                                        routePoints = emptyList()
+                                onOpenTour = openTour@{ id ->
+                                    if (isTourOverlayTransitioning) return@openTour
+                                    isTourOverlayTransitioning = true
+                                    scope.launch {
+                                        try {
+                                            tourOverlayOffsetFraction.snapTo(1f)
+                                            if (displayedTourId != id) {
+                                                displayedTour = null
+                                                routePoints = emptyList()
+                                            }
+                                            displayedTourId = id
+                                            displayedTourRequest++
+                                            navController.navigate(SpurRoute.MAP)
+                                            withFrameNanos { }
+                                            animateTourOverlayTo(0f)
+                                        } finally {
+                                            isTourOverlayTransitioning = false
+                                        }
                                     }
-                                    displayedTourId = id
-                                    displayedTourRequest++
-                                    navController.navigate(SpurRoute.MAP)
                                 },
                                 onOpenPhoto = { photo, photos ->
                                     historyPhotos = photos
