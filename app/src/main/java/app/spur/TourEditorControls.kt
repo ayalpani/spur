@@ -5,6 +5,7 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.DraggableState
 import androidx.compose.foundation.gestures.Orientation
@@ -14,6 +15,8 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -403,13 +406,19 @@ internal fun WaypointRail(
                 key = { locations[it].point.id },
             ) { index ->
                 val location = locations[index]
+                val interactionSource = remember(location.point.id) {
+                    MutableInteractionSource()
+                }
+                val isPressed by interactionSource.collectIsPressedAsState()
                 Box(
                     modifier = Modifier
                         .width(itemWidth)
                         .fillMaxHeight()
-                        .clickable {
-                            selectAndCenter(index)
-                        }
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = null,
+                            onClick = { selectAndCenter(index) },
+                        )
                         .semantics {
                             contentDescription =
                                 "Wegpunkt ${index + 1} von ${locations.size}"
@@ -430,10 +439,22 @@ internal fun WaypointRail(
                         Box(
                             modifier = Modifier
                                 .padding(bottom = 14.dp)
-                                .width(2.dp)
-                                .height(20.dp)
-                                .background(Ink.copy(alpha = 0.16f), CircleShape),
-                        )
+                                .width(6.dp)
+                                .height(22.dp)
+                                .border(
+                                    width = 1.dp,
+                                    color = Ink.copy(alpha = if (isPressed) 0.46f else 0f),
+                                    shape = CircleShape,
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(2.dp)
+                                    .height(20.dp)
+                                    .background(Ink.copy(alpha = 0.16f), CircleShape),
+                            )
+                        }
                     }
                 }
             }
