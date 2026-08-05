@@ -163,10 +163,7 @@ internal fun CameraScreen(
                 color = Color.White,
                 onClick = cameraCapture@{
                     val capture = imageCapture ?: return@cameraCapture
-                    val photoDirectory = File(context.filesDir, "moments/photos").apply {
-                        mkdirs()
-                    }
-                    val output = File(photoDirectory, "photo-${System.currentTimeMillis()}.jpg")
+                    val output = context.createMomentFile(MomentType.PHOTO)
                     previewView.display?.rotation?.let { capture.targetRotation = it }
                     isCapturing = true
                     capture.takePicture(
