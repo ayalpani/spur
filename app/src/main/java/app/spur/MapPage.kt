@@ -9,8 +9,6 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -932,14 +930,8 @@ internal fun MapPage(
             AnimatedVisibility(
                 visible = isMapReady && isWaypointRailVisible,
                 modifier = Modifier.align(Alignment.BottomCenter),
-                enter = slideInVertically(
-                    animationSpec = tween(MotionDurationDefaultMillis),
-                    initialOffsetY = { it },
-                ) + fadeIn(tween(MotionDurationDefaultMillis)),
-                exit = slideOutVertically(
-                    animationSpec = tween(MotionDurationDefaultMillis),
-                    targetOffsetY = { it },
-                ) + fadeOut(tween(MotionDurationDefaultMillis)),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
                 Column(
                     modifier = Modifier
