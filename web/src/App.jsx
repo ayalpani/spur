@@ -68,7 +68,7 @@ function PhoneFrame({ src, alt, eager = false }) {
       <div className="phone-frame">
         <span className="phone-button phone-button--volume" aria-hidden="true" />
         <span className="phone-button phone-button--power" aria-hidden="true" />
-        <span className="phone-camera" aria-hidden="true" />
+        <span className="phone-notch" aria-hidden="true"><i /></span>
         <div className="phone-screen">
           <img
             src={src}
@@ -117,7 +117,7 @@ function App() {
         <section className="hero" id="top">
           <div className="hero-copy">
             <p className="eyebrow">Private Touren · Android</p>
-            <h1>Wege, die<br />dir gehören.</h1>
+            <h1>Wege, die dir gehören.</h1>
             <p className="hero-lead">
               Spur zeichnet deine Touren auf und bewahrt Erinnerungen genau dort,
               wo sie entstanden sind. Lokal, ruhig und nur für dich.

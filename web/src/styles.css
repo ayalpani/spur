@@ -100,8 +100,8 @@ nav {
   margin: 0 auto;
   padding: clamp(52px, 7vw, 110px) 4vw clamp(80px, 9vw, 140px);
   align-items: center;
-  grid-template-columns: minmax(0, 0.83fr) minmax(520px, 1.17fr);
-  gap: clamp(56px, 7vw, 120px);
+  grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.95fr);
+  gap: clamp(48px, 5vw, 88px);
 }
 
 .eyebrow {
@@ -129,8 +129,8 @@ h3 {
 
 h1 {
   max-width: 760px;
-  font-size: clamp(4.25rem, 8vw, 8.75rem);
-  line-height: 0.84;
+  font-size: clamp(4rem, 6.1vw, 6.875rem);
+  line-height: 0.9;
 }
 
 .hero-lead {
@@ -191,7 +191,7 @@ h1 {
 .phone-frame {
   position: relative;
   width: min(320px, calc(100% - 90px));
-  padding: 6px;
+  padding: 9px;
   border: 1px solid rgb(255 255 255 / 18%);
   border-radius: 28px;
   background: var(--ink);
@@ -201,7 +201,7 @@ h1 {
 .phone-screen {
   overflow: hidden;
   width: 100%;
-  border-radius: 22px;
+  border-radius: 19px;
   background: var(--ink);
   line-height: 0;
 }
@@ -212,16 +212,26 @@ h1 {
   height: auto;
 }
 
-.phone-camera {
+.phone-notch {
   position: absolute;
   z-index: 2;
-  top: 14px;
+  top: 7px;
   left: 50%;
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgb(100 116 139 / 62%);
-  border-radius: 50%;
+  width: 24px;
+  height: 15px;
+  border-radius: 0 0 11px 11px;
   background: var(--black);
+  transform: translateX(-50%);
+}
+
+.phone-notch i {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgb(100 116 139 / 72%);
   transform: translateX(-50%);
 }
 
@@ -535,7 +545,7 @@ nav a:hover,
   }
 
   h1 {
-    font-size: clamp(3.9rem, 19vw, 6.2rem);
+    font-size: clamp(3.5rem, 15.5vw, 4.6rem);
   }
 
   .hero-actions {
@@ -557,18 +567,18 @@ nav a:hover,
   .phone-frame,
   .feature .phone-frame {
     width: min(280px, calc(100% - 48px));
-    padding: 5px;
+    padding: 8px;
     border-radius: 24px;
   }
 
   .phone-screen {
-    border-radius: 19px;
+    border-radius: 16px;
   }
 
-  .phone-camera {
-    top: 12px;
-    width: 10px;
-    height: 10px;
+  .phone-notch {
+    top: 6px;
+    width: 21px;
+    height: 13px;
   }
 
   .hero-caption {
