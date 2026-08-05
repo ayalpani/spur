@@ -1492,26 +1492,29 @@ internal fun MapSurface(
                 if (continuation.isActive) continuation.resume(readyMap)
             }
         }
-        delay(220L)
-        animate(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = tween(360),
-        ) { value, _ ->
-            map.style?.showRoadCompletionPulse(
-                road = completion.road,
-                progress = value,
+        try {
+            delay(220L)
+            animate(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = tween(360),
+            ) { value, _ ->
+                map.style?.showRoadCompletionPulse(
+                    road = completion.road,
+                    progress = value,
+                )
+            }
+            mapView.performHapticFeedback(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    HapticFeedbackConstants.CONFIRM
+                } else {
+                    HapticFeedbackConstants.VIRTUAL_KEY
+                },
             )
+            delay(480L)
+        } finally {
+            map.style?.showRoadCompletionPulse(null, 0f)
         }
-        mapView.performHapticFeedback(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                HapticFeedbackConstants.CONFIRM
-            } else {
-                HapticFeedbackConstants.VIRTUAL_KEY
-            },
-        )
-        delay(480L)
-        map.style?.showRoadCompletionPulse(null, 0f)
     }
 
     LaunchedEffect(
