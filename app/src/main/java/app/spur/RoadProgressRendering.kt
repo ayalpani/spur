@@ -214,6 +214,12 @@ internal fun roadCountFeatures(
     }
 }
 
+internal fun roadCoverageSegments(
+    completedRoads: Collection<CompletedRoad>,
+): List<List<SpurCoordinate>> = completedRoads.map { completedRoad ->
+    completedRoad.road.points
+}
+
 private fun Feature.roadPointLists(): List<List<SpurCoordinate>> =
     when (val geometry = geometry()) {
         is LineString -> listOf(geometry.coordinates().toSpurCoordinates())

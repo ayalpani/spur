@@ -66,9 +66,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         mutableStateOf<PendingDeparturePreview?>(null)
     }
     var displayedTourRevision by remember { mutableStateOf<TourRevision?>(null) }
-    var roadHistoryRefreshRevision by remember { mutableLongStateOf(0L) }
     var roadTraversalRefreshRevision by remember { mutableLongStateOf(0L) }
-    var roadHistoryFingerprint by remember { mutableStateOf(RoadHistoryFingerprint()) }
     var roadTraversalFingerprint by remember { mutableStateOf<RoadHistoryFingerprint?>(null) }
     var historyRevision by remember { mutableLongStateOf(0L) }
     var photoRevision by remember { mutableLongStateOf(0L) }
@@ -235,7 +233,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                 displayedTourRevision = revision
                 displayedTour = revision?.asTour()
                 routePoints = points
-                roadHistoryRefreshRevision++
                 if (wasActiveTourId != id || revision?.endedAt != null) {
                     roadTraversalRefreshRevision++
                 }
@@ -245,13 +242,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
             }
             if (activeTour?.id != id) break
             delay(1_000L)
-        }
-    }
-
-    LaunchedEffect(isAppResumed, roadHistoryRefreshRevision) {
-        if (!isAppResumed) return@LaunchedEffect
-        roadHistoryFingerprint = withContext(Dispatchers.IO) {
-            store.roadHistoryFingerprint()
         }
     }
 
@@ -304,7 +294,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                 routePoints = emptyList()
             }
             historyRevision++
-            roadHistoryRefreshRevision++
             roadTraversalRefreshRevision++
         }
     }
@@ -348,7 +337,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         routePoints = routePoints,
                         pendingDeparturePreview = pendingDeparturePreview,
                         roadHistoryStore = store,
-                        roadHistoryFingerprint = roadHistoryFingerprint,
                         roadTraversalFingerprint = roadTraversalFingerprint,
                         onStartTour = {
                             scope.launch {
@@ -413,7 +401,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 displayedTourId = id
                                 displayedTourRequest++
                                 routePoints = result.second
-                                roadHistoryRefreshRevision++
                                 roadTraversalRefreshRevision++
                                 historyRevision++
                             }
@@ -471,7 +458,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 if (activeTour?.id == tourId) {
                                     activeTour = result.first?.asTour()
                                 }
-                                roadHistoryRefreshRevision++
                                 if (activeTour?.id != tourId) roadTraversalRefreshRevision++
                                 historyRevision++
                             }.isSuccess
