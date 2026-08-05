@@ -6,6 +6,28 @@ import org.junit.Test
 
 class HomeNavigationTest {
     @Test
+    fun homePanelStaysOpenUnderTourUntilHomeItselfCloses() {
+        assertTrue(
+            shouldKeepHomePanelOpen(
+                currentRoute = SpurRoute.HOME,
+                previousRoute = SpurRoute.MAP,
+            ),
+        )
+        assertTrue(
+            shouldKeepHomePanelOpen(
+                currentRoute = SpurRoute.MAP,
+                previousRoute = SpurRoute.HOME,
+            ),
+        )
+        assertFalse(
+            shouldKeepHomePanelOpen(
+                currentRoute = SpurRoute.MAP,
+                previousRoute = null,
+            ),
+        )
+    }
+
+    @Test
     fun archivedTourOpenedFromHomeReturnsBeforeDeletion() {
         val archivedTour = tour(id = 7L, endedAt = 2L)
 

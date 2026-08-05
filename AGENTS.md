@@ -105,6 +105,9 @@ confirming that the command preserves app data.
   with a chevron header and Android Back support. Keep the single map instance
   mounted and visually still beneath that panel. Opening an archived tour must
   leave history beneath it in the back stack so Back returns to history first.
+  Keep Home at its exact position and scroll state underneath the opened tour;
+  never animate it out when a tour opens. Back from the tour reveals that same
+  retained Home screen. Only Home's own Back or chevron may animate Home out.
   Keep the history screen composed just outside the left edge while hidden.
   After the map has loaded, let that hidden screen preload its tour data and
   thumbnails so opening history only moves the prepared panel onscreen. Load

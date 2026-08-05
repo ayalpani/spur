@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
@@ -108,7 +109,10 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         .value
         ?.destination
         ?.route
+    val previousRoute = navController.previousBackStackEntry?.destination?.route
     val homeVisible = currentRoute == SpurRoute.HOME
+    val homePanelOpen = shouldKeepHomePanelOpen(currentRoute, previousRoute)
+    val tourCoversHome = homePanelOpen && !homeVisible
     var feedbackNotice by remember { mutableStateOf<FeedbackNotice?>(null) }
     var feedbackNoticeId by remember { mutableLongStateOf(0L) }
     val showFeedbackNotice: ShowFeedbackNotice = { kind, message ->
@@ -500,20 +504,24 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         onInitialLoadingComplete = {
                             initialMapLoadingComplete = true
                         },
+                        modifier = Modifier.zIndex(if (tourCoversHome) 1f else 0f),
                     )
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         val panelWidth = with(LocalDensity.current) {
                             maxWidth.roundToPx()
                         }
                         val panelOffset by animateIntAsState(
-                            targetValue = if (homeVisible) 0 else -panelWidth,
+                            targetValue = if (homePanelOpen) 0 else -panelWidth,
                             animationSpec = tween(HomePanelMotionDurationMillis),
                             label = "home panel offset",
                         )
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .offset { IntOffset(panelOffset, 0) },
+                                .offset { IntOffset(panelOffset, 0) }
+                                .then(
+                                    if (homeVisible) Modifier else Modifier.clearAndSetSemantics {},
+                                ),
                         ) {
                             HomeScreen(
                                 store = store,
