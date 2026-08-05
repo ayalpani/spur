@@ -51,6 +51,19 @@ import java.io.File
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
+internal data class RestoredActiveTourState(
+    val activeTour: Tour,
+    val displayedTourId: Long,
+)
+
+internal fun restoredActiveTourState(
+    activeTour: Tour,
+    displayedTourId: Long?,
+) = RestoredActiveTourState(
+    activeTour = activeTour,
+    displayedTourId = displayedTourId ?: activeTour.id,
+)
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 internal fun SpurApp(splashExitComplete: Boolean) {
@@ -195,21 +208,26 @@ internal fun SpurApp(splashExitComplete: Boolean) {
             return@LaunchedEffect
         }
         while (true) {
-            val restoredId = withContext(Dispatchers.IO) { store.activeTourId() }
-            if (restoredId == null) {
+            val restoredTour = withContext(Dispatchers.IO) {
+                val restoredId = store.activeTourId() ?: return@withContext null
+                store.tour(restoredId)?.takeIf { it.endedAt == null }
+            }
+            if (restoredTour == null) {
                 delay(1_000L)
                 continue
             }
-            if (displayedTourId == null) {
-                displayedTourId = restoredId
+            val restored = restoredActiveTourState(restoredTour, displayedTourId)
+            if (displayedTourId != restored.displayedTourId) {
+                displayedTourId = restored.displayedTourId
                 displayedTourRequest++
             }
             historyRevision++
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, TrackingService::class.java)
-                    .putExtra(TrackingService.EXTRA_TOUR_ID, restoredId),
+                    .putExtra(TrackingService.EXTRA_TOUR_ID, restored.activeTour.id),
             )
+            activeTour = restored.activeTour
             break
         }
     }
