@@ -36,6 +36,21 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
+internal enum class HomeAutoStartEnablementStep {
+    REQUEST_NOTIFICATION_PERMISSION,
+    REQUEST_ACTIVITY_PERMISSION,
+    ENABLE,
+}
+
+internal fun nextHomeAutoStartEnablementStep(
+    hasNotificationPermission: Boolean,
+    hasActivityPermission: Boolean,
+): HomeAutoStartEnablementStep = when {
+    !hasNotificationPermission -> HomeAutoStartEnablementStep.REQUEST_NOTIFICATION_PERMISSION
+    !hasActivityPermission -> HomeAutoStartEnablementStep.REQUEST_ACTIVITY_PERMISSION
+    else -> HomeAutoStartEnablementStep.ENABLE
+}
+
 @Composable
 internal fun HomeAutoStartBottomSheet(
     onSettingsChanged: (HomeAutoStartSettings) -> Unit,
@@ -105,18 +120,27 @@ internal fun HomeAutoStartBottomSheet(
         }
     }
 
+    fun continueEnablement() {
+        when (
+            nextHomeAutoStartEnablementStep(
+                hasNotificationPermission = context.hasTourNotificationPermission(),
+                hasActivityPermission = context.hasActivityRecognitionPermission(),
+            )
+        ) {
+            HomeAutoStartEnablementStep.REQUEST_NOTIFICATION_PERMISSION ->
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            HomeAutoStartEnablementStep.REQUEST_ACTIVITY_PERMISSION ->
+                activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+            HomeAutoStartEnablementStep.ENABLE -> updateEnabled(true)
+        }
+    }
+
     val backgroundPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         awaitingBackgroundPermission = false
         if (granted) {
-            if (!context.hasTourNotificationPermission()) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else if (context.hasActivityRecognitionPermission()) {
-                updateEnabled(true)
-            } else {
-                activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-            }
+            continueEnablement()
         } else {
             message = "Ohne Hintergrundstandort bleibt die Startautomatik aus."
         }
@@ -124,13 +148,7 @@ internal fun HomeAutoStartBottomSheet(
 
     fun enable() {
         if (context.hasBackgroundLocationPermission()) {
-            if (!context.hasTourNotificationPermission()) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else if (context.hasActivityRecognitionPermission()) {
-                updateEnabled(true)
-            } else {
-                activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-            }
+            continueEnablement()
         } else {
             awaitingBackgroundPermission = true
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -154,17 +172,7 @@ internal fun HomeAutoStartBottomSheet(
             if (event == Lifecycle.Event.ON_RESUME && currentAwaitingPermission) {
                 awaitingBackgroundPermission = false
                 if (context.hasBackgroundLocationPermission()) {
-                    if (!context.hasTourNotificationPermission()) {
-                        notificationPermissionLauncher.launch(
-                            Manifest.permission.POST_NOTIFICATIONS,
-                        )
-                    } else if (context.hasActivityRecognitionPermission()) {
-                        updateEnabled(true)
-                    } else {
-                        activityPermissionLauncher.launch(
-                            Manifest.permission.ACTIVITY_RECOGNITION,
-                        )
-                    }
+                    continueEnablement()
                 } else {
                     message = "Ohne Hintergrundstandort bleibt die Startautomatik aus."
                 }
