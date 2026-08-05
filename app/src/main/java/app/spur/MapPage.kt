@@ -761,7 +761,7 @@ internal fun MapPage(
                             if (
                                 shouldShowTourOverview(
                                     isFollowingLocation = isFollowingLocation,
-                                    isTourActive = isTourActive,
+                                    hasDisplayedTour = tour != null,
                                     routePointCount = routePoints.size,
                                 )
                             ) {

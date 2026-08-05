@@ -15,32 +15,32 @@ class FollowLocationTest {
     }
 
     @Test
-    fun activeFollowingButtonOpensTourOverviewOnlyWhenRouteExists() {
+    fun followingButtonOpensOverviewForAnyDisplayedTourWithARoute() {
         assertTrue(
             shouldShowTourOverview(
                 isFollowingLocation = true,
-                isTourActive = true,
+                hasDisplayedTour = true,
                 routePointCount = 2,
             ),
         )
         assertFalse(
             shouldShowTourOverview(
                 isFollowingLocation = false,
-                isTourActive = true,
+                hasDisplayedTour = true,
                 routePointCount = 2,
             ),
         )
         assertFalse(
             shouldShowTourOverview(
                 isFollowingLocation = true,
-                isTourActive = false,
+                hasDisplayedTour = false,
                 routePointCount = 2,
             ),
         )
         assertFalse(
             shouldShowTourOverview(
                 isFollowingLocation = true,
-                isTourActive = true,
+                hasDisplayedTour = true,
                 routePointCount = 0,
             ),
         )
