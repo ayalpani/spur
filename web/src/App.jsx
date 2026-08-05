@@ -1,55 +1,52 @@
 const screens = [
   {
+    src: '/screens/01-map.webp',
+    number: '01',
+    title: 'Die Karte zuerst',
+    copy: 'Tour starten, Moment setzen, weitergehen – alles direkt auf der Karte.',
+    alt: 'Spur-Karte mit Tour-starten-Aktion und einem gesetzten Herz-Moment',
+  },
+  {
     src: '/screens/02-tracking.webp',
     number: '02',
-    kicker: 'Im Hintergrund',
-    title: 'Spur läuft. Du gehst.',
-    copy: 'Die Tour bleibt auf der Karte sichtbar, während Spur Zeit, Wegpunkte und Strecke zuverlässig aufzeichnet – auch bei gesperrtem Bildschirm.',
-    detail: 'Ein klarer Status, große Einhand-Bedienung und kein Fitness-Dashboard, das sich zwischen dich und deinen Weg stellt.',
+    title: 'Unterwegs',
+    copy: 'Zeit, Distanz und Wegpunkte laufen mit, ohne deinen Weg zu überladen.',
     alt: 'Laufende Spur-Tour auf der Karte mit Dauer, Distanz und Wegpunktleiste',
   },
   {
     src: '/screens/03-moments.webp',
     number: '03',
-    kicker: 'Vier Arten zu erinnern',
-    title: 'Nicht nur, wo du warst.',
-    copy: 'Ein Foto, ein Video, eine Sprachnachricht oder ein Emoji: Momente landen genau an dem Ort, an dem sie passiert sind.',
-    detail: 'Die Auswahl bleibt unten beim Daumen. Kein Formular, kein Feed, kein Umweg.',
+    title: 'Momente festhalten',
+    copy: 'Foto, Video, Stimme oder Emoji landen genau dort, wo sie entstanden sind.',
     alt: 'Moment-Auswahl mit Foto, Video, Sprache und Emoji über der Spur-Karte',
   },
   {
     src: '/screens/04-emoji-moment.webp',
     number: '04',
-    kicker: 'Am richtigen Ort',
-    title: 'Erinnerungen bekommen einen Platz.',
-    copy: 'Jeder Moment wird Teil der Karte. So erzählt ein Weg später mehr als eine Linie von A nach B.',
-    detail: 'Marker, Medien und Notizen bleiben lokal auf dem Gerät und tauchen beim nächsten Öffnen wieder dort auf.',
+    title: 'Erinnerungen verorten',
+    copy: 'Gespeicherte Momente machen aus jeder Route deine persönliche Karte.',
     alt: 'Herz-Moment als Marker auf der Spur-Karte am Potsdamer Platz',
   },
   {
     src: '/screens/05-home.webp',
     number: '05',
-    kicker: 'Dein Rückblick',
-    title: 'Aus Wegen wird ein eigenes Archiv.',
-    copy: 'Home fasst die letzten sieben Tage ruhig zusammen und hält jede Tour mit Zeit, Distanz und Kartenvorschau bereit.',
-    detail: 'Keine Rangliste. Kein Vergleich. Nur deine Aktivität und die Orte, die für dich etwas bedeuten.',
+    title: 'Dein Rückblick',
+    copy: 'Sieben Tage und alle Touren werden ruhig im lokalen Archiv gebündelt.',
     alt: 'Spur Home mit Sieben-Tage-Aktivität und lokalem Tourverlauf',
   },
   {
     src: '/screens/06-complete.webp',
     number: '06',
-    kicker: 'Sicher angekommen',
-    title: 'Der ganze Weg auf einen Blick.',
-    copy: 'Nach dem Ankommen zeigt Spur die komplette Route und die wichtigsten Werte in einer einzigen, ruhigen Abschlussansicht.',
-    detail: 'Danach wartet die Tour im lokalen Archiv – gemeinsam mit allen Momenten, die unterwegs entstanden sind.',
+    title: 'Sicher angekommen',
+    copy: 'Die ganze Route mit Zeit und Distanz auf einen Blick – lokal gespeichert.',
     alt: 'Abgeschlossene Spur-Tour mit Kartenübersicht, Zeit, Strecke und Tempo',
   },
 ]
 
-function SpurMark({ small = false }) {
+function SpurMark() {
   return (
     <svg
-      className={small ? 'spur-mark spur-mark--small' : 'spur-mark'}
+      className="spur-mark"
       viewBox="0 0 64 64"
       aria-hidden="true"
     >
@@ -84,17 +81,16 @@ function PhoneFrame({ src, alt, eager = false }) {
   )
 }
 
-function Feature({ screen, index }) {
+function ScreenCard({ screen, eager = false }) {
   return (
-    <section className={`feature ${index % 2 ? 'feature--reverse' : ''}`}>
-      <div className="feature-copy">
-        <p className="eyebrow">{screen.number} · {screen.kicker}</p>
+    <article className="screen-card">
+      <PhoneFrame {...screen} eager={eager} />
+      <div className="screen-copy">
+        <p className="screen-number">{screen.number}</p>
         <h2>{screen.title}</h2>
-        <p className="feature-lead">{screen.copy}</p>
-        <p className="feature-detail">{screen.detail}</p>
+        <p>{screen.copy}</p>
       </div>
-      <PhoneFrame {...screen} />
-    </section>
+    </article>
   )
 }
 
@@ -103,97 +99,36 @@ function App() {
     <>
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Spur – zum Seitenanfang">
-          <SpurMark small />
+          <SpurMark />
           <span>Spur</span>
         </a>
         <nav aria-label="Hauptnavigation">
-          <a href="#erleben">Erleben</a>
-          <a href="#prinzipien">Prinzipien</a>
-          <a className="nav-cta" href="#erleben">Sechs Einblicke</a>
+          <a className="nav-cta" href="#screens">Sechs Einblicke</a>
         </nav>
       </header>
 
       <main>
         <section className="hero" id="top">
-          <div className="hero-copy">
-            <p className="eyebrow">Private Touren · Android</p>
-            <h1>Wege, die dir gehören.</h1>
-            <p className="hero-lead">
-              Spur zeichnet deine Touren auf und bewahrt Erinnerungen genau dort,
-              wo sie entstanden sind. Lokal, ruhig und nur für dich.
-            </p>
-            <div className="hero-actions">
-              <a className="primary-action" href="#erleben">Spur ansehen</a>
-              <a className="text-action" href="#prinzipien">Warum local first?</a>
-            </div>
-            <ul className="hero-facts" aria-label="Spur Produktprinzipien">
-              <li>Ohne Account</li>
-              <li>Ohne Cloud</li>
-              <li>Ohne Feed</li>
-            </ul>
-          </div>
-
-          <div className="hero-visual" id="erleben">
-            <PhoneFrame
-              src="/screens/01-map.webp"
-              alt="Spur-Karte mit Tour-starten-Aktion und einem gesetzten Herz-Moment"
-              eager
-            />
-            <div className="hero-caption">
-              <span>01 · Die Karte zuerst</span>
-              <strong>Ein Tipp. Und du bist unterwegs.</strong>
-            </div>
-          </div>
-        </section>
-
-        <section className="intro" aria-labelledby="intro-title">
-          <p className="eyebrow">Ein privates Werkzeug</p>
-          <h2 id="intro-title">Nicht für Leistung.<br />Für Erinnerung.</h2>
-          <p>
-            Spur beginnt auf der Karte, bleibt unterwegs aus dem Weg und bringt
-            deine Tour später genauso zurück, wie sie war.
+          <p className="eyebrow">Private Touren · Android</p>
+          <h1>Wege, die dir gehören.</h1>
+          <p className="hero-lead">
+            Spur zeichnet Wege und Erinnerungen direkt auf deinem Gerät auf.
           </p>
         </section>
 
-        <div className="showcase">
-          {screens.map((screen, index) => (
-            <Feature key={screen.src} screen={screen} index={index} />
-          ))}
-        </div>
-
-        <section className="principles" id="prinzipien" aria-labelledby="principles-title">
-          <div className="principles-heading">
-            <p className="eyebrow">Local first, wirklich</p>
-            <h2 id="principles-title">Deine Spur bleibt deine.</h2>
-          </div>
-          <div className="principle-grid">
-            <article>
-              <span>01</span>
-              <h3>Alles auf dem Gerät</h3>
-              <p>Touren, Standortpunkte und Momente werden lokal gespeichert.</p>
-            </article>
-            <article>
-              <span>02</span>
-              <h3>Keine Zuschauer</h3>
-              <p>Kein Profil, keine Follower, kein öffentlicher Aktivitätsfeed.</p>
-            </article>
-            <article>
-              <span>03</span>
-              <h3>Du entscheidest</h3>
-              <p>Daten verlassen das Gerät nur durch eine bewusste Aktion.</p>
-            </article>
+        <section className="screens" id="screens" aria-labelledby="screens-title">
+          <h2 className="section-heading" id="screens-title">Spur in sechs Screens.</h2>
+          <div className="screen-grid">
+            {screens.map((screen, index) => (
+              <ScreenCard key={screen.src} screen={screen} eager={index < 3} />
+            ))}
           </div>
         </section>
       </main>
 
       <footer>
-        <div className="footer-mark"><SpurMark /></div>
-        <p>Spur</p>
-        <h2>Geh los.<br />Der Rest bleibt bei dir.</h2>
-        <div className="footer-meta">
-          <span>Android · In Entwicklung</span>
-          <a href="#top">Zurück nach oben ↑</a>
-        </div>
+        <p>Ohne Account · Ohne Cloud · Ohne Feed</p>
+        <a href="#top">Zurück nach oben ↑</a>
       </footer>
     </>
   )
