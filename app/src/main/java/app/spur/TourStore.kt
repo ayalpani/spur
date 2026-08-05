@@ -132,7 +132,7 @@ internal fun stationaryCluster(
             val from = ordered[fromIndex]
             val to = ordered[toIndex]
             if (
-                coordinateDistanceMeters(
+                haversineDistanceMeters(
                     fromLatitude = from.latitude,
                     fromLongitude = from.longitude,
                     toLatitude = to.latitude,
@@ -174,7 +174,7 @@ internal class GpsStartGate(
     }
 }
 
-internal fun coordinateDistanceMeters(
+internal fun haversineDistanceMeters(
     fromLatitude: Double,
     fromLongitude: Double,
     toLatitude: Double,
@@ -194,7 +194,7 @@ internal fun coordinateDistanceMeters(
 
 internal fun trackDistanceMeters(points: List<TrackPoint>): Double =
     points.zipWithNext().sumOf { (from, to) ->
-        coordinateDistanceMeters(
+        haversineDistanceMeters(
             fromLatitude = from.latitude,
             fromLongitude = from.longitude,
             toLatitude = to.latitude,
@@ -210,7 +210,7 @@ internal fun stationaryCollapseDistanceDelta(
     if (replaced.isEmpty()) return 0.0
     val oldDistance = trackDistanceMeters(listOfNotNull(previous) + replaced)
     val newDistance = previous?.let {
-        coordinateDistanceMeters(
+        haversineDistanceMeters(
             fromLatitude = it.latitude,
             fromLongitude = it.longitude,
             toLatitude = replacement.latitude,
@@ -840,7 +840,7 @@ class TourStore(context: Context) :
             prepared.forEach { location ->
                 val duplicate = known.any {
                     kotlin.math.abs(it.recordedAt - location.recordedAt) <= 1_000L &&
-                        coordinateDistanceMeters(
+                        haversineDistanceMeters(
                             it.latitude,
                             it.longitude,
                             location.latitude,

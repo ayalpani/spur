@@ -81,7 +81,7 @@ internal fun nearestTrackPoint(
     longitude: Double,
 ): TrackPoint? =
     points.minByOrNull { point ->
-        coordinateDistanceMeters(
+        haversineDistanceMeters(
             fromLatitude = point.latitude,
             fromLongitude = point.longitude,
             toLatitude = latitude,
@@ -104,7 +104,7 @@ internal fun momentsAttachedToTrackPoints(
 }
 
 private fun editorDistanceMeters(from: TrackPoint, to: TrackPoint): Double =
-    coordinateDistanceMeters(
+    haversineDistanceMeters(
         fromLatitude = from.latitude,
         fromLongitude = from.longitude,
         toLatitude = to.latitude,

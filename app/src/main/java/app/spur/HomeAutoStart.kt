@@ -215,7 +215,7 @@ internal fun isWithinHomeZone(
     coordinate: SpurCoordinate,
 ): Boolean {
     val home = settings.home ?: return false
-    return coordinateDistanceMeters(
+    return haversineDistanceMeters(
         fromLatitude = home.latitude,
         fromLongitude = home.longitude,
         toLatitude = coordinate.latitude,
@@ -446,7 +446,7 @@ internal fun Context.recordHomeDepartureAssembly(
 ) {
     val distanceBucket = measured.firstOrNull()?.let {
         homeDepartureDistanceBucket(
-            coordinateDistanceMeters(
+            haversineDistanceMeters(
                 startPoint.latitude,
                 startPoint.longitude,
                 it.latitude,
@@ -532,7 +532,7 @@ internal fun departureLocations(
     val firstCandidateFix = eligible.indexOfFirst { it.recordedAt >= candidateAt }
     if (firstCandidateFix < 0) return emptyList()
     fun distanceFromStart(location: BufferedHomeLocation) =
-        coordinateDistanceMeters(
+        haversineDistanceMeters(
             startPoint.latitude,
             startPoint.longitude,
             location.latitude,
@@ -551,7 +551,7 @@ internal fun departureLocations(
         val previous = accepted.lastOrNull()
         if (
             previous == null ||
-            coordinateDistanceMeters(
+            haversineDistanceMeters(
                 previous.latitude,
                 previous.longitude,
                 point.latitude,
@@ -571,7 +571,7 @@ internal fun automaticStartLocations(
     exitAt: Long,
 ): List<BufferedHomeLocation> {
     val firstMeasured = measured.firstOrNull() ?: return emptyList()
-    val hasMeasuredBridge = coordinateDistanceMeters(
+    val hasMeasuredBridge = haversineDistanceMeters(
         startPoint.latitude,
         startPoint.longitude,
         firstMeasured.latitude,
@@ -641,7 +641,7 @@ internal fun confirmedHomeDeparture(
     fun isReliablyOutside(location: BufferedHomeLocation): Boolean =
         location.accuracyMeters.isFinite() &&
             location.accuracyMeters in 0f..DepartureMaximumAccuracyMeters &&
-            coordinateDistanceMeters(
+            haversineDistanceMeters(
                 home.latitude,
                 home.longitude,
                 location.latitude,
@@ -661,7 +661,7 @@ internal fun confirmedHomeArrival(
     fun isReliablyHome(location: BufferedHomeLocation): Boolean =
         location.accuracyMeters.isFinite() &&
             location.accuracyMeters in 0f..ArrivalMaximumAccuracyMeters &&
-            coordinateDistanceMeters(
+            haversineDistanceMeters(
                 homePoint.latitude,
                 homePoint.longitude,
                 location.latitude,

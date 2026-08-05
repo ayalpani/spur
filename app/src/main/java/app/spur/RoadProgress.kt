@@ -241,7 +241,7 @@ internal class RoadTraversalAnalyzer(
                     completions = completions,
                 )
             }
-            val distance = coordinateDistanceMeters(from, to)
+            val distance = localCoordinateDistanceMeters(from, to)
             if (distance == 0.0) return@forEach
             if (
                 distance > RoadHistoryMaximumGapMeters ||
@@ -258,7 +258,7 @@ internal class RoadTraversalAnalyzer(
                 if (!shouldContinue()) break
                 val coordinate = interpolate(from, to, step.toDouble() / stepCount)
                 val previousCoordinate = directionOrigin.takeIf {
-                    coordinateDistanceMeters(it, coordinate) >=
+                    localCoordinateDistanceMeters(it, coordinate) >=
                         RoadHeadingMinimumMovementMeters
                 }
                 val candidates = roadIndex.near(coordinate)
@@ -471,7 +471,7 @@ internal fun roadHeadingPenalty(
     projection: RoadProjection,
 ): Double {
     previous ?: return 0.0
-    val movementDistance = coordinateDistanceMeters(previous, current)
+    val movementDistance = localCoordinateDistanceMeters(previous, current)
     if (movementDistance < RoadHeadingMinimumMovementMeters) return 0.0
     val from = road.points[projection.segmentIndex]
     val to = road.points[projection.segmentIndex + 1]
@@ -500,7 +500,7 @@ internal fun roadPrefix(
     val clampedFraction = fraction.coerceIn(0.0, 1.0)
     if (clampedFraction == 0.0) return listOf(oriented.first())
     if (clampedFraction == 1.0) return oriented
-    val lengths = oriented.zipWithNext(::coordinateDistanceMeters)
+    val lengths = oriented.zipWithNext(::localCoordinateDistanceMeters)
     val target = lengths.sum() * clampedFraction
     var traveled = 0.0
     val prefix = mutableListOf(oriented.first())
@@ -542,7 +542,7 @@ internal fun canonicalRoadKey(
 }
 
 private fun roadLengthMeters(points: List<SpurCoordinate>): Double =
-    points.zipWithNext(::coordinateDistanceMeters).sum()
+    points.zipWithNext(::localCoordinateDistanceMeters).sum()
 
 private fun interpolate(
     from: SpurCoordinate,
@@ -553,7 +553,7 @@ private fun interpolate(
     longitude = from.longitude + (to.longitude - from.longitude) * fraction,
 )
 
-internal fun coordinateDistanceMeters(
+internal fun localCoordinateDistanceMeters(
     from: SpurCoordinate,
     to: SpurCoordinate,
 ): Double {
@@ -692,7 +692,7 @@ internal fun normalizedRoadSegments(
         var previousMatch: NormalizedRoadMatch? = null
         route.zipWithNext().forEach { (from, to) ->
             if (!shouldContinue()) return emptyList()
-            val distance = coordinateDistanceMeters(from, to)
+            val distance = localCoordinateDistanceMeters(from, to)
             if (
                 distance < RoadHistoryMinimumMeters ||
                 distance > RoadHistoryMaximumGapMeters ||
@@ -806,7 +806,7 @@ private fun connectedEndpointFractions(
     var closestFractions: Pair<Double, Double>? = null
     firstEndpoints.forEachIndexed { firstIndex, firstPoint ->
         secondEndpoints.forEachIndexed { secondIndex, secondPoint ->
-            val distance = coordinateDistanceMeters(firstPoint, secondPoint)
+            val distance = localCoordinateDistanceMeters(firstPoint, secondPoint)
             if (distance < closestDistance) {
                 closestDistance = distance
                 closestFractions = firstIndex.toDouble() to secondIndex.toDouble()
@@ -840,7 +840,7 @@ private fun roadSlice(
     if (points.size < 2) return emptyList()
     val start = startFraction.coerceIn(0.0, 1.0)
     val end = endFraction.coerceIn(start, 1.0)
-    val lengths = points.zipWithNext(::coordinateDistanceMeters)
+    val lengths = points.zipWithNext(::localCoordinateDistanceMeters)
     val totalLength = lengths.sum()
     if (totalLength == 0.0) return emptyList()
     val startDistance = totalLength * start
@@ -854,7 +854,7 @@ private fun roadSlice(
         }
     }
     val endPoint = roadPointAtFraction(points, end) ?: return emptyList()
-    if (coordinateDistanceMeters(result.last(), endPoint) > 0.01) result += endPoint
+    if (localCoordinateDistanceMeters(result.last(), endPoint) > 0.01) result += endPoint
     return result
 }
 

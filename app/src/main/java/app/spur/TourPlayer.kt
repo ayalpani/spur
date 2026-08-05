@@ -347,7 +347,7 @@ internal fun recentSpeedKilometersPerHour(
             newer = older
             continue
         }
-        val segmentDistance = coordinateDistanceMeters(
+        val segmentDistance = haversineDistanceMeters(
             older.latitude,
             older.longitude,
             newer.latitude,
