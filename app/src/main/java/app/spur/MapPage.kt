@@ -436,31 +436,24 @@ internal fun MapPage(
             }
         }
     }
+    val isTourBackNavigationAvailable =
+        !showStartTourBottomSheet &&
+        !showMainMenu &&
+        !showSettingsMenu &&
+        !showHomeAutoStartBottomSheet &&
+        !showThemePicker &&
+        !showDirectionBottomSheet &&
+        !showAboutBottomSheet &&
+        photoDetail == null &&
+        mediaDetail == null
     BackHandler(
-        enabled = archivedTour != null &&
-            !showStartTourBottomSheet &&
-            !showMainMenu &&
-            !showSettingsMenu &&
-            !showHomeAutoStartBottomSheet &&
-            !showThemePicker &&
-            !showDirectionBottomSheet &&
-            !showAboutBottomSheet &&
-            photoDetail == null &&
-            mediaDetail == null,
+        enabled = archivedTour != null && isTourBackNavigationAvailable,
         onBack = onCloseDisplayedTour,
     )
     BackHandler(
         enabled = isTourOverview &&
             archivedTour == null &&
-            !showStartTourBottomSheet &&
-            !showMainMenu &&
-            !showSettingsMenu &&
-            !showHomeAutoStartBottomSheet &&
-            !showThemePicker &&
-            !showDirectionBottomSheet &&
-            !showAboutBottomSheet &&
-            photoDetail == null &&
-            mediaDetail == null,
+            isTourBackNavigationAvailable,
         onBack = followOwnLocation,
     )
     val mapControlColors = colorTheme.mapControlColors
