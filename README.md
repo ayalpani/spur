@@ -34,6 +34,11 @@ und als Route auf der Karte dargestellt. Foto- und Videomomente nutzen CameraX.
 
 Die ausführliche Produktskizze liegt in [PRODUCT.md](PRODUCT.md).
 
+## Landingpage
+
+Die Vite-/React-SPA liegt in `web/` und startet mit `npm install && npm run dev`.
+Der Produktions-Build entsteht dort mit `npm run build`.
+
 ## Architektur und Wartung
 
 - [Architektur und Zustandsbesitz](docs/architecture.md)
