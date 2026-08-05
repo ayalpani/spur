@@ -39,6 +39,7 @@ a {
   min-height: 72px;
   padding: 0 4vw;
   align-items: center;
+  justify-content: center;
   border-bottom: 1px solid rgb(24 32 28 / 14%);
   background: rgb(247 245 240 / 90%);
   backdrop-filter: blur(18px);
@@ -62,6 +63,7 @@ a {
   max-width: 1480px;
   margin: 0 auto;
   padding: clamp(72px, 8vw, 120px) 4vw clamp(64px, 7vw, 96px);
+  text-align: center;
 }
 
 h1,
@@ -83,7 +85,7 @@ h1 {
 
 .hero-lead {
   max-width: 780px;
-  margin: 24px 0 0;
+  margin: 24px auto 0;
   color: rgb(24 32 28 / 68%);
   font-size: clamp(1.3rem, 1.65vw, 1.6rem);
   line-height: 1.45;
@@ -100,6 +102,7 @@ h1 {
   margin: 0 0 40px;
   font-size: clamp(2.6rem, 4vw, 4.5rem);
   line-height: 0.95;
+  text-align: center;
 }
 
 .screen-grid {
@@ -187,22 +190,14 @@ h1 {
 }
 
 .screen-copy {
-  width: min(100%, 340px);
-  margin: 20px auto 0;
-}
-
-.screen-copy h2 {
-  font-size: 1.65rem;
-  line-height: 1.15;
-}
-
-.screen-copy > p:last-child {
   display: -webkit-box;
   overflow: hidden;
-  margin: 10px 0 0;
+  width: min(100%, 360px);
+  margin: 20px auto 0;
   color: rgb(24 32 28 / 64%);
-  font-size: 1.05rem;
+  font-size: 1.12rem;
   line-height: 1.45;
+  text-align: center;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -211,6 +206,7 @@ footer {
   padding: 60px 4vw 68px;
   background: var(--ink);
   color: var(--white);
+  text-align: center;
 }
 
 footer h2 {
@@ -220,7 +216,7 @@ footer h2 {
 
 footer p {
   max-width: 640px;
-  margin: 20px 0 0;
+  margin: 20px auto 0;
   color: rgb(255 255 255 / 72%);
   font-size: clamp(1.1rem, 1.5vw, 1.35rem);
   line-height: 1.45;

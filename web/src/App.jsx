@@ -1,37 +1,31 @@
 const screens = [
   {
     src: '/screens/01-map.webp',
-    title: 'Die Karte zuerst',
     copy: 'Ein Tipp auf der Karte, und du bist unterwegs.',
     alt: 'Spur-Karte mit Tour-starten-Aktion und einem gesetzten Herz-Moment',
   },
   {
     src: '/screens/02-tracking.webp',
-    title: 'Unterwegs',
     copy: 'Zeit und Strecke bleiben sichtbar, ohne dich abzulenken.',
     alt: 'Laufende Spur-Tour auf der Karte mit Dauer, Distanz und Wegpunktleiste',
   },
   {
     src: '/screens/03-moments.webp',
-    title: 'Momente festhalten',
     copy: 'Foto, Video, Stimme oder Emoji bewahren den Moment am richtigen Ort.',
     alt: 'Moment-Auswahl mit Foto, Video, Sprache und Emoji über der Spur-Karte',
   },
   {
     src: '/screens/04-emoji-moment.webp',
-    title: 'Erinnerungen verorten',
     copy: 'Jede Erinnerung bleibt genau dort, wo sie passiert ist.',
     alt: 'Herz-Moment als Marker auf der Spur-Karte am Potsdamer Platz',
   },
   {
     src: '/screens/05-home.webp',
-    title: 'Dein Rückblick',
     copy: 'Deine Touren werden zum Rückblick – nicht zur Rangliste.',
     alt: 'Spur Home mit Sieben-Tage-Aktivität und lokalem Tourverlauf',
   },
   {
     src: '/screens/06-complete.webp',
-    title: 'Sicher angekommen',
     copy: 'Der ganze Weg und seine wichtigsten Momente auf einen Blick.',
     alt: 'Abgeschlossene Spur-Tour mit Kartenübersicht, Zeit, Strecke und Tempo',
   },
@@ -79,10 +73,7 @@ function ScreenCard({ screen, eager = false }) {
   return (
     <article className="screen-card">
       <PhoneFrame {...screen} eager={eager} />
-      <div className="screen-copy">
-        <h2>{screen.title}</h2>
-        <p>{screen.copy}</p>
-      </div>
+      <p className="screen-copy">{screen.copy}</p>
     </article>
   )
 }
