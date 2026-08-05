@@ -1,6 +1,7 @@
 package app.spur
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class TourEditingTest {
@@ -23,5 +24,34 @@ class TourEditingTest {
 
         assertEquals(true, fullDistance > trimmedDistance)
         assertEquals(65.1, trimmedDistance, 2.0)
+    }
+
+    @Test
+    fun deletingPointReassignsItsMomentsAndSelectsTheFollowingPoint() {
+        val moment = MapMoment(
+            id = "emoji-1",
+            type = MomentType.EMOJI,
+            latitude = points[2].latitude,
+            longitude = points[2].longitude,
+            payload = "🙂",
+            trackPointId = points[1].id,
+        )
+
+        val deletion = trackPointDeletion(
+            points = points,
+            moments = listOf(moment),
+            deletedPointId = points[1].id,
+        )
+
+        requireNotNull(deletion)
+        assertEquals(listOf(1L, 3L, 4L), deletion.retainedPoints.map(TrackPoint::id))
+        assertEquals(setOf(1L, 3L, 4L), deletion.retainedPointIds)
+        assertEquals(3L, deletion.updatedMoments.single().trackPointId)
+        assertEquals(3L, deletion.selectedPointId)
+    }
+
+    @Test
+    fun deletingMissingPointIsANoOp() {
+        assertNull(trackPointDeletion(points, emptyList(), deletedPointId = 99L))
     }
 }
