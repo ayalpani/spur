@@ -827,13 +827,20 @@ internal fun Context.reconcileAutomaticDeparture(
     )
 }
 
-internal fun Context.clearAutomaticTourState() {
-    homeAutoStartPreferences().edit()
-        .remove(AutomaticTourId)
-        .remove(OutsideSince)
-        .remove(DepartureThroughAt)
-        .remove(DepartureCandidateAt)
-        .apply()
+internal fun Context.clearAutomaticTourState(expectedTourId: Long? = null) {
+    synchronized(homeAutoStartRuntimeLock) {
+        val preferences = homeAutoStartPreferences()
+        if (
+            expectedTourId != null &&
+            preferences.getLong(AutomaticTourId, -1L) != expectedTourId
+        ) return
+        preferences.edit()
+            .remove(AutomaticTourId)
+            .remove(OutsideSince)
+            .remove(DepartureThroughAt)
+            .remove(DepartureCandidateAt)
+            .apply()
+    }
 }
 
 internal fun stayedOutsideHomeLongEnough(outsideSince: Long, returnedAt: Long): Boolean =
