@@ -1323,6 +1323,7 @@ internal fun MapSurface(
             completedRoads = completedRoads,
             analyzer = analyzer,
         )
+        roadHistoryCameraKey = cameraKey
     }
 
     LaunchedEffect(
