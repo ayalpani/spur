@@ -4,7 +4,6 @@
   --moss: #23614a;
   --white: #ffffff;
   --black: #000000;
-  --gray: #64748b;
   color: var(--ink);
   background: var(--sand);
   font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
@@ -106,10 +105,10 @@ h1 {
 }
 
 .hero-lead {
-  max-width: 720px;
+  max-width: 780px;
   margin: 24px 0 0;
   color: rgb(24 32 28 / 68%);
-  font-size: clamp(1.15rem, 1.5vw, 1.45rem);
+  font-size: clamp(1.3rem, 1.65vw, 1.6rem);
   line-height: 1.45;
 }
 
@@ -211,57 +210,47 @@ h1 {
 }
 
 .screen-copy {
-  display: grid;
-  width: min(100%, 320px);
-  margin: 18px auto 0;
-  grid-template-columns: 30px minmax(0, 1fr);
-  column-gap: 10px;
-}
-
-.screen-number {
-  margin: 4px 0 0;
-  grid-row: 1 / span 2;
-  color: var(--moss);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  width: min(100%, 340px);
+  margin: 20px auto 0;
 }
 
 .screen-copy h2 {
-  font-size: 1.35rem;
+  font-size: 1.65rem;
   line-height: 1.15;
 }
 
 .screen-copy > p:last-child {
   display: -webkit-box;
   overflow: hidden;
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   color: rgb(24 32 28 / 64%);
-  font-size: 0.9rem;
+  font-size: 1.05rem;
   line-height: 1.45;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
 footer {
-  display: flex;
-  padding: 34px 4vw;
-  align-items: center;
-  justify-content: space-between;
-  gap: 28px;
+  padding: 60px 4vw 68px;
   background: var(--ink);
   color: var(--white);
-  font-size: 0.82rem;
+}
+
+footer h2 {
+  font-size: clamp(2.8rem, 4.8vw, 5.2rem);
+  line-height: 0.95;
 }
 
 footer p {
-  margin: 0;
-  color: rgb(255 255 255 / 64%);
+  max-width: 640px;
+  margin: 20px 0 0;
+  color: rgb(255 255 255 / 72%);
+  font-size: clamp(1.1rem, 1.5vw, 1.35rem);
+  line-height: 1.45;
 }
 
 .brand,
-.nav-cta,
-footer a {
+.nav-cta {
   transition: opacity 160ms ease, transform 160ms ease;
 }
 
@@ -269,8 +258,7 @@ footer a {
   transform: translateY(-2px);
 }
 
-.brand:hover,
-footer a:hover {
+.brand:hover {
   opacity: 0.62;
 }
 
@@ -342,10 +330,7 @@ footer a:hover {
   }
 
   footer {
-    padding: 30px 20px;
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 14px;
+    padding: 52px 20px 58px;
   }
 }
 

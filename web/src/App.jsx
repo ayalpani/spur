@@ -1,44 +1,38 @@
 const screens = [
   {
     src: '/screens/01-map.webp',
-    number: '01',
     title: 'Die Karte zuerst',
-    copy: 'Tour starten, Moment setzen, weitergehen – alles direkt auf der Karte.',
+    copy: 'Ein Tipp auf der Karte, und du bist unterwegs.',
     alt: 'Spur-Karte mit Tour-starten-Aktion und einem gesetzten Herz-Moment',
   },
   {
     src: '/screens/02-tracking.webp',
-    number: '02',
     title: 'Unterwegs',
-    copy: 'Zeit, Distanz und Wegpunkte laufen mit, ohne deinen Weg zu überladen.',
+    copy: 'Zeit und Strecke bleiben sichtbar, ohne dich abzulenken.',
     alt: 'Laufende Spur-Tour auf der Karte mit Dauer, Distanz und Wegpunktleiste',
   },
   {
     src: '/screens/03-moments.webp',
-    number: '03',
     title: 'Momente festhalten',
-    copy: 'Foto, Video, Stimme oder Emoji landen genau dort, wo sie entstanden sind.',
+    copy: 'Foto, Video, Stimme oder Emoji bewahren den Moment am richtigen Ort.',
     alt: 'Moment-Auswahl mit Foto, Video, Sprache und Emoji über der Spur-Karte',
   },
   {
     src: '/screens/04-emoji-moment.webp',
-    number: '04',
     title: 'Erinnerungen verorten',
-    copy: 'Gespeicherte Momente machen aus jeder Route deine persönliche Karte.',
+    copy: 'Jede Erinnerung bleibt genau dort, wo sie passiert ist.',
     alt: 'Herz-Moment als Marker auf der Spur-Karte am Potsdamer Platz',
   },
   {
     src: '/screens/05-home.webp',
-    number: '05',
     title: 'Dein Rückblick',
-    copy: 'Sieben Tage und alle Touren werden ruhig im lokalen Archiv gebündelt.',
+    copy: 'Deine Touren werden zum Rückblick – nicht zur Rangliste.',
     alt: 'Spur Home mit Sieben-Tage-Aktivität und lokalem Tourverlauf',
   },
   {
     src: '/screens/06-complete.webp',
-    number: '06',
     title: 'Sicher angekommen',
-    copy: 'Die ganze Route mit Zeit und Distanz auf einen Blick – lokal gespeichert.',
+    copy: 'Der ganze Weg und seine wichtigsten Momente auf einen Blick.',
     alt: 'Abgeschlossene Spur-Tour mit Kartenübersicht, Zeit, Strecke und Tempo',
   },
 ]
@@ -86,7 +80,6 @@ function ScreenCard({ screen, eager = false }) {
     <article className="screen-card">
       <PhoneFrame {...screen} eager={eager} />
       <div className="screen-copy">
-        <p className="screen-number">{screen.number}</p>
         <h2>{screen.title}</h2>
         <p>{screen.copy}</p>
       </div>
@@ -109,10 +102,11 @@ function App() {
 
       <main>
         <section className="hero" id="top">
-          <p className="eyebrow">Private Touren · Android</p>
+          <p className="eyebrow">Persönlich statt öffentlich</p>
           <h1>Wege, die dir gehören.</h1>
           <p className="hero-lead">
-            Spur zeichnet Wege und Erinnerungen direkt auf deinem Gerät auf.
+            Spur bewahrt deine Touren und Erinnerungen für dich. Nur du
+            entscheidest, wer sie sehen darf.
           </p>
         </section>
 
@@ -127,8 +121,8 @@ function App() {
       </main>
 
       <footer>
-        <p>Ohne Account · Ohne Cloud · Ohne Feed</p>
-        <a href="#top">Zurück nach oben ↑</a>
+        <h2>Deine Wege bleiben privat.</h2>
+        <p>Nur du entscheidest, wer deine Touren und Erinnerungen sieht.</p>
       </footer>
     </>
   )
