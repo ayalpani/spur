@@ -61,6 +61,49 @@ internal fun Style.showTourRoute(
     showTourRoute(tourRouteFeatures(points), colors)
 }
 
+internal fun tourRouteBorderLayer(
+    layerId: String,
+    sourceId: String,
+    colors: TrailColors,
+): LineLayer = tourRouteLineLayer(
+    layerId = layerId,
+    sourceId = sourceId,
+    color = colors.stroke.toArgb(),
+    width = TourRouteBorderWidthPixels,
+)
+
+internal fun tourRouteFillLayer(
+    layerId: String,
+    sourceId: String,
+    colors: TrailColors,
+): LineLayer = tourRouteLineLayer(
+    layerId = layerId,
+    sourceId = sourceId,
+    color = colors.background.toArgb(),
+    width = TourRouteWidthPixels,
+)
+
+internal fun tourWaypointCircleLayer(
+    layerId: String,
+    sourceId: String,
+    colors: TrailColors,
+): CircleLayer = CircleLayer(layerId, sourceId).withProperties(
+    circleColor(colors.stroke.toArgb()),
+    circleRadius(TourWaypointRadiusPixels),
+)
+
+private fun tourRouteLineLayer(
+    layerId: String,
+    sourceId: String,
+    color: Int,
+    width: Float,
+): LineLayer = LineLayer(layerId, sourceId).withProperties(
+    lineColor(color),
+    lineWidth(width),
+    lineCap(Property.LINE_CAP_ROUND),
+    lineJoin(Property.LINE_JOIN_ROUND),
+)
+
 internal fun tourRouteFeature(points: List<TrackPoint>): Feature? {
     val coordinates = points.map { Point.fromLngLat(it.longitude, it.latitude) }
     return if (coordinates.size >= 2) {
@@ -173,11 +216,10 @@ internal fun Style.showTourRoute(
         ?: GeoJsonSource(TourRouteSource).also(::addSource)
     val borderLayer = getLayerAs<LineLayer>(TourRouteBorderLayer)
     if (borderLayer == null) {
-        val borderLayer = LineLayer(TourRouteBorderLayer, TourRouteSource).withProperties(
-            lineColor(colors.stroke.toArgb()),
-            lineWidth(TourRouteBorderWidthPixels),
-            lineCap(Property.LINE_CAP_ROUND),
-            lineJoin(Property.LINE_JOIN_ROUND),
+        val borderLayer = tourRouteBorderLayer(
+            layerId = TourRouteBorderLayer,
+            sourceId = TourRouteSource,
+            colors = colors,
         ).withFilter(Expression.eq(Expression.geometryType(), "LineString"))
         if (getLayer(TourRouteLayer) == null) {
             addTourLayerBelowMarkers(borderLayer)
@@ -190,11 +232,10 @@ internal fun Style.showTourRoute(
     val routeLayer = getLayerAs<LineLayer>(TourRouteLayer)
     if (routeLayer == null) {
         addTourLayerBelowMarkers(
-            LineLayer(TourRouteLayer, TourRouteSource).withProperties(
-                lineColor(colors.background.toArgb()),
-                lineWidth(TourRouteWidthPixels),
-                lineCap(Property.LINE_CAP_ROUND),
-                lineJoin(Property.LINE_JOIN_ROUND),
+            tourRouteFillLayer(
+                layerId = TourRouteLayer,
+                sourceId = TourRouteSource,
+                colors = colors,
             ).withFilter(Expression.eq(Expression.geometryType(), "LineString")),
         )
     } else {
@@ -203,9 +244,10 @@ internal fun Style.showTourRoute(
     val waypointLayer = getLayerAs<CircleLayer>(TourWaypointLayer)
     if (waypointLayer == null) {
         addLayerAbove(
-            CircleLayer(TourWaypointLayer, TourRouteSource).withProperties(
-                circleColor(colors.stroke.toArgb()),
-                circleRadius(TourWaypointRadiusPixels),
+            tourWaypointCircleLayer(
+                layerId = TourWaypointLayer,
+                sourceId = TourRouteSource,
+                colors = colors,
             ).withFilter(Expression.eq(Expression.geometryType(), "Point")),
             TourRouteLayer,
         )
