@@ -141,6 +141,7 @@ internal fun MainMenu(
 internal fun SettingsMenu(
     onOpenHome: () -> Unit,
     onOpenHomeAutoStart: () -> Unit,
+    onOpenBackup: () -> Unit,
     onOpenTheme: () -> Unit,
     onOpenDirection: () -> Unit,
 ) {
@@ -160,6 +161,10 @@ internal fun SettingsMenu(
         SheetMenuNavigationItem(
             label = "Startautomatik",
             onClick = onOpenHomeAutoStart,
+        )
+        SheetMenuNavigationItem(
+            label = "Backup & Wiederherstellung",
+            onClick = onOpenBackup,
         )
         SheetMenuNavigationItem(label = "Theme", onClick = onOpenTheme)
         SheetMenuNavigationItem(label = "Himmelsrichtung", onClick = onOpenDirection)

@@ -27,7 +27,9 @@ class HomeBuildingSelectionTest {
         cache.update(updated)
 
         assertEquals(updated, cache.getOrLoad { error("cached update was lost") })
-        assertEquals(1, loads)
+        cache.clear()
+        assertEquals(initial, cache.getOrLoad { loads++; initial })
+        assertEquals(2, loads)
     }
 
     @Test

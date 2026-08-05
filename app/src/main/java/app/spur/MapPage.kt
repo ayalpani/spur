@@ -149,6 +149,7 @@ internal fun MapPage(
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
     var showSettingsMenu by rememberSaveable { mutableStateOf(false) }
     var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var showBackupBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showThemePicker by rememberSaveable { mutableStateOf(false) }
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
@@ -245,6 +246,8 @@ internal fun MapPage(
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val settingsMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val homeAutoStartBottomSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val backupBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val directionBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -1217,6 +1220,14 @@ internal fun MapPage(
                         hideCurrent = { showSettingsMenu = false },
                     )
                 },
+                onOpenBackup = {
+                    scope.swapBottomSheets(
+                        currentState = settingsMenuState,
+                        nextState = backupBottomSheetState,
+                        showNext = { showBackupBottomSheet = true },
+                        hideCurrent = { showSettingsMenu = false },
+                    )
+                },
                 onOpenTheme = {
                     showThemePicker = true
                     scope.launch {
@@ -1303,6 +1314,26 @@ internal fun MapPage(
                         openHomeSelection()
                     }
                 },
+            )
+        }
+    }
+
+    if (showBackupBottomSheet) {
+        val closeBackup: () -> Unit = {
+            scope.swapBottomSheets(
+                currentState = backupBottomSheetState,
+                nextState = settingsMenuState,
+                showNext = { showSettingsMenu = true },
+                hideCurrent = { showBackupBottomSheet = false },
+            )
+        }
+        SpurModalBottomSheet(
+            onDismissRequest = { showBackupBottomSheet = false },
+            sheetState = backupBottomSheetState,
+        ) {
+            BackupBottomSheet(
+                hasActiveTour = activeTour != null,
+                onBack = closeBackup,
             )
         }
     }

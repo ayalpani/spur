@@ -50,6 +50,10 @@ internal class HomeAutoStartSettingsCache {
     fun update(settings: HomeAutoStartSettings) {
         cached.set(settings)
     }
+
+    fun clear() {
+        cached.set(null)
+    }
 }
 
 private const val Preferences = "home-auto-start"
@@ -97,6 +101,10 @@ private val homeDepartureActivityTypes = listOf(
 )
 private val homeAutoStartRuntimeLock = Any()
 private val homeAutoStartSettingsCache = HomeAutoStartSettingsCache()
+
+internal fun invalidateHomeAutoStartSettingsCache() {
+    homeAutoStartSettingsCache.clear()
+}
 
 internal data class BufferedHomeLocation(
     val latitude: Double,

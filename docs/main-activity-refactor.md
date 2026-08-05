@@ -32,6 +32,7 @@ thumbnails can contain private location data.
 | Moments | file `map-moments`; encoded entry set remains unchanged |
 | Photo places | file `photo-places`; photo ID remains the key |
 | Emoji recents | file `emoji-picker`; key `recent-emojis`, newline separator |
+| Backup destination | file `backup`; device-local SAF grant and status, excluded from `.spurbackup` archives |
 | Tracking intent | extra `tour_id`; stop action `app.spur.STOP_TRACKING` |
 | File sharing | authority `${applicationId}.fileprovider` |
 

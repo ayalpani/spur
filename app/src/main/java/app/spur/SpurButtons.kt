@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,11 +26,13 @@ internal fun SpurPrimaryButton(
     modifier: Modifier = Modifier,
     leadingIcon: (@Composable () -> Unit)? = null,
     destructive: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val colors = LocalMapControlColors.current
     val contentColor = if (destructive) Color.White else colors.foreground
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
             .height(60.dp),
@@ -39,6 +42,7 @@ internal fun SpurPrimaryButton(
             contentColor = contentColor,
         ),
     ) {
+        val renderedContentColor = if (enabled) contentColor else LocalContentColor.current
         leadingIcon?.let {
             it()
             Spacer(modifier = Modifier.width(10.dp))
@@ -46,9 +50,9 @@ internal fun SpurPrimaryButton(
         Text(
             text = label,
             color = if (leadingIcon == null) {
-                contentColor
+                renderedContentColor
             } else {
-                contentColor.copy(alpha = IconTextLabelAlpha)
+                renderedContentColor.copy(alpha = IconTextLabelAlpha)
             },
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
@@ -63,10 +67,12 @@ internal fun SpurSecondaryButton(
     modifier: Modifier = Modifier,
     leadingIcon: (@Composable () -> Unit)? = null,
     compactContent: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val contentColor = secondaryButtonContentColor(LocalMapControlColors.current)
     OutlinedButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
             .height(60.dp),
@@ -77,6 +83,7 @@ internal fun SpurSecondaryButton(
             contentColor = contentColor,
         ),
     ) {
+        val renderedContentColor = if (enabled) contentColor else LocalContentColor.current
         leadingIcon?.let {
             it()
             Spacer(modifier = Modifier.width(if (compactContent) 8.dp else 10.dp))
@@ -84,9 +91,9 @@ internal fun SpurSecondaryButton(
         Text(
             text = label,
             color = if (leadingIcon == null) {
-                contentColor
+                renderedContentColor
             } else {
-                contentColor.copy(alpha = IconTextLabelAlpha)
+                renderedContentColor.copy(alpha = IconTextLabelAlpha)
             },
             style = if (compactContent) {
                 MaterialTheme.typography.titleMedium
