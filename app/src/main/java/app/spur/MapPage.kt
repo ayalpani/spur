@@ -118,15 +118,13 @@ internal fun MapPage(
     }
     val archivedTour = tour?.takeIf { it.endedAt != null }
     var isMapGestureActive by remember { mutableStateOf(false) }
-    val showTourChrome = shouldShowTourChrome(isMapGestureActive)
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
     )
-    val isWaypointRailVisible = showTourChrome &&
-        !isHomeSelectionMode &&
+    val hasWaypointRail = !isHomeSelectionMode &&
         (tour != null || activeTour != null)
     val mapActionsBottomPadding =
-        (if (isWaypointRailVisible) WaypointRailHeight else 0.dp) +
+        (if (hasWaypointRail) WaypointRailHeight else 0.dp) +
             MapControlVerticalPadding +
             if (usesStackedMapPlayer) MapControlSize + MapControlGap else 0.dp
     val scope = rememberCoroutineScope()
@@ -236,14 +234,13 @@ internal fun MapPage(
     }
     var mapInitializationStarted by remember { mutableStateOf(false) }
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
-    val isTourModeHeaderVisible = showTourChrome &&
-        tour != null &&
-        isMapReady &&
-        !isHomeSelectionMode &&
-        (!isDisplayedActiveTour || dismissedActiveTourHeaderId != tour?.id)
-    val areMapControlsVisible = showTourChrome &&
+    val areMapControlsVisible = shouldShowTourChrome(isMapGestureActive) &&
         isMapReady &&
         !isHomeSelectionMode
+    val hasTourModeHeader = tour != null &&
+        (!isDisplayedActiveTour || dismissedActiveTourHeaderId != tour?.id)
+    val isTourModeHeaderVisible = areMapControlsVisible && hasTourModeHeader
+    val isWaypointRailVisible = areMapControlsVisible && hasWaypointRail
     val startTourBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -671,7 +668,7 @@ internal fun MapPage(
                     .padding(
                         start = MapControlHorizontalPadding,
                         top = MapControlVerticalPadding +
-                            if (isTourModeHeaderVisible) 60.dp else 0.dp,
+                            if (hasTourModeHeader) 60.dp else 0.dp,
                     ),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
@@ -875,7 +872,7 @@ internal fun MapPage(
                             top = MapControlVerticalPadding,
                             end = MapControlHorizontalPadding,
                             bottom = MapControlVerticalPadding +
-                                if (isWaypointRailVisible) WaypointRailHeight else 0.dp,
+                                if (hasWaypointRail) WaypointRailHeight else 0.dp,
                         )
                         .fillMaxWidth()
                         .widthIn(max = 560.dp),
@@ -928,7 +925,7 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = isMapReady && isWaypointRailVisible,
+                visible = isWaypointRailVisible,
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
