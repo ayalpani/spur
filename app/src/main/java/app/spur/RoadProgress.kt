@@ -530,14 +530,8 @@ internal fun canonicalRoadKey(
     points: List<SpurCoordinate>,
     discriminator: String = "",
 ): String {
-    val forward = points.joinToString(";") { point ->
-        "${(point.latitude * RoadKeyPrecision).roundToLong()}," +
-            "${(point.longitude * RoadKeyPrecision).roundToLong()}"
-    }
-    val reverse = points.asReversed().joinToString(";") { point ->
-        "${(point.latitude * RoadKeyPrecision).roundToLong()}," +
-            "${(point.longitude * RoadKeyPrecision).roundToLong()}"
-    }
+    val forward = points.joinToString(";", transform = ::roadNodeKey)
+    val reverse = points.asReversed().joinToString(";", transform = ::roadNodeKey)
     return "$discriminator|${minOf(forward, reverse)}"
 }
 
