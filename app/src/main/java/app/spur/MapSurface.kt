@@ -62,6 +62,7 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.snapshotter.MapSnapshotter
+import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import kotlinx.coroutines.withContext
@@ -1770,19 +1771,18 @@ private fun MapLibreMap.userSpotMomentClusterId(
     val userSpotPoint = projection.toScreenLocation(
         LatLng(userSpot.latitude, userSpot.longitude),
     )
-    val queryArea = RectF(
-        userSpotPoint.x - maximumDistance,
-        userSpotPoint.y - maximumDistance,
-        userSpotPoint.x + maximumDistance,
-        userSpotPoint.y + maximumDistance,
-    )
-    val clusters = queryRenderedFeatures(queryArea, MapMomentClusterLayer).mapNotNull { feature ->
-        val clusterId = feature.getNumberProperty(MapMomentClusterIdProperty)?.toLong()
-            ?: return@mapNotNull null
-        val point = feature.geometry() as? org.maplibre.geojson.Point ?: return@mapNotNull null
-        val position = projection.toScreenLocation(LatLng(point.latitude(), point.longitude()))
-        clusterId to Offset(position.x, position.y)
-    }
+    val clusters = style
+        ?.getSourceAs<GeoJsonSource>(MapMomentSource)
+        ?.querySourceFeatures(Expression.has(MapMomentClusterIdProperty))
+        .orEmpty()
+        .mapNotNull { feature ->
+            val clusterId = feature.getNumberProperty(MapMomentClusterIdProperty)?.toLong()
+                ?: return@mapNotNull null
+            val point = feature.geometry() as? org.maplibre.geojson.Point
+                ?: return@mapNotNull null
+            val position = projection.toScreenLocation(LatLng(point.latitude(), point.longitude()))
+            clusterId to Offset(position.x, position.y)
+        }
     return userSpotMomentClusterId(
         userSpot = Offset(userSpotPoint.x, userSpotPoint.y),
         clusters = clusters,
