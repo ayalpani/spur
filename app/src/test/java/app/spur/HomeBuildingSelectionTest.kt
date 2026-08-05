@@ -13,6 +13,24 @@ import org.maplibre.geojson.Polygon
 
 class HomeBuildingSelectionTest {
     @Test
+    fun homeSettingsCacheLoadsOnceAndUsesSavedUpdates() {
+        val initial = HomeAutoStartSettings(enabled = false, home = null)
+        val updated = HomeAutoStartSettings(
+            enabled = true,
+            home = SpurCoordinate(52.52, 13.405),
+        )
+        val cache = HomeAutoStartSettingsCache()
+        var loads = 0
+
+        assertEquals(initial, cache.getOrLoad { loads++; initial })
+        assertEquals(initial, cache.getOrLoad { loads++; updated })
+        cache.update(updated)
+
+        assertEquals(updated, cache.getOrLoad { error("cached update was lost") })
+        assertEquals(1, loads)
+    }
+
+    @Test
     fun movementActivitiesArmThePreciseHomeDepartureCapture() {
         assertTrue(isHomeDepartureActivity(DetectedActivity.WALKING))
         assertTrue(isHomeDepartureActivity(DetectedActivity.RUNNING))
