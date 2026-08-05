@@ -24,12 +24,6 @@ internal object SpurRoute {
     const val HOME = "home"
 }
 
-internal fun shouldKeepHomePanelOpen(
-    currentRoute: String?,
-    previousRoute: String?,
-): Boolean = currentRoute == SpurRoute.HOME ||
-    currentRoute == SpurRoute.MAP && previousRoute == SpurRoute.HOME
-
 internal fun shouldRevealHomeBeforeDeletingTour(
     deletedTourId: Long,
     displayedTour: Tour?,

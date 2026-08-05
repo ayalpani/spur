@@ -97,7 +97,6 @@ internal fun MapPage(
     initialLoadingComplete: Boolean = false,
     splashExitComplete: Boolean = true,
     onInitialLoadingComplete: () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -465,7 +464,7 @@ internal fun MapPage(
         LocalLocationMarkerColors provides colorTheme.locationMarkerColors,
         LocalTrailColors provides trailColors,
     ) {
-        Box(modifier = modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize()) {
             if (mapInitializationStarted) {
             MapSurface(
                 tourId = tour?.id,
