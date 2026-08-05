@@ -218,20 +218,22 @@ internal fun HomeScreen(
                         items = section.tours,
                         key = { _, item -> item.tour.id },
                     ) { index, item ->
-                        HistoryTourRow(
-                            item = item,
-                            onClick = { onOpenTour(item.tour.id) },
-                            onOpenPhoto = { photo ->
-                                onOpenPhoto(
-                                    photo,
-                                    orderedPhotoMoments(item.moments),
-                                )
-                            },
-                        )
-                        if (index < section.tours.lastIndex) {
-                            HorizontalDivider(
-                                color = Ink.copy(alpha = 0.12f),
+                        Column(modifier = Modifier.animateItem()) {
+                            HistoryTourRow(
+                                item = item,
+                                onClick = { onOpenTour(item.tour.id) },
+                                onOpenPhoto = { photo ->
+                                    onOpenPhoto(
+                                        photo,
+                                        orderedPhotoMoments(item.moments),
+                                    )
+                                },
                             )
+                            if (index < section.tours.lastIndex) {
+                                HorizontalDivider(
+                                    color = Ink.copy(alpha = 0.12f),
+                                )
+                            }
                         }
                     }
                 }

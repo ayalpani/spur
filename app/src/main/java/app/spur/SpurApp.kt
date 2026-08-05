@@ -269,9 +269,20 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     }
 
     val deleteTour: (Long) -> Unit = { id ->
-        val returnToHome =
-            navController.previousBackStackEntry?.destination?.route == SpurRoute.HOME
+        val revealHomeBeforeDeletion = shouldRevealHomeBeforeDeletingTour(
+            deletedTourId = id,
+            displayedTour = displayedTour,
+            previousRoute = navController.previousBackStackEntry?.destination?.route,
+        )
         scope.launch {
+            if (revealHomeBeforeDeletion) {
+                displayedTour = activeTour
+                displayedTourId = activeTour?.id
+                displayedTourRevision = null
+                routePoints = emptyList()
+                navController.popBackStack()
+                delay(HomePanelMotionDurationMillis.toLong())
+            }
             if (!context.deleteStoredTour(store, id)) {
                 showFeedbackNotice(
                     FeedbackNoticeKind.ERROR,
@@ -291,7 +302,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                 displayedTourId = null
                 displayedTourRevision = null
                 routePoints = emptyList()
-                if (returnToHome) navController.popBackStack()
             }
             historyRevision++
             roadHistoryRefreshRevision++
@@ -337,6 +347,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         tourDisplayRequest = displayedTourRequest,
                         routePoints = routePoints,
                         pendingDeparturePreview = pendingDeparturePreview,
+                        mapChromeVisible = !homeVisible,
                         roadHistoryStore = store,
                         roadHistoryFingerprint = roadHistoryFingerprint,
                         roadTraversalFingerprint = roadTraversalFingerprint,

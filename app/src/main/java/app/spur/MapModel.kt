@@ -23,6 +23,15 @@ internal object SpurRoute {
     const val MAP = "map"
     const val HOME = "home"
 }
+
+internal fun shouldRevealHomeBeforeDeletingTour(
+    deletedTourId: Long,
+    displayedTour: Tour?,
+    previousRoute: String?,
+): Boolean = displayedTour?.id == deletedTourId &&
+    displayedTour.endedAt != null &&
+    previousRoute == SpurRoute.HOME
+
 internal const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
 internal const val SatelliteSource = "satellite-source"
 internal const val SatelliteLayer = "satellite-layer"
