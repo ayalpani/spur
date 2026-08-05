@@ -1,5 +1,6 @@
 package app.spur
 
+import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -194,6 +195,18 @@ class MapMomentTest {
         offsets.values.forEach { offset ->
             assertTrue(offset.getDistance() > MomentMarkerWidth / 2f)
         }
+    }
+
+    @Test
+    fun userSpotSelectsOnlyANearbyMomentCluster() {
+        val userSpot = Offset(100f, 100f)
+        val clusters = listOf(
+            1L to Offset(180f, 100f),
+            2L to Offset(104f, 97f),
+        )
+
+        assertEquals(2L, userSpotMomentClusterId(userSpot, clusters, 10f))
+        assertNull(userSpotMomentClusterId(userSpot, clusters, 4f))
     }
 
     @Test

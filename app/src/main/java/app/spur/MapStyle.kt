@@ -321,6 +321,58 @@ internal fun Style.showMapMoments(
 
 }
 
+internal fun Style.showUserSpotMomentCluster(clusterId: Long?) {
+    getLayerAs<SymbolLayer>(MapMomentClusterLayer)?.setProperties(
+        iconOffset(
+            userSpotClusterOffsetExpression(
+                clusterId = clusterId,
+                defaultX = 0f,
+                defaultY = 0f,
+            ),
+        ),
+    )
+    getLayerAs<CircleLayer>(MapMomentClusterCountBadgeLayer)?.setProperties(
+        circleTranslate(
+            userSpotClusterOffsetExpression(
+                clusterId = clusterId,
+                defaultX = MapMomentClusterCountPositionX,
+                defaultY = MapMomentClusterCountPositionY,
+            ),
+        ),
+    )
+    getLayerAs<SymbolLayer>(MapMomentClusterCountLayer)?.setProperties(
+        textTranslate(
+            userSpotClusterOffsetExpression(
+                clusterId = clusterId,
+                defaultX = MapMomentClusterCountPositionX,
+                defaultY = MapMomentClusterCountPositionY,
+            ),
+        ),
+    )
+}
+
+private fun userSpotClusterOffsetExpression(
+    clusterId: Long?,
+    defaultX: Float,
+    defaultY: Float,
+): Expression {
+    val default = Expression.literal(arrayOf(defaultX, defaultY))
+    if (clusterId == null) return default
+    return Expression.switchCase(
+        Expression.eq(
+            Expression.toNumber(Expression.get(MapMomentClusterIdProperty)),
+            Expression.literal(clusterId),
+        ),
+        Expression.literal(
+            arrayOf(
+                defaultX + UserSpotMomentClusterOffsetX,
+                defaultY + UserSpotMomentClusterOffsetY,
+            ),
+        ),
+        default,
+    )
+}
+
 private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression =
     Expression.switchCase(
         Expression.eq(

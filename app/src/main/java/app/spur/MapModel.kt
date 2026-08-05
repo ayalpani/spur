@@ -78,6 +78,8 @@ internal const val MapMomentClusterCountLayer = "map-moment-cluster-count-layer"
 internal const val MapMomentClusterCountBadgeRadius = 9f
 internal const val MapMomentClusterCountPositionX = 15f
 internal const val MapMomentClusterCountPositionY = -42f
+internal const val UserSpotMomentClusterOffsetX = -8f
+internal const val UserSpotMomentClusterOffsetY = -32f
 internal const val MapPoiSourceLayer = "poi"
 internal const val MapBuildingLayer = "building"
 internal const val MapBuilding3dLayer = "building-3d"
@@ -94,6 +96,7 @@ internal const val HomeBuildingMinimumSelectionZoom = 15.0
 internal const val MapMomentIdProperty = "moment-id"
 internal const val MapMomentImageProperty = "moment-image"
 internal const val MapMomentRepresentativeProperty = "moment-representative"
+internal const val MapMomentClusterIdProperty = "cluster_id"
 internal const val MapMomentImagePrefix = "map-moment-"
 internal const val MapMomentClusterImagePrefix = "map-moment-cluster-"
 internal const val MapMomentClusterMaxZoom = 16
@@ -306,3 +309,19 @@ internal fun overlappingMomentOffsets(moments: List<MapMoment>): Map<String, Off
             }
         }
         .toMap()
+
+internal fun userSpotMomentClusterId(
+    userSpot: Offset,
+    clusters: List<Pair<Long, Offset>>,
+    maximumDistance: Float,
+): Long? {
+    if (maximumDistance < 0f) return null
+    val nearest = clusters.minByOrNull { (_, position) ->
+        val delta = position - userSpot
+        delta.x * delta.x + delta.y * delta.y
+    } ?: return null
+    val delta = nearest.second - userSpot
+    return nearest.first.takeIf {
+        delta.x * delta.x + delta.y * delta.y <= maximumDistance * maximumDistance
+    }
+}
