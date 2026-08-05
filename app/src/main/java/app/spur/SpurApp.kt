@@ -62,6 +62,9 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var displayedTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var displayedTourRequest by rememberSaveable { mutableLongStateOf(0L) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
+    var pendingDeparturePreview by remember {
+        mutableStateOf<PendingDeparturePreview?>(null)
+    }
     var displayedTourRevision by remember { mutableStateOf<TourRevision?>(null) }
     var roadHistoryRefreshRevision by remember { mutableLongStateOf(0L) }
     var roadTraversalRefreshRevision by remember { mutableLongStateOf(0L) }
@@ -126,6 +129,19 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         if (!isAppResumed) return@LaunchedEffect
         TourCompletionEvents.finishedTourIds.collect {
             completionRefreshRequest++
+        }
+    }
+
+    LaunchedEffect(isAppResumed, activeTour?.id) {
+        if (!isAppResumed || activeTour != null) {
+            pendingDeparturePreview = null
+            return@LaunchedEffect
+        }
+        while (true) {
+            pendingDeparturePreview = withContext(Dispatchers.IO) {
+                context.loadPendingDeparturePreview()
+            }
+            delay(1_000L)
         }
     }
 
@@ -312,11 +328,15 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                 )
             } else {
                 Box(modifier = Modifier.fillMaxSize()) {
+                    val mapTour = displayedTour.takeUnless {
+                        pendingDeparturePreview != null && activeTour == null
+                    }
                     MapPage(
-                        tour = displayedTour,
+                        tour = mapTour,
                         activeTour = activeTour,
                         tourDisplayRequest = displayedTourRequest,
                         routePoints = routePoints,
+                        pendingDeparturePreview = pendingDeparturePreview,
                         roadHistoryStore = store,
                         roadHistoryFingerprint = roadHistoryFingerprint,
                         roadTraversalFingerprint = roadTraversalFingerprint,

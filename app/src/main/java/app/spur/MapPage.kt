@@ -82,6 +82,7 @@ internal fun MapPage(
     activeTour: Tour?,
     tourDisplayRequest: Long,
     routePoints: List<TrackPoint>,
+    pendingDeparturePreview: PendingDeparturePreview? = null,
     roadHistoryStore: TourStore? = null,
     roadHistoryFingerprint: RoadHistoryFingerprint = RoadHistoryFingerprint(),
     roadTraversalFingerprint: RoadHistoryFingerprint? = null,
@@ -110,6 +111,13 @@ internal fun MapPage(
     var homeStartPoint by remember { mutableStateOf<SpurCoordinate?>(null) }
     val isTourActive = activeTour != null
     val isDisplayedActiveTour = isDisplayedActiveTour(tour, activeTour)
+    val showsPendingDeparture =
+        pendingDeparturePreview != null && tour == null && activeTour == null
+    val mapRoutePoints = if (showsPendingDeparture) {
+        pendingDeparturePreview?.points.orEmpty()
+    } else {
+        routePoints
+    }
     val archivedTour = tour?.takeIf { it.endedAt != null }
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
@@ -472,7 +480,8 @@ internal fun MapPage(
                 tourId = tour?.id,
                 activeTourId = activeTour?.id,
                 isTourActive = isTourActive,
-                showTourEndpoints = !isDisplayedActiveTour,
+                showTourEndpoints = !isDisplayedActiveTour && !showsPendingDeparture,
+                departureCheckActive = showsPendingDeparture,
                 deferAlternateMapPreview = isWaypointRailScrolling ||
                     isMapGestureActive ||
                     isZoomControlInteracting,
@@ -490,7 +499,7 @@ internal fun MapPage(
                 mapSettingsVisible = showDirectionBottomSheet,
                 mapMoments = renderedMapMoments,
                 momentImageRevision = photoRevision,
-                routePoints = routePoints,
+                routePoints = mapRoutePoints,
                 roadHistoryStore = roadHistoryStore,
                 roadHistoryFingerprint = roadHistoryFingerprint,
                 roadTraversalFingerprint = roadTraversalFingerprint,

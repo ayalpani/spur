@@ -16,7 +16,7 @@ boundaries, not behavior or state architecture.
 | `TrackingService` | foreground location updates for the active tour | Android service + `TourStore` |
 | `TourStore` | tours and track-point persistence | SQLite |
 | Moment/media components | composer, local files, playback, detail and share actions | Compose + app files |
-| Home automation | home building/start point, geofence registration and exit receiver | SharedPreferences + Android geofencing |
+| Home automation | home building/start point, sensor-first departure arming, buffered confirmation, geofence fallback | SharedPreferences + Android location APIs |
 | History/editor/player | reading, displaying, trimming and playing stored tours | Compose + `TourStore` |
 
 Map overlay controls share `MapIconButton`. Its secondary variant swaps the
@@ -69,6 +69,14 @@ recognized tour change instead of on every timer tick. This is deliberately a
 revision-plus-reload boundary, not a point-delta protocol or repository/state
 architecture migration. Stopping finishes the row before the foreground
 service is stopped.
+
+Before an automatic departure is confirmed, the runtime preferences own the
+candidate timestamp and measured pre-roll. While the app is resumed, `SpurApp`
+reads that same pending representation for the map: the location label says
+`Tourstart wird geprüft` and MapLibre renders the route that will be persisted
+if confirmation succeeds. No provisional database tour is created; cancellation
+removes the status and route, while confirmation transfers the existing points
+into the ordinary active-tour flow.
 
 Moments are encoded into the `map-moments` preference file. One background
 `TourPresentation` resolves moment-to-point links, waypoint-rail entries, and

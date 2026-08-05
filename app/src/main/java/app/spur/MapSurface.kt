@@ -79,6 +79,7 @@ internal fun MapSurface(
     activeTourId: Long?,
     isTourActive: Boolean,
     showTourEndpoints: Boolean,
+    departureCheckActive: Boolean,
     deferAlternateMapPreview: Boolean,
     isZoomControlInteracting: Boolean,
     tourDisplayRequest: Long,
@@ -1033,11 +1034,18 @@ internal fun MapSurface(
         }
     }
 
+    val locationStatusText = if (departureCheckActive) {
+        DepartureCheckStatusText
+    } else {
+        AtHomeStatusText
+    }
     val visibleHomeStatusLocation = currentLocation?.takeIf {
-        isAtHome && manualLocation == null && selectedTrackPoint == null
+        (isAtHome || departureCheckActive) &&
+            manualLocation == null && selectedTrackPoint == null
     }
     LaunchedEffect(
         visibleHomeStatusLocation,
+        locationStatusText,
         mapStyleRevision,
         mapControlColors,
     ) {
@@ -1046,6 +1054,7 @@ internal fun MapSurface(
                 context = context.applicationContext,
                 colors = mapControlColors,
                 coordinate = visibleHomeStatusLocation,
+                text = locationStatusText,
             )
         }
     }
@@ -1735,10 +1744,11 @@ internal fun MapSurface(
             modifier = Modifier
                 .fillMaxSize()
                 .semantics {
-                    contentDescription = if (isAtHome) {
-                        "Interaktive Kartenansicht. Du bist zu Hause."
-                    } else {
-                        "Interaktive Kartenansicht"
+                    contentDescription = when {
+                        departureCheckActive ->
+                            "Interaktive Kartenansicht. Tourstart wird geprüft."
+                        isAtHome -> "Interaktive Kartenansicht. Du bist zu Hause."
+                        else -> "Interaktive Kartenansicht"
                     }
                 },
         )

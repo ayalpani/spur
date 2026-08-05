@@ -25,7 +25,8 @@ import kotlin.math.roundToInt
 private const val HomeStatusSource = "home-status-source"
 private const val HomeStatusLayer = "home-status-layer"
 private const val HomeStatusImage = "home-status-image"
-private const val HomeStatusText = "Du bist zu Hause."
+internal const val AtHomeStatusText = "Du bist zu Hause."
+internal const val DepartureCheckStatusText = "Tourstart wird geprüft"
 private const val HomeStatusTextSizeSp = 16f
 private const val HomeStatusHorizontalPaddingDp = 16f
 private const val HomeStatusVerticalPaddingDp = 10f
@@ -39,6 +40,7 @@ internal fun Style.showHomeStatus(
     context: Context,
     colors: MapControlColors,
     coordinate: SpurCoordinate?,
+    text: String = AtHomeStatusText,
 ) {
     val feature = homeStatusFeature(coordinate)
     val source = getSourceAs<GeoJsonSource>(HomeStatusSource)
@@ -50,7 +52,7 @@ internal fun Style.showHomeStatus(
     source.setGeoJson(FeatureCollection.fromFeatures(listOfNotNull(feature)))
     if (feature == null) return
 
-    addImage(HomeStatusImage, createHomeStatusMarkerBitmap(context, colors))
+    addImage(HomeStatusImage, createHomeStatusMarkerBitmap(context, colors, text))
     if (getLayer(HomeStatusLayer) == null) {
         addLayer(
             SymbolLayer(HomeStatusLayer, HomeStatusSource).withProperties(
@@ -69,6 +71,7 @@ internal fun Style.showHomeStatus(
 private fun createHomeStatusMarkerBitmap(
     context: Context,
     colors: MapControlColors,
+    text: String,
 ): Bitmap {
     val density = context.resources.displayMetrics.density
     val scaledDensity = density * context.resources.configuration.fontScale
@@ -78,7 +81,7 @@ private fun createHomeStatusMarkerBitmap(
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
     val fontMetrics = paint.fontMetrics
-    val width = paint.measureText(HomeStatusText) + HomeStatusHorizontalPaddingDp * 2f * density
+    val width = paint.measureText(text) + HomeStatusHorizontalPaddingDp * 2f * density
     val height = fontMetrics.descent - fontMetrics.ascent +
         HomeStatusVerticalPaddingDp * 2f * density
     val bitmap = Bitmap.createBitmap(
@@ -95,7 +98,7 @@ private fun createHomeStatusMarkerBitmap(
     paint.color = inverted.foreground.toArgb()
     paint.textAlign = Paint.Align.CENTER
     canvas.drawText(
-        HomeStatusText,
+        text,
         bitmap.width / 2f,
         bitmap.height / 2f - (fontMetrics.ascent + fontMetrics.descent) / 2f,
         paint,

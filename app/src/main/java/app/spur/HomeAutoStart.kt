@@ -88,6 +88,11 @@ internal data class BufferedHomeLocation(
     val accuracyMeters: Float,
 )
 
+internal data class PendingDeparturePreview(
+    val candidateAt: Long,
+    val points: List<TrackPoint>,
+)
+
 internal enum class HomeDepartureTriggerSource(val storedValue: String) {
     SIGNIFICANT_MOTION("significant_motion"),
     STEP_DETECTOR("step_detector"),
@@ -582,6 +587,35 @@ internal fun automaticStartLocations(
     return listOf(syntheticStart) + measured
 }
 
+internal fun pendingDeparturePreview(
+    candidateAt: Long?,
+    settings: HomeAutoStartSettings,
+    locations: List<BufferedHomeLocation>,
+    now: Long,
+): PendingDeparturePreview? {
+    val startedAt = candidateAt ?: return null
+    val startPoint = automaticTourHomePoint(settings)
+        ?: return PendingDeparturePreview(startedAt, emptyList())
+    val measured = departureLocations(
+        locations = locations,
+        settings = settings,
+        candidateAt = startedAt,
+        throughAt = now,
+    )
+    return PendingDeparturePreview(
+        candidateAt = startedAt,
+        points = automaticStartLocations(startPoint, measured, startedAt)
+            .mapIndexed { index, location ->
+                TrackPoint(
+                    id = index.toLong(),
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    recordedAt = location.recordedAt,
+                )
+            },
+    )
+}
+
 private fun confirmationWindow(
     locations: List<BufferedHomeLocation>,
 ): List<BufferedHomeLocation> {
@@ -677,6 +711,15 @@ internal fun Context.departureCandidateAt(): Long? =
     homeAutoStartPreferences()
         .getLong(DepartureCandidateAt, 0L)
         .takeIf { it > 0L }
+
+internal fun Context.loadPendingDeparturePreview(
+    now: Long = System.currentTimeMillis(),
+): PendingDeparturePreview? = pendingDeparturePreview(
+    candidateAt = departureCandidateAt(),
+    settings = loadHomeAutoStartSettings(),
+    locations = loadBufferedHomeLocations(),
+    now = now,
+)
 
 internal fun Context.clearDepartureCandidate() {
     synchronized(homeAutoStartRuntimeLock) {
