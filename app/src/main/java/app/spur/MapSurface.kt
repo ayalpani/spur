@@ -412,6 +412,7 @@ internal fun MapSurface(
 
     LaunchedEffect(isSatelliteView) {
         mapView.getMapAsync { map ->
+            map.setMaxZoomPreference(mapZoomMaximum(isSatelliteView))
             map.uiSettings.isCompassEnabled = false
             if (hasLoadedMapStyle) {
                 map.style?.showSatelliteBaseMap(
@@ -1505,7 +1506,7 @@ internal fun MapSurface(
     ) {
         if (mapStyleRevision == 0) return@LaunchedEffect
         mapView.getMapAsync { map ->
-            map.restartLocationPulse(
+            map.refreshLocationAppearance(
                 currentLocationMarkerColors,
                 currentTrailColors.stroke,
             )
@@ -1516,6 +1517,7 @@ internal fun MapSurface(
         mapStyleRevision,
         locationPulseGeneration,
         trailColors,
+        manualLocation,
     ) {
         val generation = locationPulseGeneration
         if (
@@ -1523,13 +1525,28 @@ internal fun MapSurface(
             generation == 0L ||
             currentManualLocation != null
         ) return@LaunchedEffect
-        mapView.getMapAsync { map ->
-            if (generation != currentLocationPulseGeneration) return@getMapAsync
-            map.restartLocationPulse(
-                currentLocationMarkerColors,
-                currentTrailColors.stroke,
-            )
-            currentOnLocationPulseStarted(generation)
+        val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
+            mapView.getMapAsync { loadedMap ->
+                if (continuation.isActive) continuation.resume(loadedMap)
+            }
+        }
+        if (generation != currentLocationPulseGeneration) return@LaunchedEffect
+        currentOnLocationPulseStarted(generation)
+        try {
+            while (true) {
+                animate(
+                    initialValue = 0f,
+                    targetValue = 1f,
+                    animationSpec = tween(
+                        durationMillis = LocationSignalPeriodMillis,
+                        easing = LocationPulseEasing,
+                    ),
+                ) { value, _ ->
+                    map.style?.showSpurLocationPulse(value)
+                }
+            }
+        } finally {
+            map.style?.hideSpurLocationPulse()
         }
     }
 

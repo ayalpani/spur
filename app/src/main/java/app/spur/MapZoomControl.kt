@@ -47,6 +47,7 @@ import kotlin.math.roundToInt
 
 internal const val MapZoomMinimum = 1.0
 internal const val MapZoomMaximum = 20.0
+internal const val SatelliteMapZoomMaximum = 19.0
 internal const val MapZoomButtonAnimationMillis = 180
 private const val MapZoomNumberLingerMillis = 1_000L
 private const val MapZoomDragDpPerLevel = 56f
@@ -60,32 +61,51 @@ internal data class MapZoomRequest(
     val animated: Boolean,
 )
 
+internal fun mapZoomMaximum(satellite: Boolean): Double =
+    if (satellite) SatelliteMapZoomMaximum else MapZoomMaximum
+
+internal fun normalizedMapZoom(zoom: Double, satellite: Boolean): Double =
+    zoom.coerceIn(MapZoomMinimum, mapZoomMaximum(satellite))
+
 internal fun mapZoomAfterDrag(
     startZoom: Double,
     upwardDragPixels: Float,
     pixelsPerLevel: Float,
+    maximumZoom: Double = MapZoomMaximum,
 ): Double {
-    if (pixelsPerLevel <= 0f) return startZoom.coerceIn(MapZoomMinimum, MapZoomMaximum)
+    if (pixelsPerLevel <= 0f) return startZoom.coerceIn(MapZoomMinimum, maximumZoom)
     return (startZoom + upwardDragPixels / pixelsPerLevel)
-        .coerceIn(MapZoomMinimum, MapZoomMaximum)
+        .coerceIn(MapZoomMinimum, maximumZoom)
 }
 
-internal fun steppedMapZoom(zoom: Double, direction: Int): Double =
-    (zoom + direction).coerceIn(MapZoomMinimum, MapZoomMaximum)
+internal fun steppedMapZoom(
+    zoom: Double,
+    direction: Int,
+    maximumZoom: Double = MapZoomMaximum,
+): Double = (zoom + direction).coerceIn(MapZoomMinimum, maximumZoom)
 
-internal fun displayedMapZoomLevel(zoom: Double): Int =
-    zoom.roundToInt().coerceIn(MapZoomMinimum.toInt(), MapZoomMaximum.toInt())
+internal fun displayedMapZoomLevel(
+    zoom: Double,
+    maximumZoom: Double = MapZoomMaximum,
+): Int = zoom.roundToInt().coerceIn(MapZoomMinimum.toInt(), maximumZoom.toInt())
 
-internal fun isDefaultMapZoomLevel(zoom: Double, defaultZoom: Double): Boolean =
-    displayedMapZoomLevel(zoom) == displayedMapZoomLevel(defaultZoom)
+internal fun isDefaultMapZoomLevel(
+    zoom: Double,
+    defaultZoom: Double,
+    maximumZoom: Double = MapZoomMaximum,
+): Boolean = displayedMapZoomLevel(zoom, maximumZoom) ==
+    displayedMapZoomLevel(defaultZoom, maximumZoom)
 
-internal fun selectedDefaultMapZoom(zoom: Double): Double =
-    displayedMapZoomLevel(zoom).toDouble()
+internal fun selectedDefaultMapZoom(
+    zoom: Double,
+    maximumZoom: Double = MapZoomMaximum,
+): Double = displayedMapZoomLevel(zoom, maximumZoom).toDouble()
 
 @Composable
 internal fun MapZoomControl(
     zoom: Double,
     defaultZoom: Double,
+    maximumZoom: Double,
     isInteractionActive: Boolean,
     onZoomChange: (zoom: Double, animated: Boolean) -> Unit,
     onDefaultZoomSelected: (Double) -> Unit,
@@ -116,8 +136,8 @@ internal fun MapZoomControl(
     val coroutineScope = rememberCoroutineScope()
     var showZoomNumber by remember { mutableStateOf(false) }
     var zoomNumberHideJob by remember { mutableStateOf<Job?>(null) }
-    val displayedZoomLevel = displayedMapZoomLevel(zoom)
-    val isDefaultZoom = isDefaultMapZoomLevel(zoom, defaultZoom)
+    val displayedZoomLevel = displayedMapZoomLevel(zoom, maximumZoom)
+    val isDefaultZoom = isDefaultMapZoomLevel(zoom, defaultZoom, maximumZoom)
     val zoomNumberAlpha by animateFloatAsState(
         targetValue = if (showZoomNumber) 1f else 0f,
         animationSpec = tween(MotionDurationDefaultMillis),
@@ -136,11 +156,11 @@ internal fun MapZoomControl(
                 }
                 progressBarRangeInfo = ProgressBarRangeInfo(
                     current = zoom.toFloat(),
-                    range = MapZoomMinimum.toFloat()..MapZoomMaximum.toFloat(),
+                    range = MapZoomMinimum.toFloat()..maximumZoom.toFloat(),
                     steps = 0,
                 )
             }
-            .pointerInput(pixelsPerLevel) {
+            .pointerInput(pixelsPerLevel, maximumZoom) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     zoomNumberHideJob?.cancel()
@@ -166,6 +186,7 @@ internal fun MapZoomControl(
                                 startZoom = startZoom,
                                 upwardDragPixels = upwardDrag,
                                 pixelsPerLevel = pixelsPerLevel,
+                                maximumZoom = maximumZoom,
                             )
                             currentOnZoomChange(latestZoom, false)
                         }
@@ -191,9 +212,13 @@ internal fun MapZoomControl(
         ) {
             ZoomStepButton(
                 contentDescription = "Heranzoomen",
-                enabled = zoom < MapZoomMaximum,
+                enabled = zoom < maximumZoom,
                 onClick = {
-                    val target = steppedMapZoom(zoom, direction = 1)
+                    val target = steppedMapZoom(
+                        zoom = zoom,
+                        direction = 1,
+                        maximumZoom = maximumZoom,
+                    )
                     onZoomChange(target, true)
                 },
                 modifier = Modifier.height(MapZoomButtonHeight),
@@ -211,8 +236,10 @@ internal fun MapZoomControl(
                             "Als Standardzoom speichern"
                         },
                         onClick = {
-                            if (!isDefaultMapZoomLevel(zoom, defaultZoom)) {
-                                onDefaultZoomSelected(selectedDefaultMapZoom(zoom))
+                            if (!isDefaultMapZoomLevel(zoom, defaultZoom, maximumZoom)) {
+                                onDefaultZoomSelected(
+                                    selectedDefaultMapZoom(zoom, maximumZoom),
+                                )
                             }
                         },
                     )
@@ -247,7 +274,11 @@ internal fun MapZoomControl(
                 contentDescription = "Herauszoomen",
                 enabled = zoom > MapZoomMinimum,
                 onClick = {
-                    val target = steppedMapZoom(zoom, direction = -1)
+                    val target = steppedMapZoom(
+                        zoom = zoom,
+                        direction = -1,
+                        maximumZoom = maximumZoom,
+                    )
                     onZoomChange(target, true)
                 },
                 modifier = Modifier.height(MapZoomButtonHeight),

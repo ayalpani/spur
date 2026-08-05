@@ -9,7 +9,6 @@ import java.io.File
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
-import org.maplibre.android.location.LocationComponentConstants
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.Property
@@ -94,7 +93,9 @@ internal fun setMapStyle(
 
 private fun Style.installSatelliteBaseMap() {
     if (getSource(SatelliteSource) == null) {
-        val tileSet = TileSet("2.2.0", SatelliteTileUrl)
+        val tileSet = TileSet("2.2.0", SatelliteTileUrl).apply {
+            maxZoom = SatelliteMapZoomMaximum.toFloat()
+        }
         addSource(RasterSource(SatelliteSource, tileSet, 256))
     }
     if (getLayer(SatelliteLayer) == null) {
@@ -365,7 +366,7 @@ private fun momentOffsetExpression(moments: List<MapMoment>): Expression {
 }
 
 internal fun Style.addLayerBelowLocationPulse(layer: Layer) {
-    val pulseLayer = LocationComponentConstants.PULSING_CIRCLE_LAYER
+    val pulseLayer = SpurLocationPulseLayer
     if (getLayer(pulseLayer) == null) {
         addLayer(layer)
     } else {

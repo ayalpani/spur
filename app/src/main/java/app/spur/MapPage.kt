@@ -263,7 +263,7 @@ internal fun MapPage(
         followRequest++
     }
     val requestMapZoom: (Double, Boolean) -> Unit = { zoom, animated ->
-        val target = zoom.coerceIn(MapZoomMinimum, MapZoomMaximum)
+        val target = normalizedMapZoom(zoom, isSatelliteView)
         displayedMapZoom = target
         mapZoomRequestId++
         mapZoomRequest = MapZoomRequest(
@@ -518,7 +518,7 @@ internal fun MapPage(
                 onAlternateMapPreviewChanged = { alternateMapPreview = it },
                 onViewportChanged = {
                     mapViewport = it
-                    displayedMapZoom = it.zoom.coerceIn(MapZoomMinimum, MapZoomMaximum)
+                    displayedMapZoom = normalizedMapZoom(it.zoom, it.satellite)
                 },
                 onMomentPlaced = { moment ->
                     val updatedMoments = mapMoments + moment.copy(
@@ -736,6 +736,7 @@ internal fun MapPage(
                     MapZoomControl(
                         zoom = displayedMapZoom,
                         defaultZoom = defaultMapZoom,
+                        maximumZoom = mapZoomMaximum(isSatelliteView),
                         isInteractionActive = isZoomControlInteracting,
                         onZoomChange = requestMapZoom,
                         onDefaultZoomSelected = { zoom ->
@@ -798,6 +799,10 @@ internal fun MapPage(
                         onClick = {
                             alternateMapPreview = null
                             isSatelliteView = !isSatelliteView
+                            displayedMapZoom = normalizedMapZoom(
+                                displayedMapZoom,
+                                isSatelliteView,
+                            )
                         },
                         preview = alternateMapPreview,
                         fallbackPreview = if (isSatelliteView) {

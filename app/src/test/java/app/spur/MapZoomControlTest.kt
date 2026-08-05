@@ -29,6 +29,15 @@ class MapZoomControlTest {
             0.0001,
         )
         assertEquals(MapZoomMaximum, steppedMapZoom(MapZoomMaximum, 1), 0.0001)
+        assertEquals(
+            SatelliteMapZoomMaximum,
+            steppedMapZoom(
+                zoom = SatelliteMapZoomMaximum,
+                direction = 1,
+                maximumZoom = SatelliteMapZoomMaximum,
+            ),
+            0.0001,
+        )
     }
 
     @Test
@@ -48,5 +57,21 @@ class MapZoomControlTest {
     @Test
     fun `selecting a default stores the displayed integer level`() {
         assertEquals(18.0, selectedDefaultMapZoom(17.6), 0.0001)
+    }
+
+    @Test
+    fun `map modes normalize to their supported maximum zoom`() {
+        assertEquals(MapZoomMaximum, mapZoomMaximum(satellite = false), 0.0001)
+        assertEquals(
+            SatelliteMapZoomMaximum,
+            mapZoomMaximum(satellite = true),
+            0.0001,
+        )
+        assertEquals(MapZoomMaximum, normalizedMapZoom(24.0, satellite = false), 0.0001)
+        assertEquals(
+            SatelliteMapZoomMaximum,
+            normalizedMapZoom(24.0, satellite = true),
+            0.0001,
+        )
     }
 }
