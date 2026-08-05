@@ -55,13 +55,29 @@ flowchart LR
 ```
 
 Tour recording starts by creating a row in `tours` and passing its ID to
-`TrackingService` under the stable `tour_id` extra. Location fixes are filtered
-and appended to `track_points`; Compose rereads the active tour for display.
-Stopping finishes the row before the foreground service is stopped.
+`TrackingService` under the stable `tour_id` extra. The main-thread location
+callback copies each active-tour fix onto one serial `HandlerThread`; that
+worker filters and appends it to `track_points`. A session token prevents late
+worker results from updating a replaced or stopped tracking session. Departure
+confirmation and Android lifecycle ownership remain on the main thread.
 
-Moments are encoded into the `map-moments` preference file. Photo place names
-are cached separately. Camera, audio, and video files remain local unless the
-user explicitly invokes an Android share or export intent.
+Compose polls a compact `TourRevision` made from tour metadata, point count,
+highest point ID, and that point's timestamp. It reloads the complete point
+list only for the first display or when this token changes, and polling pauses
+while the activity is below `RESUMED`. Road fingerprints are refreshed after a
+recognized tour change instead of on every timer tick. This is deliberately a
+revision-plus-reload boundary, not a point-delta protocol or repository/state
+architecture migration. Stopping finishes the row before the foreground
+service is stopped.
+
+Moments are encoded into the `map-moments` preference file. One background
+`TourPresentation` resolves moment-to-point links, waypoint-rail entries, and
+the point-ID selection index from the same point ordering. Marker bitmap
+preparation is keyed only by marker media identity, so coordinate-only movement
+rebuilds GeoJSON without decoding photo or video media again. Photo place names
+are cached separately. Camera JPEG confirmation previews are decoded on
+`Dispatchers.IO`; camera, audio, and video files remain local unless the user
+explicitly invokes an Android share or export intent.
 
 ## Lifecycle contracts
 
@@ -74,7 +90,8 @@ operations.
 `TrackingService` is independent of the activity lifecycle. It uses a location
 foreground service, returns `START_STICKY`, resumes the active tour after a
 process restart, and removes location updates both when stopping and when the
-service is destroyed.
+service is destroyed. Destruction also invalidates pending tracking-session
+results and shuts down the serial persistence thread with `quitSafely`.
 
 Audio recording and playback are Compose-owned resources. Disposal stops and
 releases the current `MediaRecorder`/`MediaPlayer`. CameraX remains isolated in
