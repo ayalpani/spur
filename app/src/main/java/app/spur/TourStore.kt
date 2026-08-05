@@ -61,7 +61,20 @@ data class TrackPoint(
     val latitude: Double,
     val longitude: Double,
     val recordedAt: Long,
+    val pauseStartedAt: Long? = null,
+    val sampleCount: Int = 1,
 )
+
+internal data class TourPause(
+    val pointId: Long,
+    val latitude: Double,
+    val longitude: Double,
+    val startedAt: Long,
+    val endedAt: Long,
+) {
+    val durationMillis: Long
+        get() = (endedAt - startedAt).coerceAtLeast(0L)
+}
 
 internal data class TourStartResult(
     val id: Long,
@@ -77,8 +90,34 @@ internal data class StationaryCluster(
 )
 
 private const val StationaryWindowMillis = 5 * 60 * 1_000L
-private const val StationaryMaximumSpreadMeters = 100.0
+private const val StationaryMaximumSpreadMeters = 25.0
+private const val StationaryMinimumExitMeters = 12.0
 private const val StationaryExitFixCount = 3
+
+internal fun tourPauses(points: List<TrackPoint>): List<TourPause> =
+    points.mapNotNull { point ->
+        val startedAt = point.pauseStartedAt ?: return@mapNotNull null
+        if (point.recordedAt - startedAt < StationaryWindowMillis) return@mapNotNull null
+        TourPause(
+            pointId = point.id,
+            latitude = point.latitude,
+            longitude = point.longitude,
+            startedAt = startedAt,
+            endedAt = point.recordedAt,
+        )
+    }
+
+internal fun isStationaryPauseCandidate(
+    elapsedMillis: Long,
+    distanceMeters: Float,
+    accuracyMeters: Float,
+): Boolean =
+    elapsedMillis >= StationaryWindowMillis &&
+        accuracyMeters <= 40f &&
+        distanceMeters <= maxOf(StationaryMaximumSpreadMeters, accuracyMeters.toDouble())
+
+internal fun stationaryExitDistanceMeters(accuracyMeters: Float): Double =
+    maxOf(StationaryMinimumExitMeters, accuracyMeters.toDouble())
 
 internal fun stationaryCluster(
     points: List<TrackPoint>,
@@ -417,6 +456,26 @@ class TourStore(context: Context) :
         val distance = previousLocation?.distanceTo(location)
         val elapsed = previousLocation?.let { location.time - it.time }
         if (
+            !allowFastMovement &&
+            storedPrevious != null &&
+            distance != null &&
+            elapsed != null &&
+            isStationaryPauseCandidate(elapsed, distance, accuracyMeters)
+        ) {
+            updateStationaryCluster(
+                db = db,
+                tourId = tourId,
+                clusterPoint = storedPrevious,
+                latitude = (storedPrevious.latitude + location.latitude) / 2,
+                longitude = (storedPrevious.longitude + location.longitude) / 2,
+                recordedAt = location.time,
+                accuracyMeters = accuracyMeters,
+                sampleCount = storedPrevious.clusterSampleCount.coerceAtLeast(1) + 1,
+                clusterStartedAt = storedPrevious.recordedAt,
+            )
+            return true
+        }
+        if (
             !shouldAcceptPoint(
                 accuracyMeters = accuracyMeters,
                 distanceMeters = distance,
@@ -482,7 +541,7 @@ class TourStore(context: Context) :
         val distance = clusterLocation.distanceTo(location)
         val elapsed = location.time - clusterPoint.recordedAt
         if (accuracyMeters > 40f || elapsed <= 0L) return false
-        if (distance <= StationaryMaximumSpreadMeters) {
+        if (distance <= stationaryExitDistanceMeters(accuracyMeters)) {
             stationaryExitFixes.remove(tourId)
             val oldCount = clusterPoint.clusterSampleCount.coerceAtLeast(1)
             val newCount = oldCount + 1
@@ -692,6 +751,7 @@ class TourStore(context: Context) :
         recordedAt: Long,
         accuracyMeters: Float,
         sampleCount: Int,
+        clusterStartedAt: Long? = clusterPoint.clusterStartedAt,
     ) {
         val previousPoint = db.rawQuery(
             """
@@ -730,6 +790,7 @@ class TourStore(context: Context) :
                     put("longitude", longitude)
                     put("recorded_at", recordedAt)
                     put("accuracy_meters", accuracyMeters)
+                    put("cluster_started_at", clusterStartedAt)
                     put("cluster_sample_count", sampleCount)
                 },
                 "tour_id = ? AND id = ?",
@@ -1084,7 +1145,8 @@ class TourStore(context: Context) :
     private fun points(db: SQLiteDatabase, tourId: Long): List<TrackPoint> =
         db.rawQuery(
             """
-            SELECT id, latitude, longitude, recorded_at
+            SELECT id, latitude, longitude, recorded_at,
+                   cluster_started_at, cluster_sample_count
             FROM track_points
             WHERE tour_id = ?
             ORDER BY recorded_at, id
@@ -1099,6 +1161,8 @@ class TourStore(context: Context) :
                             latitude = cursor.getDouble(1),
                             longitude = cursor.getDouble(2),
                             recordedAt = cursor.getLong(3),
+                            pauseStartedAt = if (cursor.isNull(4)) null else cursor.getLong(4),
+                            sampleCount = cursor.getInt(5),
                         ),
                     )
                 }

@@ -154,6 +154,9 @@ internal fun MapSurface(
     val currentMapMoments by rememberUpdatedState(mapMoments)
     val currentRoutePoints by rememberUpdatedState(routePoints)
     val currentTrailColors by rememberUpdatedState(trailColors)
+    val tourPauseMarker = remember(context) {
+        createTourPauseMarkerBitmap(context.applicationContext)
+    }
     val currentHomeBuilding by rememberUpdatedState(homeBuilding)
     val currentSelectedBuilding by rememberUpdatedState(selectedBuilding)
     val currentIsBuildingSelectionMode by rememberUpdatedState(isBuildingSelectionMode)
@@ -1175,13 +1178,14 @@ internal fun MapSurface(
     LaunchedEffect(routePoints, trailColors, showTourEndpoints, mapStyleRevision) {
         if (mapStyleRevision == 0) return@LaunchedEffect
         val points = routePoints
-        val routeFeatures = withContext(Dispatchers.Default) {
-            tourRouteFeatures(points)
+        val (routeFeatures, pauseFeatures) = withContext(Dispatchers.Default) {
+            tourRouteFeatures(points) to tourPauseFeatures(points)
         }
         mapView.getMapAsync { map ->
             if (points !== currentRoutePoints) return@getMapAsync
             map.style?.let { style ->
                 style.showTourRoute(routeFeatures, currentTrailColors)
+                style.showTourPauses(pauseFeatures, tourPauseMarker)
                 style.showTourEndpoints(
                     points.takeIf { showTourEndpoints }.orEmpty(),
                     currentTrailColors,

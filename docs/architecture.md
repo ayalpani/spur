@@ -70,6 +70,15 @@ revision-plus-reload boundary, not a point-delta protocol or repository/state
 architecture migration. Stopping finishes the row before the foreground
 service is stopped.
 
+A quiet location lasting at least five minutes is retained in the existing
+`cluster_started_at` and `cluster_sample_count` columns as a pause inside the
+same tour. The stationary spread is bounded to 25 m rather than the unrelated
+100 m Home geofence. When movement resumes, three fixes outside an
+accuracy-aware 12 m minimum are buffered and then appended together, preserving
+the beginning of the continuing route. MapLibre derives a violet pause marker
+and its duration directly from that stored cluster point; there is no pause
+table and no tour lifecycle transition.
+
 Before an automatic departure is confirmed, the runtime preferences own the
 candidate timestamp and measured pre-roll. While the app is resumed, `SpurApp`
 reads that same pending representation for the map: the location label says

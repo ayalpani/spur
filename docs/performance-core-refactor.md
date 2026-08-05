@@ -1,8 +1,9 @@
 # Performance core refactor
 
-This refactor applies the verified core findings from the August 2026 Spur
+This branch applies the verified core findings from the August 2026 Spur
 performance review without changing the database schema, persisted point
-representation, Android intent contracts, or visible product behavior.
+representation, or Android intent contracts. It additionally makes the
+existing stationary-cluster state visible as an intentional pause marker.
 
 ## Runtime boundaries
 
@@ -14,6 +15,10 @@ representation, Android intent contracts, or visible product behavior.
 - `TourStore.collapseStationaryWindow` updates `distance_meters` with the local
   difference between the replaced tail and its cluster representative. It does
   not read the complete tour inside the write transaction.
+- Five-minute stationary clusters remain part of the active tour and surface as
+  violet pause markers with their duration. A 25 m pause spread and an
+  accuracy-aware exit replace the former 100 m stationary radius, so the first
+  resumed fixes are buffered and written instead of being swallowed.
 - Tracking notifications read only `id`, `started_at`, and `distance_meters`.
   They are posted again only if the formatted visible text changes.
 - `SpurApp` polls a `TourRevision` and reloads all points only for a first display

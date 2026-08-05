@@ -75,6 +75,24 @@ class TourRouteRenderingTest {
         assertEquals(5_000, waypoints.coordinates().size)
     }
 
+    @Test
+    fun pauseGeometryCarriesItsVisibleDuration() {
+        val pausePoint = TrackPoint(
+            id = 2,
+            latitude = 52.53,
+            longitude = 13.41,
+            recordedAt = 4_380_000L,
+            pauseStartedAt = 300_000L,
+            sampleCount = 20,
+        )
+        val pauseFeature = tourPauseFeatures(listOf(pausePoint)).features().orEmpty().single()
+        val coordinate = pauseFeature.geometry() as Point
+
+        assertEquals(13.41, coordinate.longitude(), 0.0)
+        assertEquals(52.53, coordinate.latitude(), 0.0)
+        assertEquals("Pause · 1 h 08 min", pauseFeature.getStringProperty("pause-label"))
+    }
+
     private fun point(
         id: Long,
         latitude: Double,
