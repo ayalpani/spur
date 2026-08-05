@@ -162,6 +162,20 @@ class HomeTourSignalSimulationTest {
     }
 
     @Test
+    fun automaticStartDuplicateIndexKeepsTheExistingTimeAndDistanceBoundaries() {
+        val index = AutomaticStartDuplicateIndex(
+            listOf(TrackPoint(1L, 52.0, 13.0, 2_000L)),
+        )
+
+        assertTrue(index.contains(signal(52.00001, at = 3_000L)))
+        assertFalse(index.contains(signal(52.00001, at = 3_001L)))
+        assertFalse(index.contains(signal(52.00003, at = 2_000L)))
+
+        index.add(TrackPoint(2L, 52.00003, 13.0, 2_000L))
+        assertTrue(index.contains(signal(52.00003, at = 2_000L)))
+    }
+
+    @Test
     fun completeSignalSequencePreservesTheMeasuredDepartureAndReturnRoute() {
         val home = SpurCoordinate(52.0, 13.0)
         val settings = HomeAutoStartSettings(

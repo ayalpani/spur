@@ -60,3 +60,32 @@ internal fun orderedConfirmationSamples(
     .distinctBy { Triple(it.recordedAt, it.latitude, it.longitude) }
     .sortedBy(BufferedHomeLocation::recordedAt)
     .takeLast(HomeConfirmationSampleCount)
+
+internal class AutomaticStartDuplicateIndex(points: Collection<TrackPoint>) {
+    private val pointsBySecond = mutableMapOf<Long, MutableList<TrackPoint>>()
+
+    init {
+        points.forEach(::add)
+    }
+
+    fun contains(location: BufferedHomeLocation): Boolean {
+        val second = Math.floorDiv(location.recordedAt, 1_000L)
+        return (second - 1..second + 1).any { candidateSecond ->
+            pointsBySecond[candidateSecond].orEmpty().any { point ->
+                kotlin.math.abs(point.recordedAt - location.recordedAt) <= 1_000L &&
+                    haversineDistanceMeters(
+                        point.latitude,
+                        point.longitude,
+                        location.latitude,
+                        location.longitude,
+                    ) <= 2.0
+            }
+        }
+    }
+
+    fun add(point: TrackPoint) {
+        pointsBySecond
+            .getOrPut(Math.floorDiv(point.recordedAt, 1_000L)) { mutableListOf() }
+            .add(point)
+    }
+}

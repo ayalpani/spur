@@ -867,18 +867,9 @@ class TourStore(context: Context) :
         db.beginTransaction()
         try {
             val prepared = automaticStartLocations(startPoint, locations, exitAt)
-            val known = points(db, tourId).toMutableList()
+            val duplicateIndex = AutomaticStartDuplicateIndex(points(db, tourId))
             prepared.forEach { location ->
-                val duplicate = known.any {
-                    kotlin.math.abs(it.recordedAt - location.recordedAt) <= 1_000L &&
-                        haversineDistanceMeters(
-                            it.latitude,
-                            it.longitude,
-                            location.latitude,
-                            location.longitude,
-                        ) <= 2.0
-                }
-                if (!duplicate) {
+                if (!duplicateIndex.contains(location)) {
                     val id = insertRawLocation(
                         db = db,
                         tourId = tourId,
@@ -887,11 +878,13 @@ class TourStore(context: Context) :
                         recordedAt = location.recordedAt,
                         accuracyMeters = location.accuracyMeters,
                     )
-                    known += TrackPoint(
-                        id = id,
-                        latitude = location.latitude,
-                        longitude = location.longitude,
-                        recordedAt = location.recordedAt,
+                    duplicateIndex.add(
+                        TrackPoint(
+                            id = id,
+                            latitude = location.latitude,
+                            longitude = location.longitude,
+                            recordedAt = location.recordedAt,
+                        ),
                     )
                 }
             }
