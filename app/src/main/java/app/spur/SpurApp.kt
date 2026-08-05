@@ -87,6 +87,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var historyPhotos by remember { mutableStateOf(emptyList<MapMoment>()) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var initialMapLoadingComplete by rememberSaveable { mutableStateOf(false) }
+    var historyPreloadingEnabled by remember { mutableStateOf(false) }
     var completionTour by remember { mutableStateOf<Tour?>(null) }
     var completionPreview by remember { mutableStateOf<File?>(null) }
     var completionPoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
@@ -114,6 +115,15 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     val showFeedbackNotice: ShowFeedbackNotice = { kind, message ->
         feedbackNoticeId++
         feedbackNotice = FeedbackNotice(feedbackNoticeId, kind, message)
+    }
+
+    LaunchedEffect(initialMapLoadingComplete) {
+        if (!initialMapLoadingComplete) {
+            historyPreloadingEnabled = false
+            return@LaunchedEffect
+        }
+        delay(InitialLoaderExitDurationMillis.toLong())
+        historyPreloadingEnabled = true
     }
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -518,7 +528,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                             HomeScreen(
                                 store = store,
                                 revision = historyRevision,
-                                loadingEnabled = initialMapLoadingComplete,
+                                loadingEnabled = historyPreloadingEnabled,
                                 backEnabled = homeVisible,
                                 onBack = { navController.popBackStack() },
                                 onOpenTour = { id ->

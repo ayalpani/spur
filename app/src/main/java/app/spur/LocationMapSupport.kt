@@ -160,7 +160,14 @@ internal fun locationPulseRadius(progress: Float): Float =
     LocationPulseMaxRadius * progress.coerceIn(0f, 1f)
 
 internal fun locationPulseOpacity(progress: Float): Float =
-    LocationPulseAlpha * (1f - progress.coerceIn(0f, 1f))
+    progress.coerceIn(0f, 1f).let { clampedProgress ->
+        val fadeIn = (clampedProgress / LocationPulseFadeInProgress).coerceAtMost(1f)
+        val fadeOut = ((1f - clampedProgress) / (1f - LocationPulseFadeInProgress))
+            .coerceAtMost(1f)
+        LocationPulseAlpha * minOf(fadeIn, fadeOut)
+    }
+
+private const val LocationPulseFadeInProgress = 0.2f
 
 internal fun MapLibreMap.followLocation(
     context: Context,

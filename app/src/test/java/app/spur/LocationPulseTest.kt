@@ -12,8 +12,9 @@ class LocationPulseTest {
     }
 
     @Test
-    fun `location pulse fades while expanding`() {
-        assertEquals(LocationPulseAlpha, locationPulseOpacity(0f), 0.0001f)
+    fun `location pulse fades in and out while expanding`() {
+        assertEquals(0f, locationPulseOpacity(0f), 0.0001f)
+        assertEquals(LocationPulseAlpha, locationPulseOpacity(0.2f), 0.0001f)
         assertEquals(0f, locationPulseOpacity(1f), 0.0001f)
     }
 }
