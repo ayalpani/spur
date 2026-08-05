@@ -62,7 +62,6 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.snapshotter.MapSnapshotter
-import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import kotlinx.coroutines.withContext
@@ -219,7 +218,6 @@ internal fun MapSurface(
     var isAtHome by remember { mutableStateOf(false) }
     var renderedVoicePlaybackId by remember { mutableStateOf<String?>(null) }
     var mapStyleRevision by remember { mutableStateOf(0) }
-    var mapMomentLayoutRevision by remember { mutableLongStateOf(0L) }
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
     var isSelectedTrackPointVisible by remember { mutableStateOf(false) }
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
@@ -625,7 +623,6 @@ internal fun MapSurface(
         }
         val idleListener = MapLibreMap.OnCameraIdleListener {
             isCameraMoving = false
-            mapMomentLayoutRevision++
             if (!isMapTouchActive) currentOnMapGestureActiveChanged(false)
             publishManualLocationPosition()
             publishPendingMomentPosition()
@@ -747,7 +744,6 @@ internal fun MapSurface(
             false
         }
         val sourceChangedListener = MapView.OnSourceChangedListener { sourceId ->
-            if (sourceId == MapMomentSource) mapMomentLayoutRevision++
             if (map?.isOsmRoadSource(sourceId) == true) {
                 roadNetworkNeedsLoad = true
                 roadSourceChanged = true
@@ -1067,43 +1063,30 @@ internal fun MapSurface(
         }
     }
 
-    LaunchedEffect(
+    val momentsAtUserSpot = remember(
         preparedMapMoments,
-        mapStyleRevision,
+        currentLocation,
+        manualLocation,
+        selectedTrackPoint,
     ) {
+        userSpotMomentIds(
+            moments = preparedMapMoments?.moments.orEmpty(),
+            userSpot = currentLocation.takeIf {
+                manualLocation == null && selectedTrackPoint == null
+            },
+        )
+    }
+
+    LaunchedEffect(preparedMapMoments, momentsAtUserSpot, mapStyleRevision) {
         val prepared = preparedMapMoments ?: return@LaunchedEffect
         if (mapStyleRevision == 0) return@LaunchedEffect
         mapView.getMapAsync { map ->
-            map.style?.showMapMoments(prepared)
+            map.style?.showMapMoments(prepared, momentsAtUserSpot)
             val pending = pendingMapMoment
             if (pending != null && prepared.moments.any { it.id == pending.id }) {
                 pendingMapMoment = null
                 pendingMomentPosition = null
             }
-        }
-    }
-
-    LaunchedEffect(
-        currentLocation,
-        manualLocation,
-        selectedTrackPoint,
-        preparedMapMoments,
-        mapStyleRevision,
-        mapMomentLayoutRevision,
-    ) {
-        if (mapStyleRevision == 0 || preparedMapMoments == null) return@LaunchedEffect
-        val location = currentLocation.takeIf {
-            manualLocation == null && selectedTrackPoint == null
-        }
-        mapView.getMapAsync { map ->
-            val clusterId = location?.let {
-                map.userSpotMomentClusterId(
-                    userSpot = it,
-                    maximumDistance = MapMomentClusterRadius *
-                        context.resources.displayMetrics.density,
-                )
-            }
-            map.style?.showUserSpotMomentCluster(clusterId)
         }
     }
 
@@ -1762,32 +1745,6 @@ private fun roadNetworkCellDegrees(zoomLevel: Int): Double = when {
     zoomLevel >= 16 -> 0.002
     zoomLevel >= 14 -> 0.005
     else -> 0.01
-}
-
-private fun MapLibreMap.userSpotMomentClusterId(
-    userSpot: SpurCoordinate,
-    maximumDistance: Float,
-): Long? {
-    val userSpotPoint = projection.toScreenLocation(
-        LatLng(userSpot.latitude, userSpot.longitude),
-    )
-    val clusters = style
-        ?.getSourceAs<GeoJsonSource>(MapMomentSource)
-        ?.querySourceFeatures(Expression.has(MapMomentClusterIdProperty))
-        .orEmpty()
-        .mapNotNull { feature ->
-            val clusterId = feature.getNumberProperty(MapMomentClusterIdProperty)?.toLong()
-                ?: return@mapNotNull null
-            val point = feature.geometry() as? org.maplibre.geojson.Point
-                ?: return@mapNotNull null
-            val position = projection.toScreenLocation(LatLng(point.latitude(), point.longitude()))
-            clusterId to Offset(position.x, position.y)
-        }
-    return userSpotMomentClusterId(
-        userSpot = Offset(userSpotPoint.x, userSpotPoint.y),
-        clusters = clusters,
-        maximumDistance = maximumDistance,
-    )
 }
 
 private fun MapView.roadQueryViewport(): RectF = RectF(
