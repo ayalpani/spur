@@ -4,6 +4,7 @@
   --moss: #23614a;
   --follow-green: #43a873;
   --white: #ffffff;
+  --black: #000000;
   --gray: #64748b;
   color: var(--ink);
   background: var(--sand);
@@ -179,88 +180,20 @@ h1 {
   min-width: 0;
 }
 
-.browser-frame {
+.phone-scene {
+  position: relative;
   overflow: hidden;
+  display: grid;
   width: 100%;
+  min-height: clamp(650px, 56vw, 820px);
   margin: 0;
-  border: 1px solid rgb(24 32 28 / 18%);
-  border-radius: 24px;
-  background: var(--white);
-  box-shadow: 0 28px 80px rgb(24 32 28 / 16%);
-}
-
-.browser-bar {
-  position: relative;
-  display: grid;
-  height: 54px;
-  padding: 0 18px;
-  align-items: center;
-  border-bottom: 1px solid rgb(24 32 28 / 12%);
-  grid-template-columns: 1fr minmax(180px, 2.5fr) 1fr;
-}
-
-.browser-controls {
-  display: flex;
-  gap: 7px;
-}
-
-.browser-controls i {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: rgb(24 32 28 / 22%);
-}
-
-.browser-controls i:nth-child(2) {
-  opacity: 0.66;
-}
-
-.browser-controls i:nth-child(3) {
-  opacity: 0.34;
-}
-
-.browser-address {
-  overflow: hidden;
-  display: flex;
-  height: 30px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 14px;
-  border: 1px solid rgb(24 32 28 / 10%);
-  border-radius: 8px;
-  background: rgb(24 32 28 / 4%);
-  color: rgb(24 32 28 / 54%);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.68rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.browser-address i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--moss);
-}
-
-.browser-menu {
-  justify-self: end;
-  color: rgb(24 32 28 / 42%);
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
-}
-
-.browser-stage {
-  position: relative;
-  overflow: hidden;
-  display: grid;
-  min-height: clamp(600px, 52vw, 760px);
+  border: 1px solid rgb(24 32 28 / 12%);
+  border-radius: 40px;
   place-items: center;
   isolation: isolate;
 }
 
-.browser-stage::after {
+.phone-scene::before {
   position: absolute;
   z-index: -1;
   inset: 0;
@@ -271,50 +204,106 @@ h1 {
   mask-image: linear-gradient(to bottom, transparent, black 24%, black 76%, transparent);
 }
 
-.browser-frame--green .browser-stage {
-  background: rgb(67 168 115 / 18%);
-}
-
-.browser-frame--sand .browser-stage {
-  background: var(--sand);
-}
-
-.browser-frame--ink .browser-stage {
-  background: var(--ink);
-}
-
-.browser-frame--gray .browser-stage {
-  background: rgb(100 116 139 / 16%);
-}
-
-.browser-frame--white .browser-stage {
-  background: var(--white);
-}
-
-.browser-word {
+.phone-scene::after {
   position: absolute;
   z-index: -1;
-  left: -0.05em;
+  left: -0.1em;
   color: rgb(24 32 28 / 5%);
+  content: 'SPUR';
   font-size: clamp(6rem, 11vw, 11rem);
   font-weight: 900;
   letter-spacing: -0.08em;
   transform: rotate(-90deg);
 }
 
-.browser-frame--ink .browser-word {
+.phone-scene--green {
+  background: rgb(67 168 115 / 18%);
+}
+
+.phone-scene--sand {
+  background: var(--sand);
+}
+
+.phone-scene--ink {
+  background: var(--ink);
+}
+
+.phone-scene--gray {
+  background: rgb(100 116 139 / 16%);
+}
+
+.phone-scene--white {
+  background: var(--white);
+}
+
+.phone-scene--ink::after {
   color: rgb(255 255 255 / 7%);
 }
 
-.browser-stage img {
+.phone-frame {
+  position: relative;
+  width: min(330px, calc(100% - 90px));
+  padding: 9px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 54px;
+  background: var(--ink);
+  box-shadow: 0 30px 68px rgb(24 32 28 / 32%);
+}
+
+.phone-screen {
+  overflow: hidden;
+  width: 100%;
+  border-radius: 45px;
+  background: var(--ink);
+  line-height: 0;
+}
+
+.phone-screen img {
   display: block;
-  width: auto;
-  max-width: calc(100% - 110px);
-  height: clamp(540px, 48vw, 700px);
-  border: 1px solid rgb(24 32 28 / 20%);
-  border-radius: 28px;
-  box-shadow: 0 20px 52px rgb(24 32 28 / 28%);
-  object-fit: contain;
+  width: 100%;
+  height: auto;
+}
+
+.phone-island {
+  position: absolute;
+  z-index: 2;
+  top: 20px;
+  left: 50%;
+  width: 88px;
+  height: 23px;
+  border-radius: 999px;
+  background: var(--black);
+  transform: translateX(-50%);
+}
+
+.phone-island i {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(100 116 139 / 72%);
+}
+
+.phone-button {
+  position: absolute;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--ink);
+}
+
+.phone-button--volume {
+  top: 116px;
+  left: -4px;
+  height: 62px;
+  box-shadow: 0 74px 0 var(--ink);
+}
+
+.phone-button--power {
+  top: 178px;
+  right: -4px;
+  height: 84px;
 }
 
 .hero-caption {
@@ -378,7 +367,7 @@ h1 {
   grid-row: 1;
 }
 
-.feature--reverse .browser-frame {
+.feature--reverse .phone-scene {
   grid-column: 1;
   grid-row: 1;
 }
@@ -404,12 +393,12 @@ h1 {
   line-height: 1.65;
 }
 
-.feature .browser-stage {
+.feature .phone-scene {
   min-height: 650px;
 }
 
-.feature .browser-stage img {
-  height: 590px;
+.feature .phone-frame {
+  width: min(290px, calc(100% - 80px));
 }
 
 .principles {
@@ -546,12 +535,12 @@ nav a:hover,
     max-width: 850px;
   }
 
-  .browser-stage {
+  .phone-scene {
     min-height: 720px;
   }
 
-  .browser-stage img {
-    height: 660px;
+  .phone-frame {
+    width: min(330px, calc(100% - 90px));
   }
 
   .intro {
@@ -571,7 +560,7 @@ nav a:hover,
   }
 
   .feature--reverse .feature-copy,
-  .feature--reverse .browser-frame {
+  .feature--reverse .phone-scene {
     grid-column: 1;
     grid-row: auto;
   }
@@ -580,7 +569,7 @@ nav a:hover,
     order: 0;
   }
 
-  .feature--reverse .browser-frame {
+  .feature--reverse .phone-scene {
     order: 1;
   }
 }
@@ -621,44 +610,31 @@ nav a:hover,
     line-height: 1.8;
   }
 
-  .browser-frame {
-    border-radius: 16px;
+  .phone-scene,
+  .feature .phone-scene {
+    min-height: 640px;
+    border-radius: 26px;
   }
 
-  .browser-bar {
-    height: 46px;
-    padding: 0 10px;
-    grid-template-columns: 0.5fr 3fr 0.5fr;
-  }
-
-  .browser-controls {
-    gap: 4px;
-  }
-
-  .browser-controls i {
-    width: 6px;
-    height: 6px;
-  }
-
-  .browser-address {
-    height: 26px;
-    font-size: 0.56rem;
-  }
-
-  .browser-stage,
-  .feature .browser-stage {
-    min-height: 580px;
-  }
-
-  .browser-stage img,
-  .feature .browser-stage img {
-    max-width: calc(100% - 38px);
-    height: 540px;
-    border-radius: 22px;
-  }
-
-  .browser-word {
+  .phone-scene::after {
     display: none;
+  }
+
+  .phone-frame,
+  .feature .phone-frame {
+    width: min(280px, calc(100% - 48px));
+    padding: 7px;
+    border-radius: 46px;
+  }
+
+  .phone-screen {
+    border-radius: 39px;
+  }
+
+  .phone-island {
+    top: 17px;
+    width: 76px;
+    height: 20px;
   }
 
   .hero-caption {

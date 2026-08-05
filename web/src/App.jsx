@@ -1,7 +1,6 @@
 const screens = [
   {
     src: '/screens/02-tracking.webp',
-    path: '/unterwegs',
     number: '02',
     kicker: 'Im Hintergrund',
     title: 'Spur läuft. Du gehst.',
@@ -12,7 +11,6 @@ const screens = [
   },
   {
     src: '/screens/03-moments.webp',
-    path: '/momente',
     number: '03',
     kicker: 'Vier Arten zu erinnern',
     title: 'Nicht nur, wo du warst.',
@@ -23,7 +21,6 @@ const screens = [
   },
   {
     src: '/screens/04-emoji-moment.webp',
-    path: '/momente/herz',
     number: '04',
     kicker: 'Am richtigen Ort',
     title: 'Erinnerungen bekommen einen Platz.',
@@ -34,7 +31,6 @@ const screens = [
   },
   {
     src: '/screens/05-home.webp',
-    path: '/home',
     number: '05',
     kicker: 'Dein Rückblick',
     title: 'Aus Wegen wird ein eigenes Archiv.',
@@ -45,7 +41,6 @@ const screens = [
   },
   {
     src: '/screens/06-complete.webp',
-    path: '/tour/abgeschlossen',
     number: '06',
     kicker: 'Sicher angekommen',
     title: 'Der ganze Weg auf einen Blick.',
@@ -72,31 +67,23 @@ function SpurMark({ small = false }) {
   )
 }
 
-function BrowserFrame({ src, path, alt, tone = 'sand', eager = false }) {
+function PhoneFrame({ src, alt, tone = 'sand', eager = false }) {
   return (
-    <figure className={`browser-frame browser-frame--${tone}`}>
-      <div className="browser-bar" aria-hidden="true">
-        <span className="browser-controls">
-          <i />
-          <i />
-          <i />
-        </span>
-        <span className="browser-address">
-          <i />
-          spur.app{path}
-        </span>
-        <span className="browser-menu">•••</span>
-      </div>
-      <div className="browser-stage">
-        <span className="browser-word" aria-hidden="true">SPUR</span>
-        <img
-          src={src}
-          alt={alt}
-          width="1080"
-          height="2400"
-          loading={eager ? 'eager' : 'lazy'}
-          fetchPriority={eager ? 'high' : 'auto'}
-        />
+    <figure className={`phone-scene phone-scene--${tone}`}>
+      <div className="phone-frame">
+        <span className="phone-button phone-button--volume" aria-hidden="true" />
+        <span className="phone-button phone-button--power" aria-hidden="true" />
+        <span className="phone-island" aria-hidden="true"><i /></span>
+        <div className="phone-screen">
+          <img
+            src={src}
+            alt={alt}
+            width="1080"
+            height="2400"
+            loading={eager ? 'eager' : 'lazy'}
+            fetchPriority={eager ? 'high' : 'auto'}
+          />
+        </div>
       </div>
     </figure>
   )
@@ -111,7 +98,7 @@ function Feature({ screen, index }) {
         <p className="feature-lead">{screen.copy}</p>
         <p className="feature-detail">{screen.detail}</p>
       </div>
-      <BrowserFrame {...screen} />
+      <PhoneFrame {...screen} />
     </section>
   )
 }
@@ -152,9 +139,8 @@ function App() {
           </div>
 
           <div className="hero-visual" id="erleben">
-            <BrowserFrame
+            <PhoneFrame
               src="/screens/01-map.webp"
-              path="/karte"
               alt="Spur-Karte mit Tour-starten-Aktion und einem gesetzten Herz-Moment"
               tone="green"
               eager
