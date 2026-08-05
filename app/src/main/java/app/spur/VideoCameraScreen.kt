@@ -13,18 +13,12 @@ import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -288,21 +282,10 @@ private fun VideoRecordingSurface(
                 .fillMaxSize()
                 .semantics { contentDescription = "Videokameravorschau" },
         )
-        IconButton(
+        CameraCloseButton(
+            contentDescription = "Videokamera schließen",
             onClick = onClose,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(18.dp)
-                .size(52.dp)
-                .semantics { contentDescription = "Videokamera schließen" },
-            colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = CameraChrome,
-                contentColor = Color.White,
-            ),
-        ) {
-            CloseCameraIcon()
-        }
+        )
         if (isRecording || isFinalizing) {
             Text(
                 text = if (isFinalizing) {
@@ -322,42 +305,21 @@ private fun VideoRecordingSurface(
             )
         }
         if (!isRecording && !isFinalizing) {
-            IconButton(
+            CameraSwitchButton(
+                contentDescription = "Videokamera wechseln",
                 onClick = onSwitchCamera,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(end = 26.dp, bottom = 25.dp)
-                    .size(58.dp)
-                    .semantics { contentDescription = "Videokamera wechseln" },
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = CameraChrome,
-                    contentColor = Color.White,
-                ),
-            ) {
-                SwitchCameraIcon()
-            }
+            )
         }
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 18.dp)
-                .size(78.dp)
-                .border(4.dp, Color.White, CircleShape)
-                .padding(7.dp)
-                .background(
-                    color = if (isFinalizing) CameraChrome else StopRed,
-                    shape = if (isRecording) RoundedCornerShape(8.dp) else CircleShape,
-                )
-                .clickable(enabled = canRecord && !isFinalizing, onClick = onRecord)
-                .semantics {
-                    contentDescription = when {
-                        isFinalizing -> "Video wird gespeichert"
-                        isRecording -> "Videoaufnahme beenden"
-                        else -> "Videoaufnahme starten"
-                    }
-                },
+        CameraCaptureButton(
+            enabled = canRecord && !isFinalizing,
+            contentDescription = when {
+                isFinalizing -> "Video wird gespeichert"
+                isRecording -> "Videoaufnahme beenden"
+                else -> "Videoaufnahme starten"
+            },
+            color = if (isFinalizing) CameraChrome else StopRed,
+            shape = if (isRecording) RoundedCornerShape(8.dp) else CircleShape,
+            onClick = onRecord,
         )
     }
 }

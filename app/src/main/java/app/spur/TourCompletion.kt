@@ -46,7 +46,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import java.io.File
-import java.util.Locale
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
@@ -114,9 +113,7 @@ internal fun tourCompletionStats(tour: Tour): TourCompletionStats {
             formatKilometers(tour.distanceMeters)
         },
         duration = formatDuration(durationMillis),
-        averageSpeed = averageSpeed?.let {
-            String.format(Locale.GERMANY, "%.1f km/h", it.coerceAtLeast(0.0))
-        } ?: "– km/h",
+        averageSpeed = formatRecentSpeed(averageSpeed),
     )
 }
 

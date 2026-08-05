@@ -298,7 +298,12 @@ internal fun Context.registerHomeExitGeofence(): Boolean {
     return runCatching {
         LocationServices.getGeofencingClient(this)
             .addGeofences(request, homeGeofencePendingIntent())
+            .addOnFailureListener {
+                recordHomeDepartureRuntimeFailure("geofence_registration", it)
+            }
         true
+    }.onFailure {
+        recordHomeDepartureRuntimeFailure("geofence_registration", it)
     }.getOrDefault(false)
 }
 
@@ -827,13 +832,20 @@ internal fun Context.reconcileAutomaticDeparture(
     )
 }
 
-internal fun Context.clearAutomaticTourState() {
-    homeAutoStartPreferences().edit()
-        .remove(AutomaticTourId)
-        .remove(OutsideSince)
-        .remove(DepartureThroughAt)
-        .remove(DepartureCandidateAt)
-        .apply()
+internal fun Context.clearAutomaticTourState(expectedTourId: Long? = null) {
+    synchronized(homeAutoStartRuntimeLock) {
+        val preferences = homeAutoStartPreferences()
+        if (
+            expectedTourId != null &&
+            preferences.getLong(AutomaticTourId, -1L) != expectedTourId
+        ) return
+        preferences.edit()
+            .remove(AutomaticTourId)
+            .remove(OutsideSince)
+            .remove(DepartureThroughAt)
+            .remove(DepartureCandidateAt)
+            .apply()
+    }
 }
 
 internal fun stayedOutsideHomeLongEnough(outsideSince: Long, returnedAt: Long): Boolean =
@@ -858,12 +870,14 @@ class HomeExitReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                 try {
-                    if (TourStore(context).activeTour() == null) {
+                    if (context.tourStore().activeTour() == null) {
                         context.requestHomeDepartureConfirmation(
                             candidateAt = System.currentTimeMillis(),
                             source = HomeDepartureTriggerSource.ACTIVITY_TRANSITION,
                         )
                     }
+                } catch (error: Exception) {
+                    context.recordHomeDepartureRuntimeFailure("activity_receiver", error)
                 } finally {
                     pendingResult.finish()
                 }
@@ -879,7 +893,7 @@ class HomeExitReceiver : BroadcastReceiver() {
                 try {
                     val incoming = result.locations.map(Location::toBufferedHomeLocation)
                     context.saveBufferedHomeLocations(incoming)
-                    val store = TourStore(context)
+                    val store = context.tourStore()
                     store.activeTour()?.let { activeTour ->
                         val throughAt = context
                             .automaticTourDepartureThroughAt(activeTour.id)
@@ -890,6 +904,8 @@ class HomeExitReceiver : BroadcastReceiver() {
                             )
                         }
                     }
+                } catch (error: Exception) {
+                    context.recordHomeDepartureRuntimeFailure("pre_roll_receiver", error)
                 } finally {
                     pendingResult.finish()
                 }
@@ -910,7 +926,7 @@ class HomeExitReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                val store = TourStore(context)
+                val store = context.tourStore()
                 val exitLocation = event.triggeringLocation
                 val transitionAt = exitLocation?.time?.takeIf { it > 0L }
                     ?: System.currentTimeMillis()
@@ -939,6 +955,8 @@ class HomeExitReceiver : BroadcastReceiver() {
                     candidateAt = System.currentTimeMillis(),
                     source = HomeDepartureTriggerSource.GEOFENCE,
                 )
+            } catch (error: Exception) {
+                context.recordHomeDepartureRuntimeFailure("geofence_receiver", error)
             } finally {
                 pendingResult.finish()
             }

@@ -14,8 +14,6 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -23,13 +21,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -41,12 +32,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
@@ -54,8 +43,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-
-internal val CameraChrome = Color.Black.copy(alpha = 0.42f)
 
 @Composable
 internal fun CameraScreen(
@@ -154,23 +141,13 @@ internal fun CameraScreen(
                     .semantics { contentDescription = "Kameravorschau" },
             )
 
-            IconButton(
+            CameraCloseButton(
+                contentDescription = "Kamera schließen",
                 onClick = ::discardAndClose,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .statusBarsPadding()
-                    .padding(18.dp)
-                    .size(52.dp)
-                    .semantics { contentDescription = "Kamera schließen" },
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = CameraChrome,
-                    contentColor = Color.White,
-                ),
-            ) {
-                CloseCameraIcon()
-            }
+            )
 
-            IconButton(
+            CameraSwitchButton(
+                contentDescription = "Kamera wechseln",
                 onClick = {
                     lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
                         CameraSelector.LENS_FACING_FRONT
@@ -178,60 +155,39 @@ internal fun CameraScreen(
                         CameraSelector.LENS_FACING_BACK
                     }
                 },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(end = 26.dp, bottom = 25.dp)
-                    .size(58.dp)
-                    .semantics { contentDescription = "Kamera wechseln" },
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = CameraChrome,
-                    contentColor = Color.White,
-                ),
-            ) {
-                SwitchCameraIcon()
-            }
+            )
 
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 18.dp)
-                    .size(78.dp)
-                    .border(4.dp, Color.White, CircleShape)
-                    .padding(7.dp)
-                    .background(Color.White, CircleShape)
-                    .clickable(enabled = imageCapture != null && !isCapturing) {
-                        val capture = imageCapture ?: return@clickable
-                        val photoDirectory = File(context.filesDir, "moments/photos").apply {
-                            mkdirs()
-                        }
-                        val output = File(photoDirectory, "photo-${System.currentTimeMillis()}.jpg")
-                        previewView.display?.rotation?.let { capture.targetRotation = it }
-                        isCapturing = true
-                        capture.takePicture(
-                            ImageCapture.OutputFileOptions.Builder(output).build(),
-                            ContextCompat.getMainExecutor(context),
-                            object : ImageCapture.OnImageSavedCallback {
-                                override fun onImageSaved(
-                                    outputFileResults: ImageCapture.OutputFileResults,
-                                ) {
-                                    isCapturing = false
-                                    capturedPhoto = output
-                                }
+            CameraCaptureButton(
+                enabled = imageCapture != null && !isCapturing,
+                contentDescription = "Foto aufnehmen",
+                color = Color.White,
+                onClick = cameraCapture@{
+                    val capture = imageCapture ?: return@cameraCapture
+                    val output = context.createMomentFile(MomentType.PHOTO)
+                    previewView.display?.rotation?.let { capture.targetRotation = it }
+                    isCapturing = true
+                    capture.takePicture(
+                        ImageCapture.OutputFileOptions.Builder(output).build(),
+                        ContextCompat.getMainExecutor(context),
+                        object : ImageCapture.OnImageSavedCallback {
+                            override fun onImageSaved(
+                                outputFileResults: ImageCapture.OutputFileResults,
+                            ) {
+                                isCapturing = false
+                                capturedPhoto = output
+                            }
 
-                                override fun onError(exception: ImageCaptureException) {
-                                    isCapturing = false
-                                    output.delete()
-                                    showFeedbackNotice(
-                                        FeedbackNoticeKind.ERROR,
-                                        "Das Foto konnte nicht gespeichert werden.",
-                                    )
-                                }
-                            },
-                        )
-                    }
-                    .semantics { contentDescription = "Foto aufnehmen" },
+                            override fun onError(exception: ImageCaptureException) {
+                                isCapturing = false
+                                output.delete()
+                                showFeedbackNotice(
+                                    FeedbackNoticeKind.ERROR,
+                                    "Das Foto konnte nicht gespeichert werden.",
+                                )
+                            }
+                        },
+                    )
+                },
             )
         } else {
             var bitmap by remember(photo) { mutableStateOf<Bitmap?>(null) }
@@ -302,23 +258,3 @@ private fun decodePreviewBitmap(file: File): Bitmap? =
             )
         }
     }.getOrNull()
-
-@Composable
-internal fun CloseCameraIcon() = LucideIcon(
-    paths = listOf("M18 6 6 18", "m6 6 12 12"),
-    modifier = Modifier.size(24.dp),
-    strokeWidth = LucideBoldStrokeWidth,
-)
-
-@Composable
-internal fun SwitchCameraIcon() = LucideIcon(
-    paths = listOf(
-        "M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5",
-        "M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5",
-        "M15 12a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
-        "m18 22-3-3 3-3",
-        "m6 2 3 3-3 3",
-    ),
-    modifier = Modifier.size(28.dp),
-    strokeWidth = LucideBoldStrokeWidth,
-)

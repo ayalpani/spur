@@ -222,9 +222,9 @@ internal fun shouldFitTourRoute(
 
 internal fun shouldShowTourOverview(
     isFollowingLocation: Boolean,
-    isTourActive: Boolean,
+    hasDisplayedTour: Boolean,
     routePointCount: Int,
-): Boolean = isFollowingLocation && isTourActive && routePointCount > 0
+): Boolean = isFollowingLocation && hasDisplayedTour && routePointCount > 0
 
 internal fun shouldStackMapPlayer(screenWidthDp: Int): Boolean =
     screenWidthDp <

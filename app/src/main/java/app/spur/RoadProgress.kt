@@ -321,21 +321,12 @@ internal fun historicalRoadTraversals(
     return tracker.currentSnapshot().completedRoads
 }
 
-private data class RoadArc(
-    val key: String,
-    val from: String,
-    val to: String,
-    val kind: RoadKind,
-) {
-    fun other(node: String): String = if (node == from) to else from
-}
-
 internal fun intersectionRoadEdges(polylines: List<RoadPolyline>): List<RenderedRoadSegment> =
     polylines
         .groupBy(RoadPolyline::grade)
         .flatMap { (grade, gradedPolylines) ->
             val coordinates = linkedMapOf<String, SpurCoordinate>()
-            val arcs = linkedMapOf<String, RoadArc>()
+            val arcs = linkedMapOf<String, RoadGraphArc<RoadKind>>()
             gradedPolylines.forEach { polyline ->
                 polyline.points.zipWithNext().forEach { (from, to) ->
                     val fromKey = roadNodeKey(from)
@@ -345,58 +336,36 @@ internal fun intersectionRoadEdges(polylines: List<RoadPolyline>): List<Rendered
                     coordinates.putIfAbsent(toKey, to)
                     val key = "$grade:${polyline.kind}|" +
                         "${minOf(fromKey, toKey)}|${maxOf(fromKey, toKey)}"
-                    arcs.putIfAbsent(key, RoadArc(key, fromKey, toKey, polyline.kind))
+                    arcs.putIfAbsent(
+                        key,
+                        RoadGraphArc(key, fromKey, toKey, polyline.kind),
+                    )
                 }
             }
-            val adjacency = buildMap<String, MutableList<RoadArc>> {
-                arcs.values.forEach { arc ->
-                    getOrPut(arc.from) { mutableListOf() } += arc
-                    getOrPut(arc.to) { mutableListOf() } += arc
+            linearRoadGraphPaths(arcs.values) { first, next -> first == next }
+                .mapNotNull { path ->
+                    val points = path.nodes.map(coordinates::getValue)
+                    val kind = path.arcs.first().tag
+                    if (roadLengthMeters(points) < RoadMinimumLengthMeters) {
+                        return@mapNotNull null
+                    }
+                    val orientedPoints = if (
+                        roadNodeKey(points.first()) <= roadNodeKey(points.last())
+                    ) {
+                        points
+                    } else {
+                        points.asReversed()
+                    }
+                    RenderedRoadSegment(
+                        key = canonicalRoadKey(
+                            orientedPoints,
+                            "$grade:$kind",
+                        ),
+                        points = orientedPoints,
+                        grade = grade,
+                        kind = kind,
+                    )
                 }
-            }
-            val visited = mutableSetOf<String>()
-            val edges = mutableListOf<RenderedRoadSegment>()
-
-            fun consume(start: String, first: RoadArc) {
-                if (first.key in visited) return
-                val points = mutableListOf(coordinates.getValue(start))
-                var node = start
-                var arc = first
-                val kind = first.kind
-                while (arc.key !in visited) {
-                    visited += arc.key
-                    node = arc.other(node)
-                    points += coordinates.getValue(node)
-                    val connected = adjacency.getValue(node)
-                    if (connected.size != 2) break
-                    arc = connected.firstOrNull {
-                        it.key !in visited && it.kind == kind
-                    } ?: break
-                }
-                if (roadLengthMeters(points) < RoadMinimumLengthMeters) return
-                val orientedPoints = if (
-                    roadNodeKey(points.first()) <= roadNodeKey(points.last())
-                ) {
-                    points
-                } else {
-                    points.asReversed()
-                }
-                edges += RenderedRoadSegment(
-                    key = canonicalRoadKey(
-                        orientedPoints,
-                        "$grade:$kind",
-                    ),
-                    points = orientedPoints,
-                    grade = grade,
-                    kind = kind,
-                )
-            }
-
-            adjacency
-                .filterValues { it.size != 2 }
-                .forEach { (node, connected) -> connected.forEach { consume(node, it) } }
-            arcs.values.forEach { arc -> consume(arc.from, arc) }
-            edges
         }
         .distinctBy(RenderedRoadSegment::key)
 
@@ -530,14 +499,8 @@ internal fun canonicalRoadKey(
     points: List<SpurCoordinate>,
     discriminator: String = "",
 ): String {
-    val forward = points.joinToString(";") { point ->
-        "${(point.latitude * RoadKeyPrecision).roundToLong()}," +
-            "${(point.longitude * RoadKeyPrecision).roundToLong()}"
-    }
-    val reverse = points.asReversed().joinToString(";") { point ->
-        "${(point.latitude * RoadKeyPrecision).roundToLong()}," +
-            "${(point.longitude * RoadKeyPrecision).roundToLong()}"
-    }
+    val forward = points.joinToString(";", transform = ::roadNodeKey)
+    val reverse = points.asReversed().joinToString(";", transform = ::roadNodeKey)
     return "$discriminator|${minOf(forward, reverse)}"
 }
 

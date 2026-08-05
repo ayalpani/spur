@@ -19,14 +19,8 @@ import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.Style
 import org.maplibre.android.snapshotter.MapSnapshotter
 import org.maplibre.android.style.layers.CircleLayer
-import org.maplibre.android.style.layers.LineLayer
-import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
-import org.maplibre.android.style.layers.PropertyFactory.lineCap
-import org.maplibre.android.style.layers.PropertyFactory.lineColor
-import org.maplibre.android.style.layers.PropertyFactory.lineJoin
-import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.sources.GeoJsonSource
 import java.io.File
 import java.util.Locale
@@ -234,21 +228,20 @@ internal suspend fun Context.renderTourPreview(
             GeoJsonSource(TourPreviewEndpointSource, endpoints),
         )
         .withLayers(
-            LineLayer(TourPreviewBorderLayer, TourPreviewSource).withProperties(
-                lineColor(colors.stroke.toArgb()),
-                lineWidth(TourRouteBorderWidthPixels),
-                lineCap(Property.LINE_CAP_ROUND),
-                lineJoin(Property.LINE_JOIN_ROUND),
+            tourRouteBorderLayer(
+                layerId = TourPreviewBorderLayer,
+                sourceId = TourPreviewSource,
+                colors = colors,
             ),
-            LineLayer(TourPreviewRouteLayer, TourPreviewSource).withProperties(
-                lineColor(colors.background.toArgb()),
-                lineWidth(TourRouteWidthPixels),
-                lineCap(Property.LINE_CAP_ROUND),
-                lineJoin(Property.LINE_JOIN_ROUND),
+            tourRouteFillLayer(
+                layerId = TourPreviewRouteLayer,
+                sourceId = TourPreviewSource,
+                colors = colors,
             ),
-            CircleLayer(TourPreviewWaypointLayer, TourPreviewSource).withProperties(
-                circleColor(colors.stroke.toArgb()),
-                circleRadius(TourWaypointRadiusPixels),
+            tourWaypointCircleLayer(
+                layerId = TourPreviewWaypointLayer,
+                sourceId = TourPreviewSource,
+                colors = colors,
             ),
             CircleLayer(TourPreviewEndpointLayer, TourPreviewEndpointSource).withProperties(
                 circleColor(colors.background.toArgb()),

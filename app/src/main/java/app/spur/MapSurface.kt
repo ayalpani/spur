@@ -529,29 +529,8 @@ internal fun MapSurface(
         }
     }
 
-    DisposableEffect(lifecycle, mapView) {
-        if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStart()
-        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onResume()
-
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> {
-                    mapView.onResume()
-                    if (currentManualLocation == null) currentOnLocationPulseResync()
-                }
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
-                else -> Unit
-            }
-        }
-        lifecycle.addObserver(observer)
-        onDispose {
-            lifecycle.removeObserver(observer)
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
-            mapView.onDestroy()
-        }
+    MapViewLifecycle(mapView, lifecycle) {
+        if (currentManualLocation == null) currentOnLocationPulseResync()
     }
 
     DisposableEffect(mapView) {
@@ -1492,26 +1471,29 @@ internal fun MapSurface(
                 if (continuation.isActive) continuation.resume(readyMap)
             }
         }
-        delay(220L)
-        animate(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = tween(360),
-        ) { value, _ ->
-            map.style?.showRoadCompletionPulse(
-                road = completion.road,
-                progress = value,
+        try {
+            delay(220L)
+            animate(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = tween(360),
+            ) { value, _ ->
+                map.style?.showRoadCompletionPulse(
+                    road = completion.road,
+                    progress = value,
+                )
+            }
+            mapView.performHapticFeedback(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    HapticFeedbackConstants.CONFIRM
+                } else {
+                    HapticFeedbackConstants.VIRTUAL_KEY
+                },
             )
+            delay(480L)
+        } finally {
+            map.style?.showRoadCompletionPulse(null, 0f)
         }
-        mapView.performHapticFeedback(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                HapticFeedbackConstants.CONFIRM
-            } else {
-                HapticFeedbackConstants.VIRTUAL_KEY
-            },
-        )
-        delay(480L)
-        map.style?.showRoadCompletionPulse(null, 0f)
     }
 
     LaunchedEffect(

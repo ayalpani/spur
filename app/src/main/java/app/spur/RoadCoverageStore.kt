@@ -75,19 +75,11 @@ internal fun roadHistoryBounds(
     )
 }
 
-private data class RoadCoverageArc(
-    val key: String,
-    val from: String,
-    val to: String,
-) {
-    fun other(node: String): String = if (node == from) to else from
-}
-
 internal fun mergeUniqueRoadCoverageArcs(
     segments: List<List<SpurCoordinate>>,
 ): List<List<SpurCoordinate>> {
     val coordinates = linkedMapOf<String, SpurCoordinate>()
-    val arcs = linkedMapOf<String, RoadCoverageArc>()
+    val arcs = linkedMapOf<String, RoadGraphArc<Unit>>()
     segments.forEach { segment ->
         segment.zipWithNext().forEach { (from, to) ->
             val fromKey = roadNodeKey(from)
@@ -98,39 +90,12 @@ internal fun mergeUniqueRoadCoverageArcs(
             val first = minOf(fromKey, toKey)
             val second = maxOf(fromKey, toKey)
             val key = "$first|$second"
-            arcs.putIfAbsent(key, RoadCoverageArc(key, first, second))
+            arcs.putIfAbsent(key, RoadGraphArc(key, first, second, Unit))
         }
     }
-    val adjacency = buildMap<String, MutableList<RoadCoverageArc>> {
-        arcs.values.forEach { arc ->
-            getOrPut(arc.from, ::mutableListOf) += arc
-            getOrPut(arc.to, ::mutableListOf) += arc
-        }
+    return linearRoadGraphPaths(arcs.values).map { path ->
+        path.nodes.map(coordinates::getValue)
     }
-    val visited = mutableSetOf<String>()
-    val merged = mutableListOf<List<SpurCoordinate>>()
-
-    fun consume(start: String, first: RoadCoverageArc) {
-        if (first.key in visited) return
-        val points = mutableListOf(coordinates.getValue(start))
-        var node = start
-        var arc = first
-        while (arc.key !in visited) {
-            visited += arc.key
-            node = arc.other(node)
-            points += coordinates.getValue(node)
-            val connected = adjacency.getValue(node)
-            if (connected.size != 2) break
-            arc = connected.firstOrNull { it.key !in visited } ?: break
-        }
-        if (points.size >= 2) merged += points
-    }
-
-    adjacency
-        .filterValues { it.size != 2 }
-        .forEach { (node, connected) -> connected.forEach { consume(node, it) } }
-    arcs.values.forEach { arc -> consume(arc.from, arc) }
-    return merged
 }
 
 private data class CoverageGridCell(

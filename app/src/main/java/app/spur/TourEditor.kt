@@ -367,31 +367,17 @@ private fun TourEditorScreen(
                         }
                     }
                     is EditorDeleteTarget.Location -> scope.launch {
-                        val deletedIndex = points.indexOf(target.point)
-                        val retained = points.filterNot { it.id == target.point.id }
-                        val retainedIds = retained.mapTo(mutableSetOf(), TrackPoint::id)
+                        val deletion = trackPointDeletion(
+                            points = points,
+                            moments = moments,
+                            deletedPointId = target.point.id,
+                        ) ?: return@launch
                         withContext(Dispatchers.IO) {
-                            store.updateTourPoints(tourId, retainedIds)
+                            store.updateTourPoints(tourId, deletion.retainedPointIds)
                         }
-                        points = retained
-                        saveMoments(
-                            moments.map { moment ->
-                                if (moment.trackPointId != target.point.id) {
-                                    moment
-                                } else {
-                                    moment.copy(
-                                        trackPointId = nearestTrackPoint(
-                                            retained,
-                                            moment.latitude,
-                                            moment.longitude,
-                                        )?.id,
-                                    )
-                                }
-                            },
-                        )
-                        selectedPointId = retained.getOrNull(
-                            deletedIndex.coerceAtMost(retained.lastIndex),
-                        )?.id
+                        points = deletion.retainedPoints
+                        saveMoments(deletion.updatedMoments)
+                        selectedPointId = deletion.selectedPointId
                         tour = withContext(Dispatchers.IO) { store.tour(tourId) }
                     }
                 }

@@ -18,6 +18,43 @@ internal data class TourPresentation(
     }
 }
 
+internal data class TrackPointDeletion(
+    val retainedPoints: List<TrackPoint>,
+    val retainedPointIds: Set<Long>,
+    val updatedMoments: List<MapMoment>,
+    val selectedPointId: Long?,
+)
+
+internal fun trackPointDeletion(
+    points: List<TrackPoint>,
+    moments: List<MapMoment>,
+    deletedPointId: Long,
+): TrackPointDeletion? {
+    val deletedIndex = points.indexOfFirst { it.id == deletedPointId }
+    if (deletedIndex < 0) return null
+    val retained = points.filterNot { it.id == deletedPointId }
+    return TrackPointDeletion(
+        retainedPoints = retained,
+        retainedPointIds = retained.mapTo(mutableSetOf(), TrackPoint::id),
+        updatedMoments = moments.map { moment ->
+            if (moment.trackPointId != deletedPointId) {
+                moment
+            } else {
+                moment.copy(
+                    trackPointId = nearestTrackPoint(
+                        retained,
+                        moment.latitude,
+                        moment.longitude,
+                    )?.id,
+                )
+            }
+        },
+        selectedPointId = retained.getOrNull(
+            deletedIndex.coerceAtMost(retained.lastIndex),
+        )?.id,
+    )
+}
+
 internal fun tourPresentation(
     tour: Tour,
     points: List<TrackPoint>,

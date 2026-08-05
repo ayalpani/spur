@@ -436,31 +436,24 @@ internal fun MapPage(
             }
         }
     }
+    val isTourBackNavigationAvailable =
+        !showStartTourBottomSheet &&
+        !showMainMenu &&
+        !showSettingsMenu &&
+        !showHomeAutoStartBottomSheet &&
+        !showThemePicker &&
+        !showDirectionBottomSheet &&
+        !showAboutBottomSheet &&
+        photoDetail == null &&
+        mediaDetail == null
     BackHandler(
-        enabled = archivedTour != null &&
-            !showStartTourBottomSheet &&
-            !showMainMenu &&
-            !showSettingsMenu &&
-            !showHomeAutoStartBottomSheet &&
-            !showThemePicker &&
-            !showDirectionBottomSheet &&
-            !showAboutBottomSheet &&
-            photoDetail == null &&
-            mediaDetail == null,
+        enabled = archivedTour != null && isTourBackNavigationAvailable,
         onBack = onCloseDisplayedTour,
     )
     BackHandler(
         enabled = isTourOverview &&
             archivedTour == null &&
-            !showStartTourBottomSheet &&
-            !showMainMenu &&
-            !showSettingsMenu &&
-            !showHomeAutoStartBottomSheet &&
-            !showThemePicker &&
-            !showDirectionBottomSheet &&
-            !showAboutBottomSheet &&
-            photoDetail == null &&
-            mediaDetail == null,
+            isTourBackNavigationAvailable,
         onBack = followOwnLocation,
     )
     val mapControlColors = colorTheme.mapControlColors
@@ -659,7 +652,7 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = areMapControlsVisible,
+                visible = areMapControlsVisible && archivedTour == null,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
@@ -767,7 +760,7 @@ internal fun MapPage(
                             if (
                                 shouldShowTourOverview(
                                     isFollowingLocation = isFollowingLocation,
-                                    isTourActive = isTourActive,
+                                    hasDisplayedTour = tour != null,
                                     routePointCount = routePoints.size,
                                 )
                             ) {
@@ -1258,37 +1251,25 @@ internal fun MapPage(
             onDismiss = { waypointToDelete = null },
             onConfirm = {
                 waypointToDelete = null
-                val deletedIndex = routePoints.indexOfFirst { it.id == selectedPoint.id }
-                if (deletedIndex < 0 || tour == null) return@EditorDeleteSheet
-                val retained = routePoints.filterNot { it.id == selectedPoint.id }
+                val deletion = trackPointDeletion(
+                    points = routePoints,
+                    moments = mapMoments,
+                    deletedPointId = selectedPoint.id,
+                ) ?: return@EditorDeleteSheet
+                if (tour == null) return@EditorDeleteSheet
                 scope.launch {
-                    if (!onDeleteWaypoint(tour.id, retained.mapTo(mutableSetOf(), TrackPoint::id))) {
+                    if (!onDeleteWaypoint(tour.id, deletion.retainedPointIds)) {
                         showFeedbackNotice(
                             FeedbackNoticeKind.ERROR,
                             "Wegpunkt konnte nicht gelöscht werden.",
                         )
                         return@launch
                     }
-                    val updatedMoments = mapMoments.map { moment ->
-                        if (moment.trackPointId != selectedPoint.id) {
-                            moment
-                        } else {
-                            moment.copy(
-                                trackPointId = nearestTrackPoint(
-                                    retained,
-                                    moment.latitude,
-                                    moment.longitude,
-                                )?.id,
-                            )
-                        }
-                    }
                     withContext(Dispatchers.IO) {
-                        context.saveMapMoments(updatedMoments)
+                        context.saveMapMoments(deletion.updatedMoments)
                     }
-                    mapMoments = updatedMoments
-                    selectedEditorPointId = retained.getOrNull(
-                        deletedIndex.coerceAtMost(retained.lastIndex),
-                    )?.id
+                    mapMoments = deletion.updatedMoments
+                    selectedEditorPointId = deletion.selectedPointId
                 }
             },
         )
