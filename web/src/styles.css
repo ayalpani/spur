@@ -181,79 +181,27 @@ h1 {
 }
 
 .phone-scene {
-  position: relative;
-  overflow: hidden;
   display: grid;
   width: 100%;
-  min-height: clamp(650px, 56vw, 820px);
+  min-height: clamp(650px, 54vw, 780px);
   margin: 0;
-  border: 1px solid rgb(24 32 28 / 12%);
-  border-radius: 40px;
   place-items: center;
-  isolation: isolate;
-}
-
-.phone-scene::before {
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  background-image: linear-gradient(rgb(24 32 28 / 5%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(24 32 28 / 5%) 1px, transparent 1px);
-  background-size: 46px 46px;
-  content: '';
-  mask-image: linear-gradient(to bottom, transparent, black 24%, black 76%, transparent);
-}
-
-.phone-scene::after {
-  position: absolute;
-  z-index: -1;
-  left: -0.1em;
-  color: rgb(24 32 28 / 5%);
-  content: 'SPUR';
-  font-size: clamp(6rem, 11vw, 11rem);
-  font-weight: 900;
-  letter-spacing: -0.08em;
-  transform: rotate(-90deg);
-}
-
-.phone-scene--green {
-  background: rgb(67 168 115 / 18%);
-}
-
-.phone-scene--sand {
-  background: var(--sand);
-}
-
-.phone-scene--ink {
-  background: var(--ink);
-}
-
-.phone-scene--gray {
-  background: rgb(100 116 139 / 16%);
-}
-
-.phone-scene--white {
-  background: var(--white);
-}
-
-.phone-scene--ink::after {
-  color: rgb(255 255 255 / 7%);
 }
 
 .phone-frame {
   position: relative;
-  width: min(330px, calc(100% - 90px));
-  padding: 9px;
-  border: 1px solid rgb(255 255 255 / 28%);
-  border-radius: 54px;
+  width: min(320px, calc(100% - 90px));
+  padding: 6px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 28px;
   background: var(--ink);
-  box-shadow: 0 30px 68px rgb(24 32 28 / 32%);
+  box-shadow: 0 24px 54px rgb(24 32 28 / 22%);
 }
 
 .phone-screen {
   overflow: hidden;
   width: 100%;
-  border-radius: 45px;
+  border-radius: 22px;
   background: var(--ink);
   line-height: 0;
 }
@@ -264,46 +212,37 @@ h1 {
   height: auto;
 }
 
-.phone-island {
+.phone-camera {
   position: absolute;
   z-index: 2;
-  top: 20px;
+  top: 14px;
   left: 50%;
-  width: 88px;
-  height: 23px;
-  border-radius: 999px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgb(100 116 139 / 62%);
+  border-radius: 50%;
   background: var(--black);
   transform: translateX(-50%);
 }
 
-.phone-island i {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: rgb(100 116 139 / 72%);
-}
-
 .phone-button {
   position: absolute;
-  width: 4px;
+  width: 3px;
   border-radius: 4px;
   background: var(--ink);
 }
 
 .phone-button--volume {
   top: 116px;
-  left: -4px;
-  height: 62px;
-  box-shadow: 0 74px 0 var(--ink);
+  left: -3px;
+  height: 52px;
+  box-shadow: 0 62px 0 var(--ink);
 }
 
 .phone-button--power {
-  top: 178px;
-  right: -4px;
-  height: 84px;
+  top: 166px;
+  right: -3px;
+  height: 70px;
 }
 
 .hero-caption {
@@ -540,7 +479,7 @@ nav a:hover,
   }
 
   .phone-frame {
-    width: min(330px, calc(100% - 90px));
+    width: min(320px, calc(100% - 90px));
   }
 
   .intro {
@@ -612,29 +551,24 @@ nav a:hover,
 
   .phone-scene,
   .feature .phone-scene {
-    min-height: 640px;
-    border-radius: 26px;
-  }
-
-  .phone-scene::after {
-    display: none;
+    min-height: 620px;
   }
 
   .phone-frame,
   .feature .phone-frame {
     width: min(280px, calc(100% - 48px));
-    padding: 7px;
-    border-radius: 46px;
+    padding: 5px;
+    border-radius: 24px;
   }
 
   .phone-screen {
-    border-radius: 39px;
+    border-radius: 19px;
   }
 
-  .phone-island {
-    top: 17px;
-    width: 76px;
-    height: 20px;
+  .phone-camera {
+    top: 12px;
+    width: 10px;
+    height: 10px;
   }
 
   .hero-caption {

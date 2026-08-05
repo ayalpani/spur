@@ -7,7 +7,6 @@ const screens = [
     copy: 'Die Tour bleibt auf der Karte sichtbar, während Spur Zeit, Wegpunkte und Strecke zuverlässig aufzeichnet – auch bei gesperrtem Bildschirm.',
     detail: 'Ein klarer Status, große Einhand-Bedienung und kein Fitness-Dashboard, das sich zwischen dich und deinen Weg stellt.',
     alt: 'Laufende Spur-Tour auf der Karte mit Dauer, Distanz und Wegpunktleiste',
-    tone: 'green',
   },
   {
     src: '/screens/03-moments.webp',
@@ -17,7 +16,6 @@ const screens = [
     copy: 'Ein Foto, ein Video, eine Sprachnachricht oder ein Emoji: Momente landen genau an dem Ort, an dem sie passiert sind.',
     detail: 'Die Auswahl bleibt unten beim Daumen. Kein Formular, kein Feed, kein Umweg.',
     alt: 'Moment-Auswahl mit Foto, Video, Sprache und Emoji über der Spur-Karte',
-    tone: 'sand',
   },
   {
     src: '/screens/04-emoji-moment.webp',
@@ -27,7 +25,6 @@ const screens = [
     copy: 'Jeder Moment wird Teil der Karte. So erzählt ein Weg später mehr als eine Linie von A nach B.',
     detail: 'Marker, Medien und Notizen bleiben lokal auf dem Gerät und tauchen beim nächsten Öffnen wieder dort auf.',
     alt: 'Herz-Moment als Marker auf der Spur-Karte am Potsdamer Platz',
-    tone: 'ink',
   },
   {
     src: '/screens/05-home.webp',
@@ -37,7 +34,6 @@ const screens = [
     copy: 'Home fasst die letzten sieben Tage ruhig zusammen und hält jede Tour mit Zeit, Distanz und Kartenvorschau bereit.',
     detail: 'Keine Rangliste. Kein Vergleich. Nur deine Aktivität und die Orte, die für dich etwas bedeuten.',
     alt: 'Spur Home mit Sieben-Tage-Aktivität und lokalem Tourverlauf',
-    tone: 'gray',
   },
   {
     src: '/screens/06-complete.webp',
@@ -47,7 +43,6 @@ const screens = [
     copy: 'Nach dem Ankommen zeigt Spur die komplette Route und die wichtigsten Werte in einer einzigen, ruhigen Abschlussansicht.',
     detail: 'Danach wartet die Tour im lokalen Archiv – gemeinsam mit allen Momenten, die unterwegs entstanden sind.',
     alt: 'Abgeschlossene Spur-Tour mit Kartenübersicht, Zeit, Strecke und Tempo',
-    tone: 'white',
   },
 ]
 
@@ -67,13 +62,13 @@ function SpurMark({ small = false }) {
   )
 }
 
-function PhoneFrame({ src, alt, tone = 'sand', eager = false }) {
+function PhoneFrame({ src, alt, eager = false }) {
   return (
-    <figure className={`phone-scene phone-scene--${tone}`}>
+    <figure className="phone-scene">
       <div className="phone-frame">
         <span className="phone-button phone-button--volume" aria-hidden="true" />
         <span className="phone-button phone-button--power" aria-hidden="true" />
-        <span className="phone-island" aria-hidden="true"><i /></span>
+        <span className="phone-camera" aria-hidden="true" />
         <div className="phone-screen">
           <img
             src={src}
@@ -142,7 +137,6 @@ function App() {
             <PhoneFrame
               src="/screens/01-map.webp"
               alt="Spur-Karte mit Tour-starten-Aktion und einem gesetzten Herz-Moment"
-              tone="green"
               eager
             />
             <div className="hero-caption">
