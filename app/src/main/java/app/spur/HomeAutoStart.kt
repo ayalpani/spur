@@ -298,7 +298,12 @@ internal fun Context.registerHomeExitGeofence(): Boolean {
     return runCatching {
         LocationServices.getGeofencingClient(this)
             .addGeofences(request, homeGeofencePendingIntent())
+            .addOnFailureListener {
+                recordHomeDepartureRuntimeFailure("geofence_registration", it)
+            }
         true
+    }.onFailure {
+        recordHomeDepartureRuntimeFailure("geofence_registration", it)
     }.getOrDefault(false)
 }
 
