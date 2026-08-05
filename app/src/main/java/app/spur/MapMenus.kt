@@ -163,7 +163,7 @@ internal fun SettingsMenu(
             onClick = onOpenHomeAutoStart,
         )
         SheetMenuNavigationItem(
-            label = "Backup & Wiederherstellung",
+            label = "Backup",
             onClick = onOpenBackup,
         )
         SheetMenuNavigationItem(label = "Theme", onClick = onOpenTheme)

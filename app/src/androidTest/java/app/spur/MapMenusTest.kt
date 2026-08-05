@@ -88,7 +88,7 @@ class MapMenusTest {
         }
 
         assertTextDoesNotExist("Tour")
-        assertTextExists("Backup & Wiederherstellung")
+        assertTextExists("Backup")
     }
 
     private fun assertTextExists(text: String) {
