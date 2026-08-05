@@ -100,13 +100,6 @@ h1 {
   border-top: 1px solid rgb(24 32 28 / 14%);
 }
 
-.section-heading {
-  margin: 0 0 40px;
-  font-size: clamp(2.6rem, 4vw, 4.5rem);
-  line-height: 0.95;
-  text-align: center;
-}
-
 .screen-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -259,11 +252,6 @@ footer p {
 
   .screens {
     padding: 48px 20px 80px;
-  }
-
-  .section-heading {
-    margin-bottom: 36px;
-    font-size: 2.8rem;
   }
 
   .screen-grid {

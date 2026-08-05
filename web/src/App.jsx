@@ -129,8 +129,7 @@ function App() {
           </p>
         </section>
 
-        <section className="screens" id="screens" aria-labelledby="screens-title">
-          <h2 className="section-heading" id="screens-title">Spur in sechs Screens.</h2>
+        <section className="screens" id="screens">
           <div className="screen-grid">
             {screens.map((screen, index) => (
               <ScreenCard key={screen.src} screen={screen} eager={index < 3} />
