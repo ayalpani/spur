@@ -864,6 +864,8 @@ class HomeExitReceiver : BroadcastReceiver() {
                             source = HomeDepartureTriggerSource.ACTIVITY_TRANSITION,
                         )
                     }
+                } catch (error: Exception) {
+                    context.recordHomeDepartureRuntimeFailure("activity_receiver", error)
                 } finally {
                     pendingResult.finish()
                 }
@@ -890,6 +892,8 @@ class HomeExitReceiver : BroadcastReceiver() {
                             )
                         }
                     }
+                } catch (error: Exception) {
+                    context.recordHomeDepartureRuntimeFailure("pre_roll_receiver", error)
                 } finally {
                     pendingResult.finish()
                 }
@@ -939,6 +943,8 @@ class HomeExitReceiver : BroadcastReceiver() {
                     candidateAt = System.currentTimeMillis(),
                     source = HomeDepartureTriggerSource.GEOFENCE,
                 )
+            } catch (error: Exception) {
+                context.recordHomeDepartureRuntimeFailure("geofence_receiver", error)
             } finally {
                 pendingResult.finish()
             }
