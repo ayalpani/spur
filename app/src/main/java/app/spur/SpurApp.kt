@@ -345,6 +345,18 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                 )
             } else {
                 Box(modifier = Modifier.fillMaxSize()) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = SpurRoute.MAP,
+                        modifier = Modifier.fillMaxSize(),
+                        enterTransition = { EnterTransition.None },
+                        exitTransition = { ExitTransition.None },
+                        popEnterTransition = { EnterTransition.None },
+                        popExitTransition = { ExitTransition.None },
+                    ) {
+                        composable(SpurRoute.MAP) {}
+                        composable(SpurRoute.HOME) {}
+                    }
                     val mapTour = displayedTour.takeUnless {
                         pendingDeparturePreview != null && activeTour == null
                     }
@@ -489,18 +501,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                             initialMapLoadingComplete = true
                         },
                     )
-                    NavHost(
-                        navController = navController,
-                        startDestination = SpurRoute.MAP,
-                        modifier = Modifier.fillMaxSize(),
-                        enterTransition = { EnterTransition.None },
-                        exitTransition = { ExitTransition.None },
-                        popEnterTransition = { EnterTransition.None },
-                        popExitTransition = { ExitTransition.None },
-                    ) {
-                        composable(SpurRoute.MAP) {}
-                        composable(SpurRoute.HOME) {}
-                    }
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         val panelWidth = with(LocalDensity.current) {
                             maxWidth.roundToPx()
