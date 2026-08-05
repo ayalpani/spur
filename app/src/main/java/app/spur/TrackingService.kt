@@ -158,6 +158,8 @@ class TrackingService : Service() {
                 beginDepartureConfirmation(requestedAt)
                 return START_STICKY
             }
+
+            ACTION_ARM_HOME_DEPARTURE -> return restoreTracking()
         }
 
         val requestedTourId = intent?.getLongExtra(EXTRA_TOUR_ID, -1L)?.takeIf { it > 0 }
