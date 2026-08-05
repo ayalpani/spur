@@ -218,20 +218,22 @@ internal fun HomeScreen(
                         items = section.tours,
                         key = { _, item -> item.tour.id },
                     ) { index, item ->
-                        HistoryTourRow(
-                            item = item,
-                            onClick = { onOpenTour(item.tour.id) },
-                            onOpenPhoto = { photo ->
-                                onOpenPhoto(
-                                    photo,
-                                    orderedPhotoMoments(item.moments),
-                                )
-                            },
-                        )
-                        if (index < section.tours.lastIndex) {
-                            HorizontalDivider(
-                                color = Ink.copy(alpha = 0.12f),
+                        Column(modifier = Modifier.animateItem()) {
+                            HistoryTourRow(
+                                item = item,
+                                onClick = { onOpenTour(item.tour.id) },
+                                onOpenPhoto = { photo ->
+                                    onOpenPhoto(
+                                        photo,
+                                        orderedPhotoMoments(item.moments),
+                                    )
+                                },
                             )
+                            if (index < section.tours.lastIndex) {
+                                HorizontalDivider(
+                                    color = Ink.copy(alpha = 0.12f),
+                                )
+                            }
                         }
                     }
                 }
@@ -489,13 +491,5 @@ internal fun historyTourMetadata(tour: Tour): String {
         formatMeters(tour.distanceMeters)
 }
 
-internal fun formatHistoryDuration(durationMillis: Long): String {
-    val totalMinutes = durationMillis.coerceAtLeast(0L) / 60_000L
-    val hours = totalMinutes / 60L
-    val minutes = totalMinutes % 60L
-    return when {
-        hours > 0L -> "$hours h ${minutes.toString().padStart(2, '0')} min"
-        totalMinutes > 0L -> "$totalMinutes min"
-        else -> "< 1 min"
-    }
-}
+internal fun formatHistoryDuration(durationMillis: Long): String =
+    formatDurationMinutes(durationMillis, zeroMinutesLabel = "< 1 min")

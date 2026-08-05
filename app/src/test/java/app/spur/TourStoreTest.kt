@@ -60,15 +60,99 @@ class TourStoreTest {
     }
 
     @Test
-    fun movingMoreThanOneHundredMetersDoesNotCluster() {
+    fun localMovementAcrossAStreetDoesNotBecomeAPause() {
         assertNull(
             stationaryCluster(
                 listOf(
                     point(1, 52.52000, 0L),
                     point(2, 52.52010, 150_000L),
-                    point(3, 52.52100, 300_000L),
+                    point(3, 52.52035, 300_000L),
                 ),
             ),
+        )
+    }
+
+    @Test
+    fun quietFiveMinuteGapStartsAPauseWithoutStoredGpsJitter() {
+        assertTrue(isStationaryPauseCandidate(300_000L, 4f, 8f))
+        assertFalse(isStationaryPauseCandidate(299_999L, 4f, 8f))
+        assertFalse(isStationaryPauseCandidate(300_000L, 30f, 8f))
+        assertFalse(isStationaryPauseCandidate(300_000L, 4f, 41f))
+    }
+
+    @Test
+    fun pauseExitUsesGpsAccuracyInsteadOfOneHundredMeters() {
+        assertEquals(12.0, stationaryExitDistanceMeters(8f), 0.0)
+        assertEquals(24.0, stationaryExitDistanceMeters(24f), 0.0)
+    }
+
+    @Test
+    fun collapsedStationaryPointsExposePauseDuration() {
+        val pauses = tourPauses(
+            listOf(
+                point(1, 52.52000, 0L),
+                TrackPoint(
+                    id = 2,
+                    latitude = 52.52010,
+                    longitude = 13.405,
+                    recordedAt = 720_000L,
+                    pauseStartedAt = 300_000L,
+                    sampleCount = 12,
+                ),
+                TrackPoint(
+                    id = 3,
+                    latitude = 52.52020,
+                    longitude = 13.405,
+                    recordedAt = 900_000L,
+                    pauseStartedAt = 700_001L,
+                ),
+            ),
+        )
+
+        assertEquals(1, pauses.size)
+        assertEquals(2L, pauses.single().pointId)
+        assertEquals(420_000L, pauses.single().durationMillis)
+    }
+
+    @Test
+    fun stationaryCollapseDeltaMatchesFullDistanceRecalculation() {
+        val previous = point(1, 52.51980, 0L)
+        val replaced = listOf(
+            point(2, 52.52000, 1_000L),
+            point(3, 52.52020, 151_000L),
+            point(4, 52.52010, 301_000L),
+        )
+        val replacement = requireNotNull(stationaryCluster(replaced))
+        val oldDistance = trackDistanceMeters(listOf(previous) + replaced)
+        val collapsedPoint = TrackPoint(
+            id = replaced.last().id,
+            latitude = replacement.latitude,
+            longitude = replacement.longitude,
+            recordedAt = replacement.recordedAt,
+        )
+        val expectedDistance = trackDistanceMeters(listOf(previous, collapsedPoint))
+
+        assertEquals(
+            expectedDistance,
+            oldDistance + stationaryCollapseDistanceDelta(previous, replaced, replacement),
+            0.001,
+        )
+    }
+
+    @Test
+    fun stationaryCollapseDeltaMatchesFullRecalculationAtTourStart() {
+        val replaced = listOf(
+            point(1, 52.52000, 0L),
+            point(2, 52.52020, 150_000L),
+            point(3, 52.52010, 300_000L),
+        )
+        val replacement = requireNotNull(stationaryCluster(replaced))
+
+        assertEquals(
+            0.0,
+            trackDistanceMeters(replaced) +
+                stationaryCollapseDistanceDelta(null, replaced, replacement),
+            0.001,
         )
     }
 

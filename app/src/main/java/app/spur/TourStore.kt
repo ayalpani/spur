@@ -20,6 +20,37 @@ data class Tour(
     val title: String? = null,
 )
 
+internal data class TourNotificationSummary(
+    val id: Long,
+    val startedAt: Long,
+    val distanceMeters: Double,
+)
+
+internal data class TourRevision(
+    val id: Long,
+    val startedAt: Long,
+    val endedAt: Long?,
+    val distanceMeters: Double,
+    val pointCount: Int,
+    val title: String?,
+    val maximumPointId: Long?,
+    val maximumPointRecordedAt: Long?,
+) {
+    fun asTour() = Tour(
+        id = id,
+        startedAt = startedAt,
+        endedAt = endedAt,
+        distanceMeters = distanceMeters,
+        pointCount = pointCount,
+        title = title,
+    )
+}
+
+internal fun shouldReloadTour(
+    previous: TourRevision?,
+    current: TourRevision?,
+): Boolean = previous != current
+
 internal const val TourTitleMaximumCharacters = 80
 
 internal fun normalizeTourTitle(title: String): String? =
@@ -30,7 +61,20 @@ data class TrackPoint(
     val latitude: Double,
     val longitude: Double,
     val recordedAt: Long,
+    val pauseStartedAt: Long? = null,
+    val sampleCount: Int = 1,
 )
+
+internal data class TourPause(
+    val pointId: Long,
+    val latitude: Double,
+    val longitude: Double,
+    val startedAt: Long,
+    val endedAt: Long,
+) {
+    val durationMillis: Long
+        get() = (endedAt - startedAt).coerceAtLeast(0L)
+}
 
 internal data class TourStartResult(
     val id: Long,
@@ -46,8 +90,34 @@ internal data class StationaryCluster(
 )
 
 private const val StationaryWindowMillis = 5 * 60 * 1_000L
-private const val StationaryMaximumSpreadMeters = 100.0
+private const val StationaryMaximumSpreadMeters = 25.0
+private const val StationaryMinimumExitMeters = 12.0
 private const val StationaryExitFixCount = 3
+
+internal fun tourPauses(points: List<TrackPoint>): List<TourPause> =
+    points.mapNotNull { point ->
+        val startedAt = point.pauseStartedAt ?: return@mapNotNull null
+        if (point.recordedAt - startedAt < StationaryWindowMillis) return@mapNotNull null
+        TourPause(
+            pointId = point.id,
+            latitude = point.latitude,
+            longitude = point.longitude,
+            startedAt = startedAt,
+            endedAt = point.recordedAt,
+        )
+    }
+
+internal fun isStationaryPauseCandidate(
+    elapsedMillis: Long,
+    distanceMeters: Float,
+    accuracyMeters: Float,
+): Boolean =
+    elapsedMillis >= StationaryWindowMillis &&
+        accuracyMeters <= 40f &&
+        distanceMeters <= maxOf(StationaryMaximumSpreadMeters, accuracyMeters.toDouble())
+
+internal fun stationaryExitDistanceMeters(accuracyMeters: Float): Double =
+    maxOf(StationaryMinimumExitMeters, accuracyMeters.toDouble())
 
 internal fun stationaryCluster(
     points: List<TrackPoint>,
@@ -62,7 +132,7 @@ internal fun stationaryCluster(
             val from = ordered[fromIndex]
             val to = ordered[toIndex]
             if (
-                coordinateDistanceMeters(
+                haversineDistanceMeters(
                     fromLatitude = from.latitude,
                     fromLongitude = from.longitude,
                     toLatitude = to.latitude,
@@ -104,7 +174,7 @@ internal class GpsStartGate(
     }
 }
 
-internal fun coordinateDistanceMeters(
+internal fun haversineDistanceMeters(
     fromLatitude: Double,
     fromLongitude: Double,
     toLatitude: Double,
@@ -124,13 +194,31 @@ internal fun coordinateDistanceMeters(
 
 internal fun trackDistanceMeters(points: List<TrackPoint>): Double =
     points.zipWithNext().sumOf { (from, to) ->
-        coordinateDistanceMeters(
+        haversineDistanceMeters(
             fromLatitude = from.latitude,
             fromLongitude = from.longitude,
             toLatitude = to.latitude,
             toLongitude = to.longitude,
         )
     }
+
+internal fun stationaryCollapseDistanceDelta(
+    previous: TrackPoint?,
+    replaced: List<TrackPoint>,
+    replacement: StationaryCluster,
+): Double {
+    if (replaced.isEmpty()) return 0.0
+    val oldDistance = trackDistanceMeters(listOfNotNull(previous) + replaced)
+    val newDistance = previous?.let {
+        haversineDistanceMeters(
+            fromLatitude = it.latitude,
+            fromLongitude = it.longitude,
+            toLatitude = replacement.latitude,
+            toLongitude = replacement.longitude,
+        )
+    } ?: 0.0
+    return newDistance - oldDistance
+}
 
 internal fun automaticTourEndRecordedAt(
     lastRecordedAt: Long?,
@@ -368,6 +456,26 @@ class TourStore(context: Context) :
         val distance = previousLocation?.distanceTo(location)
         val elapsed = previousLocation?.let { location.time - it.time }
         if (
+            !allowFastMovement &&
+            storedPrevious != null &&
+            distance != null &&
+            elapsed != null &&
+            isStationaryPauseCandidate(elapsed, distance, accuracyMeters)
+        ) {
+            updateStationaryCluster(
+                db = db,
+                tourId = tourId,
+                clusterPoint = storedPrevious,
+                latitude = (storedPrevious.latitude + location.latitude) / 2,
+                longitude = (storedPrevious.longitude + location.longitude) / 2,
+                recordedAt = location.time,
+                accuracyMeters = accuracyMeters,
+                sampleCount = storedPrevious.clusterSampleCount.coerceAtLeast(1) + 1,
+                clusterStartedAt = storedPrevious.recordedAt,
+            )
+            return true
+        }
+        if (
             !shouldAcceptPoint(
                 accuracyMeters = accuracyMeters,
                 distanceMeters = distance,
@@ -433,7 +541,7 @@ class TourStore(context: Context) :
         val distance = clusterLocation.distanceTo(location)
         val elapsed = location.time - clusterPoint.recordedAt
         if (accuracyMeters > 40f || elapsed <= 0L) return false
-        if (distance <= StationaryMaximumSpreadMeters) {
+        if (distance <= stationaryExitDistanceMeters(accuracyMeters)) {
             stationaryExitFixes.remove(tourId)
             val oldCount = clusterPoint.clusterSampleCount.coerceAtLeast(1)
             val newCount = oldCount + 1
@@ -532,6 +640,12 @@ class TourStore(context: Context) :
         val cluster = stationaryCluster(recent) ?: return
         val representative = recent.last()
         val removedIds = recent.dropLast(1).map(TrackPoint::id)
+        val previous = pointBefore(db, tourId, recent.first())
+        val distanceDelta = stationaryCollapseDistanceDelta(
+            previous = previous,
+            replaced = recent,
+            replacement = cluster,
+        )
         db.beginTransaction()
         try {
             if (removedIds.isNotEmpty()) {
@@ -553,19 +667,51 @@ class TourStore(context: Context) :
                 "tour_id = ? AND id = ?",
                 arrayOf(tourId.toString(), representative.id.toString()),
             )
-            db.update(
-                "tours",
-                ContentValues().apply {
-                    put("distance_meters", trackDistanceMeters(points(tourId)))
-                },
-                "id = ?",
-                arrayOf(tourId.toString()),
+            db.execSQL(
+                """
+                UPDATE tours
+                SET distance_meters = MAX(0, distance_meters + ?)
+                WHERE id = ?
+                """.trimIndent(),
+                arrayOf(distanceDelta, tourId),
             )
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
         }
     }
+
+    private fun pointBefore(
+        db: SQLiteDatabase,
+        tourId: Long,
+        point: TrackPoint,
+    ): TrackPoint? =
+        db.rawQuery(
+            """
+            SELECT id, latitude, longitude, recorded_at
+            FROM track_points
+            WHERE tour_id = ? AND (recorded_at < ? OR (recorded_at = ? AND id < ?))
+            ORDER BY recorded_at DESC, id DESC
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(
+                tourId.toString(),
+                point.recordedAt.toString(),
+                point.recordedAt.toString(),
+                point.id.toString(),
+            ),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                null
+            } else {
+                TrackPoint(
+                    id = cursor.getLong(0),
+                    latitude = cursor.getDouble(1),
+                    longitude = cursor.getDouble(2),
+                    recordedAt = cursor.getLong(3),
+                )
+            }
+        }
 
     private fun pointsSinceWindowStart(
         db: SQLiteDatabase,
@@ -605,6 +751,7 @@ class TourStore(context: Context) :
         recordedAt: Long,
         accuracyMeters: Float,
         sampleCount: Int,
+        clusterStartedAt: Long? = clusterPoint.clusterStartedAt,
     ) {
         val previousPoint = db.rawQuery(
             """
@@ -643,6 +790,7 @@ class TourStore(context: Context) :
                     put("longitude", longitude)
                     put("recorded_at", recordedAt)
                     put("accuracy_meters", accuracyMeters)
+                    put("cluster_started_at", clusterStartedAt)
                     put("cluster_sample_count", sampleCount)
                 },
                 "tour_id = ? AND id = ?",
@@ -692,7 +840,7 @@ class TourStore(context: Context) :
             prepared.forEach { location ->
                 val duplicate = known.any {
                     kotlin.math.abs(it.recordedAt - location.recordedAt) <= 1_000L &&
-                        coordinateDistanceMeters(
+                        haversineDistanceMeters(
                             it.latitude,
                             it.longitude,
                             location.latitude,
@@ -755,6 +903,79 @@ class TourStore(context: Context) :
     fun activeTour(): Tour? =
         queryTours(where = "t.ended_at IS NULL", tail = "ORDER BY t.started_at DESC LIMIT 1")
             .firstOrNull()
+
+    @Synchronized
+    internal fun activeTourId(): Long? =
+        readableDatabase.rawQuery(
+            """
+            SELECT id
+            FROM tours
+            WHERE ended_at IS NULL
+            ORDER BY started_at DESC
+            LIMIT 1
+            """.trimIndent(),
+            emptyArray(),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
+
+    @Synchronized
+    internal fun tourRevision(id: Long): TourRevision? =
+        readableDatabase.rawQuery(
+            """
+            SELECT
+                t.id,
+                t.started_at,
+                t.ended_at,
+                t.distance_meters,
+                COUNT(p.id),
+                t.activity,
+                MAX(p.id),
+                (
+                    SELECT latest.recorded_at
+                    FROM track_points latest
+                    WHERE latest.tour_id = t.id
+                    ORDER BY latest.id DESC
+                    LIMIT 1
+                )
+            FROM tours t
+            LEFT JOIN track_points p ON p.tour_id = t.id
+            WHERE t.id = ?
+            GROUP BY t.id
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(id.toString()),
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                null
+            } else {
+                TourRevision(
+                    id = cursor.getLong(0),
+                    startedAt = cursor.getLong(1),
+                    endedAt = if (cursor.isNull(2)) null else cursor.getLong(2),
+                    distanceMeters = cursor.getDouble(3),
+                    pointCount = cursor.getInt(4),
+                    title = cursor.getString(5),
+                    maximumPointId = if (cursor.isNull(6)) null else cursor.getLong(6),
+                    maximumPointRecordedAt = if (cursor.isNull(7)) null else cursor.getLong(7),
+                )
+            }
+        }
+
+    @Synchronized
+    internal fun activeTourNotificationSummary(): TourNotificationSummary? =
+        queryTourNotificationSummary(
+            where = "ended_at IS NULL",
+            tail = "ORDER BY started_at DESC LIMIT 1",
+        )
+
+    @Synchronized
+    internal fun tourNotificationSummary(id: Long): TourNotificationSummary? =
+        queryTourNotificationSummary(
+            where = "id = ?",
+            args = arrayOf(id.toString()),
+            tail = "LIMIT 1",
+        )
 
     @Synchronized
     fun tour(id: Long): Tour? =
@@ -924,7 +1145,8 @@ class TourStore(context: Context) :
     private fun points(db: SQLiteDatabase, tourId: Long): List<TrackPoint> =
         db.rawQuery(
             """
-            SELECT id, latitude, longitude, recorded_at
+            SELECT id, latitude, longitude, recorded_at,
+                   cluster_started_at, cluster_sample_count
             FROM track_points
             WHERE tour_id = ?
             ORDER BY recorded_at, id
@@ -939,6 +1161,8 @@ class TourStore(context: Context) :
                             latitude = cursor.getDouble(1),
                             longitude = cursor.getDouble(2),
                             recordedAt = cursor.getLong(3),
+                            pauseStartedAt = if (cursor.isNull(4)) null else cursor.getLong(4),
+                            sampleCount = cursor.getInt(5),
                         ),
                     )
                 }
@@ -1019,6 +1243,31 @@ class TourStore(context: Context) :
                         ),
                     )
                 }
+            }
+        }
+
+    private fun queryTourNotificationSummary(
+        where: String,
+        args: Array<String> = emptyArray(),
+        tail: String,
+    ): TourNotificationSummary? =
+        readableDatabase.rawQuery(
+            """
+            SELECT id, started_at, distance_meters
+            FROM tours
+            WHERE $where
+            $tail
+            """.trimIndent(),
+            args,
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                null
+            } else {
+                TourNotificationSummary(
+                    id = cursor.getLong(0),
+                    startedAt = cursor.getLong(1),
+                    distanceMeters = cursor.getDouble(2),
+                )
             }
         }
 }

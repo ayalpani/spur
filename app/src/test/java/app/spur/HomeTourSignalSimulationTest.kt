@@ -297,7 +297,7 @@ class HomeTourSignalSimulationTest {
     private fun BufferedHomeLocation.coordinate() = SpurCoordinate(latitude, longitude)
 
     private fun distanceMeters(from: SpurCoordinate, to: SpurCoordinate) =
-        coordinateDistanceMeters(
+        haversineDistanceMeters(
             fromLatitude = from.latitude,
             fromLongitude = from.longitude,
             toLatitude = to.latitude,

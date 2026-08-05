@@ -51,6 +51,19 @@ import java.io.File
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
+internal data class RestoredActiveTourState(
+    val activeTour: Tour,
+    val displayedTourId: Long,
+)
+
+internal fun restoredActiveTourState(
+    activeTour: Tour,
+    displayedTourId: Long?,
+) = RestoredActiveTourState(
+    activeTour = activeTour,
+    displayedTourId = displayedTourId ?: activeTour.id,
+)
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 internal fun SpurApp(splashExitComplete: Boolean) {
@@ -62,13 +75,16 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var displayedTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var displayedTourRequest by rememberSaveable { mutableLongStateOf(0L) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
-    var roadHistoryFingerprint by remember { mutableStateOf(RoadHistoryFingerprint()) }
+    var pendingDeparturePreview by remember {
+        mutableStateOf<PendingDeparturePreview?>(null)
+    }
+    var displayedTourRevision by remember { mutableStateOf<TourRevision?>(null) }
+    var roadTraversalRefreshRevision by remember { mutableLongStateOf(0L) }
     var roadTraversalFingerprint by remember { mutableStateOf<RoadHistoryFingerprint?>(null) }
     var historyRevision by remember { mutableLongStateOf(0L) }
     var photoRevision by remember { mutableLongStateOf(0L) }
     var historyPhotoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var historyPhotos by remember { mutableStateOf(emptyList<MapMoment>()) }
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var initialMapLoadingComplete by rememberSaveable { mutableStateOf(false) }
     var completionTour by remember { mutableStateOf<Tour?>(null) }
@@ -127,6 +143,19 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         }
     }
 
+    LaunchedEffect(isAppResumed, activeTour?.id) {
+        if (!isAppResumed || activeTour != null) {
+            pendingDeparturePreview = null
+            return@LaunchedEffect
+        }
+        while (true) {
+            pendingDeparturePreview = withContext(Dispatchers.IO) {
+                context.loadPendingDeparturePreview()
+            }
+            delay(1_000L)
+        }
+    }
+
     LaunchedEffect(isAppResumed, activeTour?.id, completionRefreshRequest) {
         if (!isAppResumed) return@LaunchedEffect
         val candidate = withContext(Dispatchers.IO) {
@@ -174,61 +203,68 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         if (result.first) historyRevision++
     }
 
-    LaunchedEffect(hasLocationPermission, activeTour?.id, displayedTourId) {
-        if (!hasLocationPermission || activeTour != null) return@LaunchedEffect
+    LaunchedEffect(isAppResumed, hasLocationPermission, activeTour?.id, displayedTourId) {
+        if (!isAppResumed || !hasLocationPermission || activeTour != null) {
+            return@LaunchedEffect
+        }
         while (true) {
-            val restored = withContext(Dispatchers.IO) { store.activeTour() }
-            if (restored == null) {
+            val restoredTour = withContext(Dispatchers.IO) {
+                val restoredId = store.activeTourId() ?: return@withContext null
+                store.tour(restoredId)?.takeIf { it.endedAt == null }
+            }
+            if (restoredTour == null) {
                 delay(1_000L)
                 continue
             }
-            activeTour = restored
-            if (displayedTourId == null) {
-                displayedTour = restored
-                displayedTourId = restored.id
+            val restored = restoredActiveTourState(restoredTour, displayedTourId)
+            if (displayedTourId != restored.displayedTourId) {
+                displayedTourId = restored.displayedTourId
                 displayedTourRequest++
             }
             historyRevision++
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, TrackingService::class.java)
-                    .putExtra(TrackingService.EXTRA_TOUR_ID, restored.id),
+                    .putExtra(TrackingService.EXTRA_TOUR_ID, restored.activeTour.id),
             )
+            activeTour = restored.activeTour
             break
         }
     }
 
-    LaunchedEffect(activeTour?.id, displayedTourId, historyRevision) {
+    LaunchedEffect(isAppResumed, activeTour?.id, displayedTourId, historyRevision) {
+        if (!isAppResumed) return@LaunchedEffect
         val id = displayedTourId ?: activeTour?.id
         if (id == null) {
             displayedTour = null
             routePoints = emptyList()
+            displayedTourRevision = null
             return@LaunchedEffect
         }
         while (true) {
-            val result = withContext(Dispatchers.IO) {
-                store.tour(id) to store.points(id)
+            val revision = withContext(Dispatchers.IO) { store.tourRevision(id) }
+            if (shouldReloadTour(displayedTourRevision, revision)) {
+                val points = withContext(Dispatchers.IO) {
+                    if (revision == null) emptyList() else store.points(id)
+                }
+                val wasActiveTourId = activeTour?.id
+                displayedTourRevision = revision
+                displayedTour = revision?.asTour()
+                routePoints = points
+                if (wasActiveTourId != id || revision?.endedAt != null) {
+                    roadTraversalRefreshRevision++
+                }
+                if (wasActiveTourId == id || wasActiveTourId == null && revision?.endedAt == null) {
+                    activeTour = revision?.asTour()?.takeIf { it.endedAt == null }
+                }
             }
-            displayedTour = result.first
-            routePoints = result.second
-            now = System.currentTimeMillis()
             if (activeTour?.id != id) break
-            activeTour = result.first?.takeIf { it.endedAt == null }
             delay(1_000L)
         }
     }
 
-    LaunchedEffect(activeTour?.id, historyRevision) {
-        while (true) {
-            roadHistoryFingerprint = withContext(Dispatchers.IO) {
-                store.roadHistoryFingerprint()
-            }
-            if (activeTour == null) break
-            delay(1_000L)
-        }
-    }
-
-    LaunchedEffect(activeTour?.id, historyRevision) {
+    LaunchedEffect(isAppResumed, activeTour?.id, roadTraversalRefreshRevision) {
+        if (!isAppResumed) return@LaunchedEffect
         roadTraversalFingerprint = withContext(Dispatchers.IO) {
             store.roadHistoryFingerprint(excludingTourId = activeTour?.id)
         }
@@ -241,9 +277,20 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     }
 
     val deleteTour: (Long) -> Unit = { id ->
-        val returnToHome =
-            navController.previousBackStackEntry?.destination?.route == SpurRoute.HOME
+        val revealHomeBeforeDeletion = shouldRevealHomeBeforeDeletingTour(
+            deletedTourId = id,
+            displayedTour = displayedTour,
+            previousRoute = navController.previousBackStackEntry?.destination?.route,
+        )
         scope.launch {
+            if (revealHomeBeforeDeletion) {
+                displayedTour = activeTour
+                displayedTourId = activeTour?.id
+                displayedTourRevision = null
+                routePoints = emptyList()
+                navController.popBackStack()
+                delay(HomePanelMotionDurationMillis.toLong())
+            }
             if (!context.deleteStoredTour(store, id)) {
                 showFeedbackNotice(
                     FeedbackNoticeKind.ERROR,
@@ -261,10 +308,11 @@ internal fun SpurApp(splashExitComplete: Boolean) {
             if (displayedTourId == id) {
                 displayedTour = null
                 displayedTourId = null
+                displayedTourRevision = null
                 routePoints = emptyList()
-                if (returnToHome) navController.popBackStack()
             }
             historyRevision++
+            roadTraversalRefreshRevision++
         }
     }
 
@@ -297,15 +345,17 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                 )
             } else {
                 Box(modifier = Modifier.fillMaxSize()) {
+                    val mapTour = displayedTour.takeUnless {
+                        pendingDeparturePreview != null && activeTour == null
+                    }
                     MapPage(
-                        tour = displayedTour,
+                        tour = mapTour,
                         activeTour = activeTour,
                         tourDisplayRequest = displayedTourRequest,
                         routePoints = routePoints,
+                        pendingDeparturePreview = pendingDeparturePreview,
                         roadHistoryStore = store,
-                        roadHistoryFingerprint = roadHistoryFingerprint,
                         roadTraversalFingerprint = roadTraversalFingerprint,
-                        now = now,
                         onStartTour = {
                             scope.launch {
                                 val start = withContext(Dispatchers.IO) {
@@ -360,29 +410,35 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                         .setAction(TrackingService.ACTION_STOP),
                                 )
                                 val result = withContext(Dispatchers.IO) {
-                                    store.tour(id) to store.points(id)
+                                    val revision = store.tourRevision(id)
+                                    revision to store.points(id)
                                 }
                                 activeTour = null
-                                displayedTour = result.first
+                                displayedTourRevision = result.first
+                                displayedTour = result.first?.asTour()
                                 displayedTourId = id
                                 displayedTourRequest++
                                 routePoints = result.second
-                                now = System.currentTimeMillis()
+                                roadTraversalRefreshRevision++
                                 historyRevision++
                             }
                         },
                         onRenameTour = { id, title ->
-                            val renamedTour = withContext(Dispatchers.IO) {
+                            val renamedRevision = withContext(Dispatchers.IO) {
                                 if (!store.updateTourTitle(id, title)) {
                                     null
                                 } else {
-                                    store.tour(id)
+                                    store.tourRevision(id)
                                 }
                             }
-                            if (renamedTour == null) {
+                            if (renamedRevision == null) {
                                 false
                             } else {
-                                if (displayedTourId == id) displayedTour = renamedTour
+                                val renamedTour = renamedRevision.asTour()
+                                if (displayedTourId == id) {
+                                    displayedTourRevision = renamedRevision
+                                    displayedTour = renamedTour
+                                }
                                 if (activeTour?.id == id) activeTour = renamedTour
                                 historyRevision++
                                 true
@@ -410,15 +466,17 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                             runCatching {
                                 val result = withContext(Dispatchers.IO) {
                                     store.updateTourPoints(tourId, retainedIds)
-                                    store.tour(tourId) to store.points(tourId)
+                                    store.tourRevision(tourId) to store.points(tourId)
                                 }
                                 if (displayedTourId == tourId) {
-                                    displayedTour = result.first
+                                    displayedTourRevision = result.first
+                                    displayedTour = result.first?.asTour()
                                     routePoints = result.second
                                 }
                                 if (activeTour?.id == tourId) {
-                                    activeTour = result.first
+                                    activeTour = result.first?.asTour()
                                 }
+                                if (activeTour?.id != tourId) roadTraversalRefreshRevision++
                                 historyRevision++
                             }.isSuccess
                         },

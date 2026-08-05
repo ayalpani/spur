@@ -27,6 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.maplibre.geojson.Feature
 import java.util.ArrayDeque
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 
 internal data class HomeAutoStartSettings(
@@ -35,6 +36,21 @@ internal data class HomeAutoStartSettings(
     val homeBuilding: Feature? = null,
     val startPoint: SpurCoordinate? = null,
 )
+
+internal class HomeAutoStartSettingsCache {
+    private val cached = AtomicReference<HomeAutoStartSettings?>()
+
+    fun getOrLoad(load: () -> HomeAutoStartSettings): HomeAutoStartSettings {
+        cached.get()?.let { return it }
+        val loaded = load()
+        cached.compareAndSet(null, loaded)
+        return requireNotNull(cached.get())
+    }
+
+    fun update(settings: HomeAutoStartSettings) {
+        cached.set(settings)
+    }
+}
 
 private const val Preferences = "home-auto-start"
 private const val RuntimePreferences = "home-auto-start-runtime"
@@ -80,12 +96,18 @@ private val homeDepartureActivityTypes = listOf(
     DetectedActivity.IN_VEHICLE,
 )
 private val homeAutoStartRuntimeLock = Any()
+private val homeAutoStartSettingsCache = HomeAutoStartSettingsCache()
 
 internal data class BufferedHomeLocation(
     val latitude: Double,
     val longitude: Double,
     val recordedAt: Long,
     val accuracyMeters: Float,
+)
+
+internal data class PendingDeparturePreview(
+    val candidateAt: Long,
+    val points: List<TrackPoint>,
 )
 
 internal enum class HomeDepartureTriggerSource(val storedValue: String) {
@@ -149,36 +171,38 @@ internal fun Location.toBufferedHomeLocation() = BufferedHomeLocation(
     accuracyMeters = if (hasAccuracy()) accuracy else Float.MAX_VALUE,
 )
 
-internal fun Context.loadHomeAutoStartSettings(): HomeAutoStartSettings {
-    val preferences = getSharedPreferences(Preferences, Context.MODE_PRIVATE)
-    val home = if (preferences.contains(Latitude) && preferences.contains(Longitude)) {
-        SpurCoordinate(
-            latitude = Double.fromBits(preferences.getLong(Latitude, 0)),
-            longitude = Double.fromBits(preferences.getLong(Longitude, 0)),
+internal fun Context.loadHomeAutoStartSettings(): HomeAutoStartSettings =
+    homeAutoStartSettingsCache.getOrLoad {
+        val preferences = getSharedPreferences(Preferences, Context.MODE_PRIVATE)
+        val home = if (preferences.contains(Latitude) && preferences.contains(Longitude)) {
+            SpurCoordinate(
+                latitude = Double.fromBits(preferences.getLong(Latitude, 0)),
+                longitude = Double.fromBits(preferences.getLong(Longitude, 0)),
+            )
+        } else {
+            null
+        }
+        val startPoint = if (
+            preferences.contains(StartLatitude) &&
+            preferences.contains(StartLongitude)
+        ) {
+            SpurCoordinate(
+                latitude = Double.fromBits(preferences.getLong(StartLatitude, 0)),
+                longitude = Double.fromBits(preferences.getLong(StartLongitude, 0)),
+            )
+        } else {
+            null
+        }
+        HomeAutoStartSettings(
+            enabled = preferences.getBoolean(Enabled, false),
+            home = home,
+            homeBuilding = decodeHomeBuilding(preferences.getString(HomeBuilding, null)),
+            startPoint = startPoint,
         )
-    } else {
-        null
     }
-    val startPoint = if (
-        preferences.contains(StartLatitude) &&
-        preferences.contains(StartLongitude)
-    ) {
-        SpurCoordinate(
-            latitude = Double.fromBits(preferences.getLong(StartLatitude, 0)),
-            longitude = Double.fromBits(preferences.getLong(StartLongitude, 0)),
-        )
-    } else {
-        null
-    }
-    return HomeAutoStartSettings(
-        enabled = preferences.getBoolean(Enabled, false),
-        home = home,
-        homeBuilding = decodeHomeBuilding(preferences.getString(HomeBuilding, null)),
-        startPoint = startPoint,
-    )
-}
 
 internal fun Context.saveHomeAutoStartSettings(settings: HomeAutoStartSettings) {
+    homeAutoStartSettingsCache.update(settings)
     getSharedPreferences(Preferences, Context.MODE_PRIVATE)
         .edit()
         .clear()
@@ -210,7 +234,7 @@ internal fun isWithinHomeZone(
     coordinate: SpurCoordinate,
 ): Boolean {
     val home = settings.home ?: return false
-    return coordinateDistanceMeters(
+    return haversineDistanceMeters(
         fromLatitude = home.latitude,
         fromLongitude = home.longitude,
         toLatitude = coordinate.latitude,
@@ -441,7 +465,7 @@ internal fun Context.recordHomeDepartureAssembly(
 ) {
     val distanceBucket = measured.firstOrNull()?.let {
         homeDepartureDistanceBucket(
-            coordinateDistanceMeters(
+            haversineDistanceMeters(
                 startPoint.latitude,
                 startPoint.longitude,
                 it.latitude,
@@ -527,7 +551,7 @@ internal fun departureLocations(
     val firstCandidateFix = eligible.indexOfFirst { it.recordedAt >= candidateAt }
     if (firstCandidateFix < 0) return emptyList()
     fun distanceFromStart(location: BufferedHomeLocation) =
-        coordinateDistanceMeters(
+        haversineDistanceMeters(
             startPoint.latitude,
             startPoint.longitude,
             location.latitude,
@@ -546,7 +570,7 @@ internal fun departureLocations(
         val previous = accepted.lastOrNull()
         if (
             previous == null ||
-            coordinateDistanceMeters(
+            haversineDistanceMeters(
                 previous.latitude,
                 previous.longitude,
                 point.latitude,
@@ -566,7 +590,7 @@ internal fun automaticStartLocations(
     exitAt: Long,
 ): List<BufferedHomeLocation> {
     val firstMeasured = measured.firstOrNull() ?: return emptyList()
-    val hasMeasuredBridge = coordinateDistanceMeters(
+    val hasMeasuredBridge = haversineDistanceMeters(
         startPoint.latitude,
         startPoint.longitude,
         firstMeasured.latitude,
@@ -580,6 +604,35 @@ internal fun automaticStartLocations(
         accuracyMeters = 3f,
     )
     return listOf(syntheticStart) + measured
+}
+
+internal fun pendingDeparturePreview(
+    candidateAt: Long?,
+    settings: HomeAutoStartSettings,
+    locations: List<BufferedHomeLocation>,
+    now: Long,
+): PendingDeparturePreview? {
+    val startedAt = candidateAt ?: return null
+    val startPoint = automaticTourHomePoint(settings)
+        ?: return PendingDeparturePreview(startedAt, emptyList())
+    val measured = departureLocations(
+        locations = locations,
+        settings = settings,
+        candidateAt = startedAt,
+        throughAt = now,
+    )
+    return PendingDeparturePreview(
+        candidateAt = startedAt,
+        points = automaticStartLocations(startPoint, measured, startedAt)
+            .mapIndexed { index, location ->
+                TrackPoint(
+                    id = index.toLong(),
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    recordedAt = location.recordedAt,
+                )
+            },
+    )
 }
 
 private fun confirmationWindow(
@@ -607,7 +660,7 @@ internal fun confirmedHomeDeparture(
     fun isReliablyOutside(location: BufferedHomeLocation): Boolean =
         location.accuracyMeters.isFinite() &&
             location.accuracyMeters in 0f..DepartureMaximumAccuracyMeters &&
-            coordinateDistanceMeters(
+            haversineDistanceMeters(
                 home.latitude,
                 home.longitude,
                 location.latitude,
@@ -627,7 +680,7 @@ internal fun confirmedHomeArrival(
     fun isReliablyHome(location: BufferedHomeLocation): Boolean =
         location.accuracyMeters.isFinite() &&
             location.accuracyMeters in 0f..ArrivalMaximumAccuracyMeters &&
-            coordinateDistanceMeters(
+            haversineDistanceMeters(
                 homePoint.latitude,
                 homePoint.longitude,
                 location.latitude,
@@ -677,6 +730,18 @@ internal fun Context.departureCandidateAt(): Long? =
     homeAutoStartPreferences()
         .getLong(DepartureCandidateAt, 0L)
         .takeIf { it > 0L }
+
+internal fun Context.loadPendingDeparturePreview(
+    now: Long = System.currentTimeMillis(),
+): PendingDeparturePreview? {
+    val candidateAt = departureCandidateAt() ?: return null
+    return pendingDeparturePreview(
+        candidateAt = candidateAt,
+        settings = loadHomeAutoStartSettings(),
+        locations = loadBufferedHomeLocations(),
+        now = now,
+    )
+}
 
 internal fun Context.clearDepartureCandidate() {
     synchronized(homeAutoStartRuntimeLock) {

@@ -23,6 +23,15 @@ internal object SpurRoute {
     const val MAP = "map"
     const val HOME = "home"
 }
+
+internal fun shouldRevealHomeBeforeDeletingTour(
+    deletedTourId: Long,
+    displayedTour: Tour?,
+    previousRoute: String?,
+): Boolean = displayedTour?.id == deletedTourId &&
+    displayedTour.endedAt != null &&
+    previousRoute == SpurRoute.HOME
+
 internal const val StreetMapStyle = "https://tiles.openfreemap.org/styles/liberty"
 internal const val SatelliteSource = "satellite-source"
 internal const val SatelliteLayer = "satellite-layer"
@@ -227,10 +236,13 @@ internal fun shouldStackMapPlayer(screenWidthDp: Int): Boolean =
 internal fun shouldStopFollowing(cameraMoveReason: Int): Boolean =
     cameraMoveReason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE
 
-internal fun shouldShowMapPreviewLoading(
+internal fun shouldShowTourChrome(isMapGestureActive: Boolean): Boolean =
+    !isMapGestureActive
+
+internal fun shouldRefreshAlternateMapPreview(
     isFollowingLocation: Boolean,
-    cameraMoveReason: Int,
-): Boolean = !isFollowingLocation || shouldStopFollowing(cameraMoveReason)
+    hasPreviewCameraPosition: Boolean,
+): Boolean = !isFollowingLocation || !hasPreviewCameraPosition
 
 internal fun shouldShowInitialMapLoading(
     initialLoadingComplete: Boolean,

@@ -124,23 +124,36 @@ internal fun Style.showOutlinedBuildings() {
 
 internal data class PreparedMapMoments(
     val moments: List<MapMoment>,
-    val images: HashMap<String, android.graphics.Bitmap>,
-    val photoPreviews: Map<String, PreparedPhotoPreview>,
     val features: List<Feature>,
 )
+
+internal data class PreparedMapMomentImages(
+    val keys: List<MapMomentImageKey>,
+    val images: HashMap<String, android.graphics.Bitmap>,
+    val photoPreviews: Map<String, PreparedPhotoPreview>,
+)
+
+internal data class MapMomentImageKey(
+    val id: String,
+    val type: MomentType,
+    val payload: String,
+)
+
+internal fun mapMomentImageKeys(moments: List<MapMoment>): List<MapMomentImageKey> =
+    moments.map { MapMomentImageKey(it.id, it.type, it.payload) }
 
 internal data class PreparedPhotoPreview(
     val bitmap: android.graphics.Bitmap,
     val aspectRatio: Float,
 )
 
-internal fun prepareMapMoments(
+internal fun prepareMapMomentImages(
     context: Context,
     moments: List<MapMoment>,
-): PreparedMapMoments {
+): PreparedMapMomentImages {
     val images = HashMap<String, android.graphics.Bitmap>(moments.size * 3)
     val photoPreviews = HashMap<String, PreparedPhotoPreview>()
-    val features = moments.mapIndexed { index, moment ->
+    moments.forEach { moment ->
         val imageId = MapMomentImagePrefix + moment.id
         val marker = createMomentMarkerBitmap(
             context = context,
@@ -158,6 +171,19 @@ internal fun prepareMapMoments(
             images[clusterMomentImageId(moment, stackSize)] =
                 createMomentClusterBitmap(context, marker, stackSize)
         }
+    }
+    return PreparedMapMomentImages(
+        keys = mapMomentImageKeys(moments),
+        images = images,
+        photoPreviews = photoPreviews,
+    )
+}
+
+internal fun prepareMapMoments(
+    moments: List<MapMoment>,
+): PreparedMapMoments {
+    val features = moments.mapIndexed { index, moment ->
+        val imageId = MapMomentImagePrefix + moment.id
         Feature.fromGeometry(
             Point.fromLngLat(moment.longitude, moment.latitude),
         ).apply {
@@ -168,19 +194,19 @@ internal fun prepareMapMoments(
     }
     return PreparedMapMoments(
         moments = moments,
-        images = images,
-        photoPreviews = photoPreviews,
         features = features,
     )
+}
+
+internal fun Style.showMapMomentImages(prepared: PreparedMapMomentImages) {
+    if (prepared.images.isNotEmpty()) addImages(prepared.images)
 }
 
 internal fun Style.showMapMoments(
     prepared: PreparedMapMoments,
 ) {
     val moments = prepared.moments
-    val images = prepared.images
     val features = prepared.features
-    if (images.isNotEmpty()) addImages(images)
 
     val source = getSourceAs<GeoJsonSource>(MapMomentSource)
         ?: GeoJsonSource(

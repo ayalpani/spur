@@ -152,6 +152,8 @@ internal enum class MapControlColor(
 }
 
 internal val HomeBuildingGold = MapControlColor.YELLOW.color
+internal val TourPauseMarkerColor = MapControlColor.VIOLET.color
+internal val TourPauseMarkerForeground = MapControlColor.VIOLET.contrastColor
 
 internal enum class SpurColorTheme(
     val label: String,

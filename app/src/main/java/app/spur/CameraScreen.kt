@@ -32,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 internal val CameraChrome = Color.Black.copy(alpha = 0.42f)
@@ -231,7 +234,10 @@ internal fun CameraScreen(
                     .semantics { contentDescription = "Foto aufnehmen" },
             )
         } else {
-            val bitmap = remember(photo) { decodePreviewBitmap(photo) }
+            var bitmap by remember(photo) { mutableStateOf<Bitmap?>(null) }
+            LaunchedEffect(photo) {
+                bitmap = withContext(Dispatchers.IO) { decodePreviewBitmap(photo) }
+            }
             Column(
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -241,9 +247,11 @@ internal fun CameraScreen(
                         .weight(1f),
                     contentAlignment = Alignment.TopCenter,
                 ) {
-                    if (bitmap != null) {
+                    val renderedBitmap = bitmap
+                    if (renderedBitmap != null) {
                         val photoAspectRatio =
-                            bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)
+                            renderedBitmap.width.toFloat() /
+                                renderedBitmap.height.coerceAtLeast(1)
                         val mediaModifier = if (maxWidth / maxHeight > photoAspectRatio) {
                             Modifier
                                 .fillMaxHeight()
@@ -254,7 +262,7 @@ internal fun CameraScreen(
                                 .aspectRatio(photoAspectRatio)
                         }
                         Image(
-                            bitmap = bitmap.asImageBitmap(),
+                            bitmap = renderedBitmap.asImageBitmap(),
                             contentDescription = "Aufgenommenes Foto",
                             modifier = mediaModifier,
                             alignment = Alignment.TopCenter,

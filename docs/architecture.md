@@ -16,7 +16,7 @@ boundaries, not behavior or state architecture.
 | `TrackingService` | foreground location updates for the active tour | Android service + `TourStore` |
 | `TourStore` | tours and track-point persistence | SQLite |
 | Moment/media components | composer, local files, playback, detail and share actions | Compose + app files |
-| Home automation | home building/start point, geofence registration and exit receiver | SharedPreferences + Android geofencing |
+| Home automation | home building/start point, sensor-first departure arming, buffered confirmation, geofence fallback | SharedPreferences + Android location APIs |
 | History/editor/player | reading, displaying, trimming and playing stored tours | Compose + `TourStore` |
 
 Map overlay controls share `MapIconButton`. Its secondary variant swaps the
@@ -55,13 +55,46 @@ flowchart LR
 ```
 
 Tour recording starts by creating a row in `tours` and passing its ID to
-`TrackingService` under the stable `tour_id` extra. Location fixes are filtered
-and appended to `track_points`; Compose rereads the active tour for display.
-Stopping finishes the row before the foreground service is stopped.
+`TrackingService` under the stable `tour_id` extra. The main-thread location
+callback copies each active-tour fix onto one serial `HandlerThread`; that
+worker filters and appends it to `track_points`. A session token prevents late
+worker results from updating a replaced or stopped tracking session. Departure
+confirmation and Android lifecycle ownership remain on the main thread.
 
-Moments are encoded into the `map-moments` preference file. Photo place names
-are cached separately. Camera, audio, and video files remain local unless the
-user explicitly invokes an Android share or export intent.
+Compose polls a compact `TourRevision` made from tour metadata, point count,
+highest point ID, and that point's timestamp. It reloads the complete point
+list only for the first display or when this token changes, and polling pauses
+while the activity is below `RESUMED`. Road fingerprints are refreshed after a
+recognized tour change instead of on every timer tick. This is deliberately a
+revision-plus-reload boundary, not a point-delta protocol or repository/state
+architecture migration. Stopping finishes the row before the foreground
+service is stopped.
+
+A quiet location lasting at least five minutes is retained in the existing
+`cluster_started_at` and `cluster_sample_count` columns as a pause inside the
+same tour. The stationary spread is bounded to 25 m rather than the unrelated
+100 m Home geofence. When movement resumes, three fixes outside an
+accuracy-aware 12 m minimum are buffered and then appended together, preserving
+the beginning of the continuing route. MapLibre derives a violet pause marker
+and its duration directly from that stored cluster point; there is no pause
+table and no tour lifecycle transition.
+
+Before an automatic departure is confirmed, the runtime preferences own the
+candidate timestamp and measured pre-roll. While the app is resumed, `SpurApp`
+reads that same pending representation for the map: the location label says
+`Tourstart wird geprüft` and MapLibre renders the route that will be persisted
+if confirmation succeeds. No provisional database tour is created; cancellation
+removes the status and route, while confirmation transfers the existing points
+into the ordinary active-tour flow.
+
+Moments are encoded into the `map-moments` preference file. One background
+`TourPresentation` resolves moment-to-point links, waypoint-rail entries, and
+the point-ID selection index from the same point ordering. Marker bitmap
+preparation is keyed only by marker media identity, so coordinate-only movement
+rebuilds GeoJSON without decoding photo or video media again. Photo place names
+are cached separately. Camera JPEG confirmation previews are decoded on
+`Dispatchers.IO`; camera, audio, and video files remain local unless the user
+explicitly invokes an Android share or export intent.
 
 ## Lifecycle contracts
 
@@ -74,7 +107,8 @@ operations.
 `TrackingService` is independent of the activity lifecycle. It uses a location
 foreground service, returns `START_STICKY`, resumes the active tour after a
 process restart, and removes location updates both when stopping and when the
-service is destroyed.
+service is destroyed. Destruction also invalidates pending tracking-session
+results and shuts down the serial persistence thread with `quitSafely`.
 
 Audio recording and playback are Compose-owned resources. Disposal stops and
 releases the current `MediaRecorder`/`MediaPlayer`. CameraX remains isolated in

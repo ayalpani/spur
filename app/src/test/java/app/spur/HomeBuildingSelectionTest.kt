@@ -3,6 +3,7 @@ package app.spur
 import com.google.android.gms.location.DetectedActivity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.maplibre.geojson.Feature
@@ -11,6 +12,24 @@ import org.maplibre.geojson.Point
 import org.maplibre.geojson.Polygon
 
 class HomeBuildingSelectionTest {
+    @Test
+    fun homeSettingsCacheLoadsOnceAndUsesSavedUpdates() {
+        val initial = HomeAutoStartSettings(enabled = false, home = null)
+        val updated = HomeAutoStartSettings(
+            enabled = true,
+            home = SpurCoordinate(52.52, 13.405),
+        )
+        val cache = HomeAutoStartSettingsCache()
+        var loads = 0
+
+        assertEquals(initial, cache.getOrLoad { loads++; initial })
+        assertEquals(initial, cache.getOrLoad { loads++; updated })
+        cache.update(updated)
+
+        assertEquals(updated, cache.getOrLoad { error("cached update was lost") })
+        assertEquals(1, loads)
+    }
+
     @Test
     fun movementActivitiesArmThePreciseHomeDepartureCapture() {
         assertTrue(isHomeDepartureActivity(DetectedActivity.WALKING))
@@ -188,6 +207,51 @@ class HomeBuildingSelectionTest {
             points.map { SpurCoordinate(it.latitude, it.longitude) },
         )
         assertTrue(points[0].recordedAt < points[1].recordedAt)
+    }
+
+    @Test
+    fun pendingDeparturePreviewMatchesTheEventuallyPersistedRoute() {
+        val startPoint = SpurCoordinate(latitude = 52.0, longitude = 13.0)
+        val settings = HomeAutoStartSettings(
+            enabled = true,
+            home = startPoint,
+            startPoint = startPoint,
+        )
+        val bridge = BufferedHomeLocation(52.0001, 13.0, 1_000L, 6f)
+        val firstCandidateFix = BufferedHomeLocation(52.0005, 13.0, 2_500L, 6f)
+        val latestFix = BufferedHomeLocation(52.0010, 13.0, 4_000L, 6f)
+
+        val preview = pendingDeparturePreview(
+            candidateAt = 2_000L,
+            settings = settings,
+            locations = listOf(bridge, firstCandidateFix, latestFix),
+            now = 5_000L,
+        )
+
+        assertEquals(2_000L, preview?.candidateAt)
+        assertEquals(
+            listOf(
+                startPoint,
+                SpurCoordinate(bridge.latitude, bridge.longitude),
+                SpurCoordinate(firstCandidateFix.latitude, firstCandidateFix.longitude),
+                SpurCoordinate(latestFix.latitude, latestFix.longitude),
+            ),
+            preview?.points?.map { SpurCoordinate(it.latitude, it.longitude) },
+        )
+        assertEquals(listOf(0L, 1L, 2L, 3L), preview?.points?.map(TrackPoint::id))
+        assertTrue(requireNotNull(preview).points.zipWithNext().all { it.first.recordedAt < it.second.recordedAt })
+    }
+
+    @Test
+    fun pendingDeparturePreviewIsAbsentWithoutACandidate() {
+        assertNull(
+            pendingDeparturePreview(
+                candidateAt = null,
+                settings = HomeAutoStartSettings(enabled = true, home = SpurCoordinate(52.0, 13.0)),
+                locations = emptyList(),
+                now = 5_000L,
+            ),
+        )
     }
 
     @Test

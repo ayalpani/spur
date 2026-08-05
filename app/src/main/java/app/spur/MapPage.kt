@@ -9,8 +9,6 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -82,10 +80,9 @@ internal fun MapPage(
     activeTour: Tour?,
     tourDisplayRequest: Long,
     routePoints: List<TrackPoint>,
+    pendingDeparturePreview: PendingDeparturePreview? = null,
     roadHistoryStore: TourStore? = null,
-    roadHistoryFingerprint: RoadHistoryFingerprint = RoadHistoryFingerprint(),
     roadTraversalFingerprint: RoadHistoryFingerprint? = null,
-    now: Long,
     onStartTour: () -> Unit,
     onSimulatedLocation: (SpurCoordinate) -> Unit,
     onEndTour: () -> Unit,
@@ -111,14 +108,22 @@ internal fun MapPage(
     var homeStartPoint by remember { mutableStateOf<SpurCoordinate?>(null) }
     val isTourActive = activeTour != null
     val isDisplayedActiveTour = isDisplayedActiveTour(tour, activeTour)
+    val showsPendingDeparture =
+        pendingDeparturePreview != null && tour == null && activeTour == null
+    val mapRoutePoints = if (showsPendingDeparture) {
+        pendingDeparturePreview?.points.orEmpty()
+    } else {
+        routePoints
+    }
     val archivedTour = tour?.takeIf { it.endedAt != null }
+    var isMapGestureActive by remember { mutableStateOf(false) }
     val usesStackedMapPlayer = shouldStackMapPlayer(
         LocalConfiguration.current.screenWidthDp,
     )
-    val isWaypointRailVisible =
-        !isHomeSelectionMode && (tour != null || activeTour != null)
+    val hasWaypointRail = !isHomeSelectionMode &&
+        (tour != null || activeTour != null)
     val mapActionsBottomPadding =
-        (if (isWaypointRailVisible) WaypointRailHeight else 0.dp) +
+        (if (hasWaypointRail) WaypointRailHeight else 0.dp) +
             MapControlVerticalPadding +
             if (usesStackedMapPlayer) MapControlSize + MapControlGap else 0.dp
     val scope = rememberCoroutineScope()
@@ -135,7 +140,6 @@ internal fun MapPage(
     var isSatelliteView by rememberSaveable { mutableStateOf(false) }
     var mapViewport by remember { mutableStateOf<MapViewport?>(null) }
     var alternateMapPreview by remember { mutableStateOf<ImageBitmap?>(null) }
-    var isAlternateMapPreviewLoading by remember { mutableStateOf(true) }
     var isWaypointRailScrolling by remember { mutableStateOf(false) }
     var isZoomControlInteracting by remember { mutableStateOf(false) }
     var showStartTourBottomSheet by rememberSaveable { mutableStateOf(false) }
@@ -176,31 +180,28 @@ internal fun MapPage(
     val visibleMapMoments = remember(mapMoments, tour) {
         tour?.let { mapMomentsForTour(mapMoments, it) } ?: mapMoments
     }
-    val renderedMapMoments = remember(
-        visibleMapMoments,
-        routePoints,
-        tour,
-        homeSettings,
-    ) {
-        val positionedMoments = if (tour != null) {
-            momentsAttachedToTrackPoints(visibleMapMoments, routePoints)
-        } else {
-            visibleMapMoments
-        }
-        normalizedHomeMoments(positionedMoments, homeSettings)
+    var presentation by remember { mutableStateOf(TourPresentation.Empty) }
+    var presentationGeneration by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(tour, routePoints, visibleMapMoments) {
+        val generation = ++presentationGeneration
+        val result = tour?.let { displayedTour ->
+            withContext(Dispatchers.Default) {
+                tourPresentation(displayedTour, routePoints, visibleMapMoments)
+            }
+        } ?: TourPresentation(
+            mapMoments = visibleMapMoments,
+            editorLocations = emptyList(),
+            editorLocationsByPointId = emptyMap(),
+        )
+        if (generation == presentationGeneration) presentation = result
     }
-    val editorLocations = remember(tour, routePoints, visibleMapMoments) {
-        tour?.let {
-            editorLocations(
-                tour = it,
-                points = routePoints,
-                moments = visibleMapMoments,
-            )
-        }.orEmpty()
+    val renderedMapMoments = remember(presentation.mapMoments, homeSettings) {
+        normalizedHomeMoments(presentation.mapMoments, homeSettings)
     }
-    val selectedEditorLocation = editorLocations.firstOrNull {
-        it.point.id == selectedEditorPointId
-    } ?: editorLocations.lastOrNull()
+    val editorLocations = presentation.editorLocations
+    val selectedEditorLocation = selectedEditorPointId
+        ?.let(presentation.editorLocationsByPointId::get)
+        ?: editorLocations.lastOrNull()
     var activeVoiceMoment by remember { mutableStateOf<MapMoment?>(null) }
     var voicePlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isVoicePlaying by remember { mutableStateOf(false) }
@@ -232,13 +233,13 @@ internal fun MapPage(
     }
     var mapInitializationStarted by remember { mutableStateOf(false) }
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
-    val isTourModeHeaderVisible = tour != null &&
+    val areMapControlsVisible = shouldShowTourChrome(isMapGestureActive) &&
         isMapReady &&
-        !isHomeSelectionMode &&
+        !isHomeSelectionMode
+    val hasTourModeHeader = tour != null &&
         (!isDisplayedActiveTour || dismissedActiveTourHeaderId != tour?.id)
-    var isMapGestureActive by remember { mutableStateOf(false) }
-    val areMapControlsVisible =
-        isMapReady && !isMapGestureActive && !isHomeSelectionMode
+    val isTourModeHeaderVisible = areMapControlsVisible && hasTourModeHeader
+    val isWaypointRailVisible = areMapControlsVisible && hasWaypointRail
     val startTourBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -476,8 +477,10 @@ internal fun MapPage(
                 tourId = tour?.id,
                 activeTourId = activeTour?.id,
                 isTourActive = isTourActive,
-                showTourEndpoints = !isDisplayedActiveTour,
-                deferAlternateMapPreview = isWaypointRailScrolling ||
+                showTourEndpoints = !isDisplayedActiveTour && !showsPendingDeparture,
+                departureCheckActive = showsPendingDeparture,
+                deferAlternateMapPreview =
+                    (isWaypointRailScrolling && !isFollowingLocation) ||
                     isMapGestureActive ||
                     isZoomControlInteracting,
                 isZoomControlInteracting = isZoomControlInteracting,
@@ -494,9 +497,8 @@ internal fun MapPage(
                 mapSettingsVisible = showDirectionBottomSheet,
                 mapMoments = renderedMapMoments,
                 momentImageRevision = photoRevision,
-                routePoints = routePoints,
+                routePoints = mapRoutePoints,
                 roadHistoryStore = roadHistoryStore,
-                roadHistoryFingerprint = roadHistoryFingerprint,
                 roadTraversalFingerprint = roadTraversalFingerprint,
                 trailColors = trailColors,
                 homeBuilding = homeSettings.homeBuilding,
@@ -521,9 +523,6 @@ internal fun MapPage(
                 activeVoiceMoment = activeVoiceMoment,
                 voicePlaybackProgress = voiceProgress,
                 onAlternateMapPreviewChanged = { alternateMapPreview = it },
-                onAlternateMapPreviewLoadingChanged = {
-                    isAlternateMapPreviewLoading = it
-                },
                 onViewportChanged = {
                     mapViewport = it
                     displayedMapZoom = it.zoom.coerceIn(MapZoomMinimum, MapZoomMaximum)
@@ -599,7 +598,6 @@ internal fun MapPage(
             TourModeHeader(
                 tour = tour,
                 active = isDisplayedActiveTour,
-                now = now,
                 visible = isTourModeHeaderVisible,
                 titleEditor = tourTitleEditor,
                 titleSaving = isSavingTourTitle,
@@ -668,7 +666,7 @@ internal fun MapPage(
                     .padding(
                         start = MapControlHorizontalPadding,
                         top = MapControlVerticalPadding +
-                            if (isTourModeHeaderVisible) 60.dp else 0.dp,
+                            if (hasTourModeHeader) 60.dp else 0.dp,
                     ),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
@@ -805,12 +803,10 @@ internal fun MapPage(
                             "Satellitenansicht anzeigen"
                         },
                         onClick = {
-                            isAlternateMapPreviewLoading = true
                             alternateMapPreview = null
                             isSatelliteView = !isSatelliteView
                         },
                         preview = alternateMapPreview,
-                        isLoading = isAlternateMapPreviewLoading,
                         fallbackPreview = if (isSatelliteView) {
                             R.drawable.map_preview_street
                         } else {
@@ -830,7 +826,8 @@ internal fun MapPage(
                         TourSummaryPlayer(
                             tourId = tour.id,
                             distanceMeters = tour.distanceMeters,
-                            elapsedMillis = (tour.endedAt ?: now) - tour.startedAt,
+                            elapsedMillis =
+                                (tour.endedAt ?: System.currentTimeMillis()) - tour.startedAt,
                             modifier = modifier.height(MapControlSize),
                         )
                     } else {
@@ -873,7 +870,7 @@ internal fun MapPage(
                             top = MapControlVerticalPadding,
                             end = MapControlHorizontalPadding,
                             bottom = MapControlVerticalPadding +
-                                if (isWaypointRailVisible) WaypointRailHeight else 0.dp,
+                                if (hasWaypointRail) WaypointRailHeight else 0.dp,
                         )
                         .fillMaxWidth()
                         .widthIn(max = 560.dp),
@@ -926,16 +923,10 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = isMapReady && isWaypointRailVisible,
+                visible = isWaypointRailVisible,
                 modifier = Modifier.align(Alignment.BottomCenter),
-                enter = slideInVertically(
-                    animationSpec = tween(MotionDurationDefaultMillis),
-                    initialOffsetY = { it },
-                ) + fadeIn(tween(MotionDurationDefaultMillis)),
-                exit = slideOutVertically(
-                    animationSpec = tween(MotionDurationDefaultMillis),
-                    targetOffsetY = { it },
-                ) + fadeOut(tween(MotionDurationDefaultMillis)),
+                enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
                 Column(
                     modifier = Modifier
@@ -961,7 +952,6 @@ internal fun MapPage(
                         },
                         onScrollInProgressChanged = { isScrolling ->
                             isWaypointRailScrolling = isScrolling
-                            if (isScrolling) isAlternateMapPreviewLoading = true
                         },
                         onSelected = { pointId ->
                             if (pointId != selectedEditorPointId) {

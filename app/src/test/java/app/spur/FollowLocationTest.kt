@@ -100,28 +100,31 @@ class FollowLocationTest {
     }
 
     @Test
-    fun automaticFollowingKeepsTheMapPreviewVisible() {
+    fun automaticFollowingKeepsTheEstablishedMapPreviewStable() {
+        assertTrue(
+            shouldRefreshAlternateMapPreview(
+                isFollowingLocation = true,
+                hasPreviewCameraPosition = false,
+            ),
+        )
         assertFalse(
-            shouldShowMapPreviewLoading(
+            shouldRefreshAlternateMapPreview(
                 isFollowingLocation = true,
-                cameraMoveReason =
-                    MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION,
+                hasPreviewCameraPosition = true,
             ),
         )
         assertTrue(
-            shouldShowMapPreviewLoading(
-                isFollowingLocation = true,
-                cameraMoveReason =
-                    MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE,
-            ),
-        )
-        assertTrue(
-            shouldShowMapPreviewLoading(
+            shouldRefreshAlternateMapPreview(
                 isFollowingLocation = false,
-                cameraMoveReason =
-                    MapLibreMap.OnCameraMoveStartedListener.REASON_DEVELOPER_ANIMATION,
+                hasPreviewCameraPosition = true,
             ),
         )
+    }
+
+    @Test
+    fun directMapGestureHidesTourChrome() {
+        assertFalse(shouldShowTourChrome(isMapGestureActive = true))
+        assertTrue(shouldShowTourChrome(isMapGestureActive = false))
     }
 
     @Test
