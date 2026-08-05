@@ -95,14 +95,10 @@ function App() {
           <SpurMark />
           <span>Spur</span>
         </a>
-        <nav aria-label="Hauptnavigation">
-          <a className="nav-cta" href="#screens">Sechs Einblicke</a>
-        </nav>
       </header>
 
       <main>
         <section className="hero" id="top">
-          <p className="eyebrow">Persönlich statt öffentlich</p>
           <h1>Wege, die dir gehören.</h1>
           <p className="hero-lead">
             Spur bewahrt deine Touren und Erinnerungen für dich. Nur du
