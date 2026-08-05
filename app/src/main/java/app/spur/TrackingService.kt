@@ -90,7 +90,7 @@ class TrackingService : Service() {
         super.onCreate()
         trackingThread = HandlerThread("spur-tracking").also(HandlerThread::start)
         trackingHandler = Handler(trackingThread.looper)
-        store = TourStore(this)
+        store = applicationContext.tourStore()
         locationClient = LocationServices.getFusedLocationProviderClient(this)
         sensorManager = getSystemService(SensorManager::class.java)
         significantMotionSensor = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)

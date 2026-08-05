@@ -858,7 +858,7 @@ class HomeExitReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                 try {
-                    if (TourStore(context).activeTour() == null) {
+                    if (context.tourStore().activeTour() == null) {
                         context.requestHomeDepartureConfirmation(
                             candidateAt = System.currentTimeMillis(),
                             source = HomeDepartureTriggerSource.ACTIVITY_TRANSITION,
@@ -879,7 +879,7 @@ class HomeExitReceiver : BroadcastReceiver() {
                 try {
                     val incoming = result.locations.map(Location::toBufferedHomeLocation)
                     context.saveBufferedHomeLocations(incoming)
-                    val store = TourStore(context)
+                    val store = context.tourStore()
                     store.activeTour()?.let { activeTour ->
                         val throughAt = context
                             .automaticTourDepartureThroughAt(activeTour.id)
@@ -910,7 +910,7 @@ class HomeExitReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                val store = TourStore(context)
+                val store = context.tourStore()
                 val exitLocation = event.triggeringLocation
                 val transitionAt = exitLocation?.time?.takeIf { it > 0L }
                     ?: System.currentTimeMillis()

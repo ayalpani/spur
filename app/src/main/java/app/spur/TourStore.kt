@@ -11,6 +11,16 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+private val processTourStoreLock = Any()
+
+@Volatile
+private var processTourStore: TourStore? = null
+
+internal fun Context.tourStore(): TourStore =
+    processTourStore ?: synchronized(processTourStoreLock) {
+        processTourStore ?: TourStore(applicationContext).also { processTourStore = it }
+    }
+
 data class Tour(
     val id: Long,
     val startedAt: Long,

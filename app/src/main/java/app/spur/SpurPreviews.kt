@@ -54,7 +54,7 @@ private fun ActiveTourPagePreview() {
 @Composable
 private fun HomeScreenPreview() {
     HomeScreen(
-        store = TourStore(LocalContext.current),
+        store = LocalContext.current.tourStore(),
         revision = 0,
         loadingEnabled = false,
         backEnabled = true,

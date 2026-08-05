@@ -68,7 +68,7 @@ internal fun restoredActiveTourState(
 @OptIn(ExperimentalMaterial3Api::class)
 internal fun SpurApp(splashExitComplete: Boolean) {
     val context = LocalContext.current
-    val store = remember { TourStore(context) }
+    val store = remember { context.tourStore() }
     val scope = rememberCoroutineScope()
     var activeTour by remember { mutableStateOf<Tour?>(null) }
     var displayedTour by remember { mutableStateOf<Tour?>(null) }
