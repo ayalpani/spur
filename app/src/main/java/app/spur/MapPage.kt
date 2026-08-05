@@ -652,7 +652,7 @@ internal fun MapPage(
             }
 
             AnimatedVisibility(
-                visible = areMapControlsVisible,
+                visible = areMapControlsVisible && archivedTour == null,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
