@@ -22,6 +22,14 @@ class PhotoDetailTransitionTest {
     }
 
     @Test
+    fun locationMapCrossfadesWithThePreparedPreviewAtTheSmallEnd() {
+        assertEquals(0f, photoLocationMapAlpha(0f, mapReady = true))
+        assertEquals(0.5f, photoLocationMapAlpha(0.25f, mapReady = true))
+        assertEquals(1f, photoLocationMapAlpha(0.5f, mapReady = true))
+        assertEquals(0f, photoLocationMapAlpha(1f, mapReady = false))
+    }
+
+    @Test
     fun previewRemainsUntilOpeningAnimationAndFullImageLoadAreComplete() {
         assertTrue(
             shouldShowOpeningPhotoPreview(

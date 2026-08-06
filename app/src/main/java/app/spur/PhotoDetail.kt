@@ -70,6 +70,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -548,6 +549,31 @@ internal fun PhotoDetailPage(
                         )
                     }
                 }
+                AnimatedVisibility(
+                    visible = controlsVisible,
+                    modifier = Modifier.fillMaxSize(),
+                    enter = fadeIn(tween(MotionDurationDefaultMillis)),
+                    exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        PhotoLocationMetadata(
+                            photo = selectedPhoto,
+                            onMapClick = { openLocationMap(selectedPhoto) },
+                            onMapBoundsChanged = { locationMapBounds = it },
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .statusBarsPadding()
+                                .padding(top = 18.dp, end = 18.dp)
+                                .then(
+                                    if (locationMapPhoto != null) {
+                                        Modifier.clearAndSetSemantics { }
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
+                        )
+                    }
+                }
                 val mapPhoto = locationMapPhoto
                 val mapBounds = locationMapBounds
                 if (mapPhoto != null && mapBounds != null) {
@@ -555,6 +581,10 @@ internal fun PhotoDetailPage(
                         photo = mapPhoto,
                         sourceBounds = mapBounds,
                         progress = locationMapProgress.value,
+                        mapAlpha = photoLocationMapAlpha(
+                            animationProgress = locationMapProgress.value,
+                            mapReady = locationMapReady,
+                        ),
                         expanded =
                             locationMapProgress.value == 1f &&
                                 !locationMapTransitioning,
@@ -576,15 +606,6 @@ internal fun PhotoDetailPage(
                     exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        PhotoLocationMetadata(
-                            photo = selectedPhoto,
-                            onMapClick = { openLocationMap(selectedPhoto) },
-                            onMapBoundsChanged = { locationMapBounds = it },
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .statusBarsPadding()
-                                .padding(top = 18.dp, end = 18.dp),
-                        )
                         Row(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)

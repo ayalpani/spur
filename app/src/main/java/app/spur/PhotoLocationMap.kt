@@ -63,6 +63,7 @@ internal fun PhotoLocationMapOverlay(
     photo: MapMoment,
     sourceBounds: Rect,
     progress: Float,
+    mapAlpha: Float,
     expanded: Boolean,
     showControls: Boolean,
     onReady: () -> Unit,
@@ -80,6 +81,7 @@ internal fun PhotoLocationMapOverlay(
                 .fillMaxSize()
                 .graphicsLayer {
                     transformOrigin = TransformOrigin(0f, 0f)
+                    alpha = mapAlpha
                     translationX = transform.translationX
                     translationY = transform.translationY
                     scaleX = transform.scaleX
@@ -243,6 +245,15 @@ internal data class PhotoLocationMapTransform(
     val scaleX: Float,
     val scaleY: Float,
 )
+
+internal fun photoLocationMapAlpha(
+    animationProgress: Float,
+    mapReady: Boolean,
+): Float = if (mapReady) {
+    (animationProgress * 2f).coerceIn(0f, 1f)
+} else {
+    0f
+}
 
 internal fun photoLocationMapTransform(
     sourceBounds: Rect,
