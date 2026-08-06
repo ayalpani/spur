@@ -553,7 +553,6 @@ internal fun PhotoDetailPage(
                 if (mapPhoto != null && mapBounds != null) {
                     PhotoLocationMapOverlay(
                         photo = mapPhoto,
-                        imageRevision = imageRevision,
                         sourceBounds = mapBounds,
                         progress = locationMapProgress.value,
                         expanded =

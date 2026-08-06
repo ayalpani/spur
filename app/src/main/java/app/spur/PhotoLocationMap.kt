@@ -1,23 +1,17 @@
 package app.spur
 
-import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,10 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -51,15 +42,16 @@ import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
 import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
 import org.maplibre.android.style.layers.PropertyFactory.iconImage
+import org.maplibre.android.style.layers.PropertyFactory.iconOffset
+import org.maplibre.android.style.layers.PropertyFactory.iconPitchAlignment
+import org.maplibre.android.style.layers.PropertyFactory.iconRotationAlignment
+import org.maplibre.android.style.layers.PropertyFactory.symbolZOrder
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
-import coil3.compose.AsyncImage
-import coil3.request.CachePolicy
-import coil3.request.ImageRequest
-import java.io.File
-import kotlin.math.ceil
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private const val PhotoLocationMapZoom = PhotoMapPreviewZoom + 1.0
 private const val PhotoLocationSource = "photo-location-source"
@@ -69,7 +61,6 @@ private const val PhotoLocationImage = "photo-location-image"
 @Composable
 internal fun PhotoLocationMapOverlay(
     photo: MapMoment,
-    imageRevision: Long,
     sourceBounds: Rect,
     progress: Float,
     expanded: Boolean,
@@ -100,6 +91,7 @@ internal fun PhotoLocationMapOverlay(
                 photo = photo,
                 expanded = expanded,
                 onReady = onReady,
+                onMarkerClick = onClose,
             )
         }
         AnimatedVisibility(
@@ -109,15 +101,6 @@ internal fun PhotoLocationMapOverlay(
             exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                PhotoMapReturnPreview(
-                    photo = photo,
-                    imageRevision = imageRevision,
-                    onClick = onClose,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .statusBarsPadding()
-                        .padding(top = 18.dp),
-                )
                 PhotoActionButton(
                     contentDescription = "Karte schließen",
                     onClick = onClose,
@@ -138,10 +121,12 @@ private fun PhotoLocationMap(
     photo: MapMoment,
     expanded: Boolean,
     onReady: () -> Unit,
+    onMarkerClick: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentOnReady by rememberUpdatedState(onReady)
+    val currentOnMarkerClick by rememberUpdatedState(onMarkerClick)
     val location = remember(photo.id, photo.latitude, photo.longitude) {
         LatLng(photo.latitude, photo.longitude)
     }
@@ -169,15 +154,38 @@ private fun PhotoLocationMap(
 
     MapViewLifecycle(mapView, lifecycle)
 
-    LaunchedEffect(mapView, photo.id) {
+    LaunchedEffect(mapView, photo.id, photo.type, photo.payload) {
+        val marker = withContext(Dispatchers.Default) {
+            createMomentMarkerBitmap(
+                context = context.applicationContext,
+                moment = photo,
+                selected = false,
+            )
+        }
         mapView.getMapAsync { readyMap ->
             map = readyMap
             readyMap.setStyle(StreetMapStyle) { style ->
-                style.showPhotoLocation(context, photo)
+                style.showMomentLocation(photo, marker)
                 styleLoaded = true
                 currentOnReady()
             }
         }
+    }
+
+    DisposableEffect(map, photo.id) {
+        val readyMap = map
+        val clickListener = MapLibreMap.OnMapClickListener { coordinate ->
+            val screenPoint = readyMap?.projection?.toScreenLocation(coordinate)
+                ?: return@OnMapClickListener false
+            val hit = readyMap.queryRenderedFeatures(
+                screenPoint,
+                PhotoLocationLayer,
+            ).isNotEmpty()
+            if (hit) currentOnMarkerClick()
+            hit
+        }
+        readyMap?.addOnMapClickListener(clickListener)
+        onDispose { readyMap?.removeOnMapClickListener(clickListener) }
     }
 
     LaunchedEffect(map, styleLoaded, expanded, photo.id) {
@@ -197,51 +205,35 @@ private fun PhotoLocationMap(
             .fillMaxSize()
             .semantics {
                 contentDescription =
-                    "Karte des Aufnahmeorts. Verschieben und Zoomen möglich."
+                    "Karte des Aufnahmeorts mit Moment-Marker. " +
+                        "Verschieben und Zoomen möglich."
             },
     )
 }
 
-private fun Style.showPhotoLocation(
-    context: Context,
-    photo: MapMoment,
+private fun Style.showMomentLocation(
+    moment: MapMoment,
+    marker: Bitmap,
 ) {
-    addImage(PhotoLocationImage, createPhotoLocationPin(context))
+    addImage(PhotoLocationImage, marker)
     addSource(
         GeoJsonSource(
             PhotoLocationSource,
-            Feature.fromGeometry(Point.fromLngLat(photo.longitude, photo.latitude)),
+            Feature.fromGeometry(Point.fromLngLat(moment.longitude, moment.latitude)),
         ),
     )
     addLayer(
         SymbolLayer(PhotoLocationLayer, PhotoLocationSource).withProperties(
             iconImage(PhotoLocationImage),
+            iconOffset(arrayOf(0f, -MapMomentLocationClearance)),
             iconAnchor(Property.ICON_ANCHOR_BOTTOM),
             iconAllowOverlap(true),
             iconIgnorePlacement(true),
+            iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+            iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+            symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
         ),
     )
-}
-
-private fun createPhotoLocationPin(context: Context): Bitmap {
-    val density = context.resources.displayMetrics.density
-    val size = 32f * density
-    val scale = size / 24f
-    val bitmap = Bitmap.createBitmap(
-        ceil(size).toInt(),
-        ceil(MapPinTipY * scale).toInt(),
-        Bitmap.Config.ARGB_8888,
-    )
-    val path = androidx.core.graphics.PathParser
-        .createPathFromPathData(MapPinIconPaths.first())
-    Canvas(bitmap).apply {
-        scale(scale, scale)
-        drawPath(
-            path,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = MapPinRed.toArgb() },
-        )
-    }
-    return bitmap
 }
 
 internal data class PhotoLocationMapTransform(
@@ -269,35 +261,5 @@ internal fun photoLocationMapTransform(
         translationY = sourceBounds.top * remaining,
         scaleX = initialScaleX + (1f - initialScaleX) * fraction,
         scaleY = initialScaleY + (1f - initialScaleY) * fraction,
-    )
-}
-
-@Composable
-private fun PhotoMapReturnPreview(
-    photo: MapMoment,
-    imageRevision: Long,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    val request = remember(photo.payload, imageRevision) {
-        ImageRequest.Builder(context)
-            .data(File(photo.payload))
-            .memoryCacheKey("${photo.payload}:$imageRevision")
-            .diskCachePolicy(CachePolicy.DISABLED)
-            .build()
-    }
-    AsyncImage(
-        model = request,
-        contentDescription = "Zurück zum Foto",
-        contentScale = ContentScale.Crop,
-        modifier = modifier
-            .size(PhotoMapPreviewSize)
-            .background(NeutralSurface)
-            .clickable(
-                role = Role.Button,
-                onClickLabel = "Foto anzeigen",
-                onClick = onClick,
-            ),
     )
 }
