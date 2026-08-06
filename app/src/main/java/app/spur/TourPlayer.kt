@@ -235,7 +235,8 @@ internal fun TourPlayer(
                                 }
                                 MotionEvent.ACTION_UP -> {
                                     if (shouldCompleteStopSwipe(dragOffset, maximum)) {
-                                        dragOffset = maximum
+                                        armed = false
+                                        dragOffset = 0f
                                         onStop()
                                     } else {
                                         armed = false
@@ -258,6 +259,13 @@ internal fun TourPlayer(
             }
         }
     }
+}
+
+internal fun activeTourForPlayer(
+    displayedTour: Tour?,
+    activeTour: Tour?,
+): Tour? = activeTour?.takeIf {
+    displayedTour == null || isDisplayedActiveTour(displayedTour, it)
 }
 
 @Composable

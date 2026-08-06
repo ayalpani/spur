@@ -34,7 +34,7 @@ class MapMenusTest {
         }
 
         assertTextExists("Tour teilen")
-        assertTextExists("Tour stoppen")
+        assertTextExists("Tour beenden")
         compose.onNodeWithText("Tour löschen").performClick()
         compose.runOnIdle { assertTrue(deleteClicked) }
     }
@@ -60,7 +60,7 @@ class MapMenusTest {
         assertTextExists("In G-Maps öffnen")
         assertTextExists("Tour umbenennen")
         assertTextDoesNotExist("Tour teilen")
-        assertTextDoesNotExist("Tour stoppen")
+        assertTextDoesNotExist("Tour beenden")
         assertEquals(
             1,
             compose.onAllNodesWithTag(SheetMenuDividerTestTag).fetchSemanticsNodes().size,
