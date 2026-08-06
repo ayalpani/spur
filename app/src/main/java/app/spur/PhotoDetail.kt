@@ -59,6 +59,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -161,6 +162,7 @@ internal fun DarkMediaSystemBars() {
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
+// The dialog deliberately stays the single coordinator for pager, sheets, and exit motion.
 internal fun PhotoDetailPage(
     photos: List<MapMoment>,
     initialPhotoId: String,
@@ -204,6 +206,11 @@ internal fun PhotoDetailPage(
     var isClosing by remember { mutableStateOf(false) }
     var showPhotoActionsSheet by remember { mutableStateOf(false) }
     var showDeletePhotoSheet by remember { mutableStateOf(false) }
+    var locationMapPhoto by remember { mutableStateOf<MapMoment?>(null) }
+    var locationMapReady by remember { mutableStateOf(false) }
+    var locationMapTransitioning by remember { mutableStateOf(false) }
+    var locationMapBounds by remember(selectedPhoto.id) { mutableStateOf<Rect?>(null) }
+    val locationMapProgress = remember { Animatable(0f) }
     val photoActionsSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val deletePhotoSheetState =
@@ -222,6 +229,29 @@ internal fun PhotoDetailPage(
             delay(MotionDurationDefaultMillis.toLong())
             if (hasRotatedPhoto) currentOnPhotoRotated()
             onDismiss()
+        }
+    }
+
+    fun openLocationMap(photo: MapMoment) {
+        if (locationMapPhoto != null || locationMapBounds == null) return
+        locationMapReady = false
+        locationMapPhoto = photo
+    }
+
+    fun closeLocationMap() {
+        if (locationMapPhoto == null || isClosing) return
+        locationMapTransitioning = true
+        scope.launch {
+            locationMapProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = HomePanelMotionDurationMillis,
+                    easing = FastOutSlowInEasing,
+                ),
+            )
+            locationMapPhoto = null
+            locationMapReady = false
+            locationMapTransitioning = false
         }
     }
 
@@ -347,6 +377,19 @@ internal fun PhotoDetailPage(
         }
     }
 
+    LaunchedEffect(locationMapPhoto?.id, locationMapReady) {
+        if (locationMapPhoto == null || !locationMapReady) return@LaunchedEffect
+        locationMapTransitioning = true
+        locationMapProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = HomePanelMotionDurationMillis,
+                easing = FastOutSlowInEasing,
+            ),
+        )
+        locationMapTransitioning = false
+    }
+
     Dialog(
         onDismissRequest = ::dismissAnimated,
         properties = DialogProperties(
@@ -356,7 +399,9 @@ internal fun PhotoDetailPage(
     ) {
         BackHandler(
             enabled = !isClosing && !showPhotoActionsSheet && !showDeletePhotoSheet,
-            onBack = ::dismissAnimated,
+            onBack = {
+                if (locationMapPhoto != null) closeLocationMap() else dismissAnimated()
+            },
         )
         DarkMediaSystemBars()
         AnimatedVisibility(
@@ -503,8 +548,29 @@ internal fun PhotoDetailPage(
                         )
                     }
                 }
+                val mapPhoto = locationMapPhoto
+                val mapBounds = locationMapBounds
+                if (mapPhoto != null && mapBounds != null) {
+                    PhotoLocationMapOverlay(
+                        photo = mapPhoto,
+                        imageRevision = imageRevision,
+                        sourceBounds = mapBounds,
+                        progress = locationMapProgress.value,
+                        expanded =
+                            locationMapProgress.value == 1f &&
+                                !locationMapTransitioning,
+                        showControls =
+                            controlsVisible &&
+                                locationMapProgress.value == 1f &&
+                                !locationMapTransitioning,
+                        onReady = { locationMapReady = true },
+                        onClose = ::closeLocationMap,
+                    )
+                }
                 AnimatedVisibility(
-                    visible = controlsVisible,
+                    visible =
+                        controlsVisible &&
+                            (locationMapPhoto == null || !locationMapReady),
                     modifier = Modifier
                         .fillMaxSize(),
                     enter = fadeIn(tween(MotionDurationDefaultMillis)),
@@ -513,6 +579,8 @@ internal fun PhotoDetailPage(
                     Box(modifier = Modifier.fillMaxSize()) {
                         PhotoLocationMetadata(
                             photo = selectedPhoto,
+                            onMapClick = { openLocationMap(selectedPhoto) },
+                            onMapBoundsChanged = { locationMapBounds = it },
                             modifier = Modifier
                                 .align(Alignment.TopStart)
                                 .statusBarsPadding()
@@ -657,7 +725,7 @@ internal fun shouldShowOpeningPhotoPreview(
         (animationProgress < 1f || !fullImageLoaded)
 
 @Composable
-private fun PhotoActionButton(
+internal fun PhotoActionButton(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
