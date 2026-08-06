@@ -14,6 +14,7 @@ import android.view.ViewConfiguration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,7 +22,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.animation.core.animate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -1536,28 +1536,13 @@ internal fun MapSurface(
             generation == 0L ||
             currentManualLocation != null
         ) return@LaunchedEffect
-        val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
-            mapView.getMapAsync { loadedMap ->
-                if (continuation.isActive) continuation.resume(loadedMap)
-            }
-        }
-        if (generation != currentLocationPulseGeneration) return@LaunchedEffect
-        currentOnLocationPulseStarted(generation)
-        try {
-            while (true) {
-                animate(
-                    initialValue = 0f,
-                    targetValue = 1f,
-                    animationSpec = tween(
-                        durationMillis = LocationSignalPeriodMillis,
-                        easing = LocationPulseEasing,
-                    ),
-                ) { value, _ ->
-                    map.style?.showSpurLocationPulse(value)
-                }
-            }
-        } finally {
-            map.style?.hideSpurLocationPulse()
+        mapView.getMapAsync { map ->
+            if (generation != currentLocationPulseGeneration) return@getMapAsync
+            map.refreshLocationAppearance(
+                currentLocationMarkerColors,
+                currentTrailColors.stroke,
+            )
+            currentOnLocationPulseStarted(generation)
         }
     }
 

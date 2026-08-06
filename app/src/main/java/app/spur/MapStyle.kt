@@ -9,6 +9,7 @@ import java.io.File
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.location.LocationComponentConstants
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.Property
@@ -460,7 +461,7 @@ private fun momentOffsetExpression(moments: List<MapMoment>): Expression {
 }
 
 internal fun Style.addLayerBelowLocationPulse(layer: Layer) {
-    val pulseLayer = SpurLocationPulseLayer
+    val pulseLayer = LocationComponentConstants.PULSING_CIRCLE_LAYER
     if (getLayer(pulseLayer) == null) {
         addLayer(layer)
     } else {

@@ -6,10 +6,10 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
+import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import org.maplibre.android.camera.CameraUpdateFactory
-import org.maplibre.android.location.LocationComponentConstants
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.LocationComponentOptions
 import org.maplibre.android.location.modes.CameraMode
@@ -17,17 +17,9 @@ import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
-import org.maplibre.android.style.layers.CircleLayer
-import org.maplibre.android.style.layers.Property
-import org.maplibre.android.style.layers.PropertyFactory.circleColor
-import org.maplibre.android.style.layers.PropertyFactory.circleOpacity
-import org.maplibre.android.style.layers.PropertyFactory.circlePitchAlignment
-import org.maplibre.android.style.layers.PropertyFactory.circlePitchScale
-import org.maplibre.android.style.layers.PropertyFactory.circleRadius
-import org.maplibre.android.style.layers.PropertyFactory.visibility
 import java.io.File
 
-internal const val SpurLocationPulseLayer = "spur-location-pulse-layer"
+private const val LocationAnimationMaximumFps = 30
 
 internal fun satelliteStyleBuilder(): Style.Builder {
     return Style.Builder().fromJson(SatelliteMapStyleJson)
@@ -49,7 +41,7 @@ internal fun enableLocationTracking(
 
     val locationComponent = map.locationComponent
     val options = LocationComponentOptions.builder(context)
-        .spurLocationAppearance(markerColors)
+        .spurLocationAppearance(markerColors, pulseColor)
         .build()
     locationComponent.activateLocationComponent(
         LocationComponentActivationOptions.builder(context, style)
@@ -57,10 +49,10 @@ internal fun enableLocationTracking(
             .useDefaultLocationEngine(false)
             .build(),
     )
+    locationComponent.setMaxAnimationFps(LocationAnimationMaximumFps)
     locationComponent.isLocationComponentEnabled = manualLocation == null
     locationComponent.renderMode = RenderMode.NORMAL
     locationComponent.cameraMode = CameraMode.NONE
-    style.installSpurLocationPulse(pulseColor)
 
     val location = map.currentSpurCoordinate(
         context = context,
@@ -96,14 +88,14 @@ internal fun MapLibreMap.refreshLocationAppearance(
     component.applyStyle(
         component.locationComponentOptions
             .toBuilder()
-            .spurLocationAppearance(colors)
+            .spurLocationAppearance(colors, pulseColor)
             .build(),
     )
-    style?.installSpurLocationPulse(pulseColor)
 }
 
 private fun LocationComponentOptions.Builder.spurLocationAppearance(
     colors: LocationMarkerColors,
+    pulseColor: Color,
 ): LocationComponentOptions.Builder =
     foregroundTintColor(colors.fill.toArgb())
         .backgroundTintColor(colors.outline.toArgb())
@@ -111,63 +103,13 @@ private fun LocationComponentOptions.Builder.spurLocationAppearance(
         .backgroundStaleTintColor(colors.outline.toArgb())
         .bearingTintColor(colors.fill.toArgb())
         .accuracyAlpha(0f)
-        .pulseEnabled(false)
-
-private fun Style.installSpurLocationPulse(color: Color) {
-    if (getSource(LocationComponentConstants.LOCATION_SOURCE) == null) return
-    val layer = getLayerAs<CircleLayer>(SpurLocationPulseLayer)
-    if (layer != null) {
-        layer.setProperties(circleColor(color.toArgb()))
-        return
-    }
-    val pulseLayer = CircleLayer(
-        SpurLocationPulseLayer,
-        LocationComponentConstants.LOCATION_SOURCE,
-    ).withProperties(
-        circleColor(color.toArgb()),
-        circleRadius(0f),
-        circleOpacity(0f),
-        circlePitchAlignment(Property.CIRCLE_PITCH_ALIGNMENT_VIEWPORT),
-        circlePitchScale(Property.CIRCLE_PITCH_SCALE_VIEWPORT),
-    )
-    if (getLayer(LocationComponentConstants.BACKGROUND_LAYER) == null) {
-        addLayer(pulseLayer)
-    } else {
-        addLayerBelow(pulseLayer, LocationComponentConstants.BACKGROUND_LAYER)
-    }
-}
-
-internal fun Style.showSpurLocationPulse(progress: Float) {
-    getLayerAs<CircleLayer>(SpurLocationPulseLayer)?.setProperties(
-        circleRadius(locationPulseRadius(progress)),
-        circleOpacity(locationPulseOpacity(progress)),
-    )
-}
-
-internal fun Style.hideSpurLocationPulse() {
-    getLayerAs<CircleLayer>(SpurLocationPulseLayer)?.setProperties(
-        circleOpacity(0f),
-    )
-}
-
-private fun Style.setSpurLocationPulseVisible(visible: Boolean) {
-    getLayerAs<CircleLayer>(SpurLocationPulseLayer)?.setProperties(
-        visibility(if (visible) Property.VISIBLE else Property.NONE),
-    )
-}
-
-internal fun locationPulseRadius(progress: Float): Float =
-    LocationPulseMaxRadius * progress.coerceIn(0f, 1f)
-
-internal fun locationPulseOpacity(progress: Float): Float =
-    progress.coerceIn(0f, 1f).let { clampedProgress ->
-        val fadeIn = (clampedProgress / LocationPulseFadeInProgress).coerceAtMost(1f)
-        val fadeOut = ((1f - clampedProgress) / (1f - LocationPulseFadeInProgress))
-            .coerceAtMost(1f)
-        LocationPulseAlpha * minOf(fadeIn, fadeOut)
-    }
-
-private const val LocationPulseFadeInProgress = 0.2f
+        .pulseEnabled(true)
+        .pulseFadeEnabled(true)
+        .pulseColor(pulseColor.toArgb())
+        .pulseSingleDuration(LocationSignalPeriodMillis.toFloat())
+        .pulseMaxRadius(LocationPulseMaxRadius)
+        .pulseAlpha(LocationPulseAlpha)
+        .pulseInterpolator(AccelerateDecelerateInterpolator())
 
 internal fun MapLibreMap.followLocation(
     context: Context,
@@ -252,7 +194,6 @@ internal fun MapLibreMap.showGpsLocationPuck(
 ) {
     if (!context.hasLocationPermission() || !locationComponent.isLocationComponentActivated) return
     locationComponent.isLocationComponentEnabled = show
-    style?.setSpurLocationPulseVisible(show)
 }
 
 @SuppressLint("MissingPermission")

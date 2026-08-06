@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.toArgb
+import org.maplibre.android.location.LocationComponentConstants
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.Layer
@@ -259,7 +260,8 @@ internal fun Style.showTourRoute(
 private fun Style.addTourLayerBelowMarkers(layer: Layer) {
     val markerLayer = when {
         getLayer(MapMomentLayer) != null -> MapMomentLayer
-        getLayer(SpurLocationPulseLayer) != null -> SpurLocationPulseLayer
+        getLayer(LocationComponentConstants.PULSING_CIRCLE_LAYER) != null ->
+            LocationComponentConstants.PULSING_CIRCLE_LAYER
         else -> null
     }
     if (markerLayer == null) {
