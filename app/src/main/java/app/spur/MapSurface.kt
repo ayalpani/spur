@@ -83,6 +83,7 @@ internal fun MapSurface(
     deferAlternateMapPreview: Boolean,
     isZoomControlInteracting: Boolean,
     tourDisplayRequest: Long,
+    animateTourEntry: Boolean,
     followRequest: Int,
     tourOverviewRequest: Int,
     isFollowingLocation: Boolean,
@@ -1546,7 +1547,7 @@ internal fun MapSurface(
         }
     }
 
-    LaunchedEffect(tourId, tourDisplayRequest, routePoints) {
+    LaunchedEffect(tourId, tourDisplayRequest, animateTourEntry, routePoints) {
         if (
             !shouldFitTourRoute(
                 tourId = tourId,
@@ -1568,6 +1569,11 @@ internal fun MapSurface(
                     density = context.resources.displayMetrics.density,
                     pointZoom = defaultMapZoom,
                     animated = true,
+                    zoomOutBeforeAnimation = if (animateTourEntry) {
+                        TourEntryZoomOutLevels
+                    } else {
+                        0.0
+                    },
                 )
                 fittedTourId = id
                 fittedTourDisplayRequest = tourDisplayRequest

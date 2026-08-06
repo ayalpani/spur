@@ -74,6 +74,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var displayedTour by remember { mutableStateOf<Tour?>(null) }
     var displayedTourId by rememberSaveable { mutableStateOf<Long?>(null) }
     var displayedTourRequest by rememberSaveable { mutableLongStateOf(0L) }
+    var homeTourEntryRequest by remember { mutableLongStateOf(-1L) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
     var pendingDeparturePreview by remember {
         mutableStateOf<PendingDeparturePreview?>(null)
@@ -85,6 +86,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var photoRevision by remember { mutableLongStateOf(0L) }
     var historyPhotoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var historyPhotos by remember { mutableStateOf(emptyList<MapMoment>()) }
+    var openingTourId by remember { mutableStateOf<Long?>(null) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var initialMapLoadingComplete by rememberSaveable { mutableStateOf(false) }
     var historyPreloadingEnabled by remember { mutableStateOf(false) }
@@ -374,6 +376,8 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         tour = mapTour,
                         activeTour = activeTour,
                         tourDisplayRequest = displayedTourRequest,
+                        animateTourEntry =
+                            displayedTourRequest == homeTourEntryRequest,
                         routePoints = routePoints,
                         pendingDeparturePreview = pendingDeparturePreview,
                         roadHistoryStore = store,
@@ -532,13 +536,40 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 backEnabled = homeVisible,
                                 onBack = { navController.popBackStack() },
                                 onOpenTour = { id ->
-                                    if (displayedTourId != id) {
-                                        displayedTour = null
-                                        routePoints = emptyList()
+                                    if (openingTourId == null) {
+                                        openingTourId = id
+                                        scope.launch {
+                                            val loadedTour = withContext(Dispatchers.IO) {
+                                                store.tourRevision(id)?.let { revision ->
+                                                    revision to store.points(id)
+                                                }
+                                            }
+                                            if (
+                                                openingTourId != id ||
+                                                navController.currentDestination?.route !=
+                                                SpurRoute.HOME
+                                            ) {
+                                                if (openingTourId == id) openingTourId = null
+                                                return@launch
+                                            }
+                                            if (loadedTour == null) {
+                                                openingTourId = null
+                                                showFeedbackNotice(
+                                                    FeedbackNoticeKind.ERROR,
+                                                    "Tour konnte nicht geöffnet werden.",
+                                                )
+                                                return@launch
+                                            }
+                                            displayedTourRevision = loadedTour.first
+                                            displayedTour = loadedTour.first.asTour()
+                                            displayedTourId = id
+                                            routePoints = loadedTour.second
+                                            displayedTourRequest++
+                                            homeTourEntryRequest = displayedTourRequest
+                                            openingTourId = null
+                                            navController.navigate(SpurRoute.MAP)
+                                        }
                                     }
-                                    displayedTourId = id
-                                    displayedTourRequest++
-                                    navController.navigate(SpurRoute.MAP)
                                 },
                                 onOpenPhoto = { photo, photos ->
                                     historyPhotos = photos
