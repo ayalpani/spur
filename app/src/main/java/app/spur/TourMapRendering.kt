@@ -54,6 +54,18 @@ private const val TourPauseMarkerBarDp = 3f
 private const val TourPauseLabelSize = 13f
 private const val TourPauseLabelHaloWidth = 4f
 
+internal data class PreparedTourRoute(
+    val points: List<TrackPoint>,
+    val routeFeatures: FeatureCollection,
+    val pauseFeatures: FeatureCollection,
+)
+
+internal fun prepareTourRoute(points: List<TrackPoint>) = PreparedTourRoute(
+    points = points,
+    routeFeatures = tourRouteFeatures(points),
+    pauseFeatures = tourPauseFeatures(points),
+)
+
 internal fun Style.showTourRoute(
     points: List<TrackPoint>,
     colors: TrailColors,

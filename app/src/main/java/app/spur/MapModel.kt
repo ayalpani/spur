@@ -75,9 +75,16 @@ internal const val MapMomentLayer = "map-moment-layer"
 internal const val MapMomentClusterLayer = "map-moment-cluster-layer"
 internal const val MapMomentClusterCountBadgeLayer = "map-moment-cluster-count-badge-layer"
 internal const val MapMomentClusterCountLayer = "map-moment-cluster-count-layer"
+internal const val MapMomentUserSpotClusterLayer = "map-moment-user-spot-cluster-layer"
+internal const val MapMomentUserSpotClusterCountBadgeLayer =
+    "map-moment-user-spot-cluster-count-badge-layer"
+internal const val MapMomentUserSpotClusterCountLayer =
+    "map-moment-user-spot-cluster-count-layer"
 internal const val MapMomentClusterCountBadgeRadius = 9f
 internal const val MapMomentClusterCountPositionX = 15f
 internal const val MapMomentClusterCountPositionY = -42f
+internal const val UserSpotMomentClusterOffsetX = -6f
+internal const val UserSpotMomentClusterOffsetY = -7f
 internal const val MapPoiSourceLayer = "poi"
 internal const val MapBuildingLayer = "building"
 internal const val MapBuilding3dLayer = "building-3d"
@@ -94,6 +101,7 @@ internal const val HomeBuildingMinimumSelectionZoom = 15.0
 internal const val MapMomentIdProperty = "moment-id"
 internal const val MapMomentImageProperty = "moment-image"
 internal const val MapMomentRepresentativeProperty = "moment-representative"
+internal const val MapMomentAtUserSpotProperty = "moment-at-user-spot"
 internal const val MapMomentImagePrefix = "map-moment-"
 internal const val MapMomentClusterImagePrefix = "map-moment-cluster-"
 internal const val MapMomentClusterMaxZoom = 16
@@ -306,3 +314,24 @@ internal fun overlappingMomentOffsets(moments: List<MapMoment>): Map<String, Off
             }
         }
         .toMap()
+
+internal fun userSpotMomentIds(
+    moments: List<MapMoment>,
+    userSpot: SpurCoordinate?,
+): Set<String> {
+    if (userSpot == null) return emptySet()
+    return moments
+        .asSequence()
+        .filter { moment ->
+            haversineDistanceMeters(
+                fromLatitude = userSpot.latitude,
+                fromLongitude = userSpot.longitude,
+                toLatitude = moment.latitude,
+                toLongitude = moment.longitude,
+            ) <= UserSpotMomentMaximumDistanceMeters
+        }
+        .map(MapMoment::id)
+        .toSet()
+}
+
+private const val UserSpotMomentMaximumDistanceMeters = 3.0

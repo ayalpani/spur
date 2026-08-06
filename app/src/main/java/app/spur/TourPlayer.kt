@@ -58,7 +58,7 @@ internal fun TourSummaryPlayer(
     elapsedMillis: Long,
     modifier: Modifier = Modifier,
 ) {
-    val controlColors = LocalMapControlColors.current.inverted
+    val controlColors = secondaryMapControlStyle(LocalMapControlColors.current).colors
     var showTrackingTime by rememberSaveable(tourId) { mutableStateOf(false) }
 
     Surface(
@@ -108,7 +108,7 @@ internal fun TourPlayer(
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val controlColors = LocalMapControlColors.current.inverted
+    val controlColors = secondaryMapControlStyle(LocalMapControlColors.current).colors
     var armed by remember(tour.id) { mutableStateOf(false) }
     var showRecentSpeed by rememberSaveable(tour.id) { mutableStateOf(false) }
     var dragOffset by remember(tour.id) { mutableFloatStateOf(0f) }

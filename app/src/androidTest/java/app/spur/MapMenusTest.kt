@@ -80,6 +80,7 @@ class MapMenusTest {
                 SettingsMenu(
                     onOpenHome = {},
                     onOpenHomeAutoStart = {},
+                    onOpenBackup = {},
                     onOpenTheme = {},
                     onOpenDirection = {},
                 )
@@ -87,6 +88,7 @@ class MapMenusTest {
         }
 
         assertTextDoesNotExist("Tour")
+        assertTextExists("Backup")
     }
 
     private fun assertTextExists(text: String) {

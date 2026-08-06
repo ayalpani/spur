@@ -1,6 +1,11 @@
 package app.spur
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,12 +37,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -78,6 +85,7 @@ internal fun HomeScreen(
     revision: Long,
     loadingEnabled: Boolean,
     backEnabled: Boolean,
+    openingTourId: Long? = null,
     onBack: () -> Unit,
     onOpenTour: (Long) -> Unit,
     onOpenPhoto: (MapMoment, List<MapMoment>) -> Unit,
@@ -221,6 +229,8 @@ internal fun HomeScreen(
                         Column(modifier = Modifier.animateItem()) {
                             HistoryTourRow(
                                 item = item,
+                                isOpening = openingTourId == item.tour.id,
+                                enabled = openingTourId == null,
                                 onClick = { onOpenTour(item.tour.id) },
                                 onOpenPhoto = { photo ->
                                     onOpenPhoto(
@@ -309,16 +319,23 @@ private fun HistorySectionHeader(
 @Composable
 private fun HistoryTourRow(
     item: HistoryTourItem,
+    isOpening: Boolean,
+    enabled: Boolean,
     onClick: () -> Unit,
     onOpenPhoto: (MapMoment) -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .tourOpeningEffect(isOpening)
             .clickable(
+                enabled = enabled,
                 onClickLabel = "${historyTourTitle(item)} öffnen",
                 onClick = onClick,
             )
+            .semantics {
+                if (isOpening) stateDescription = "Tour wird vorbereitet"
+            }
             .padding(vertical = 14.dp),
     ) {
         Text(
@@ -355,6 +372,7 @@ private fun HistoryTourRow(
                 ) { moment ->
                     HistoryMomentThumbnail(
                         moment = moment,
+                        enabled = enabled,
                         onOpenPhoto = onOpenPhoto,
                     )
                 }
@@ -393,6 +411,7 @@ private fun HistoryMapThumbnail(
 @Composable
 private fun HistoryMomentThumbnail(
     moment: MapMoment,
+    enabled: Boolean,
     onOpenPhoto: (MapMoment) -> Unit,
 ) {
     val context = LocalContext.current
@@ -423,6 +442,7 @@ private fun HistoryMomentThumbnail(
             .then(
                 if (moment.type == MomentType.PHOTO) {
                     Modifier.clickable(
+                        enabled = enabled,
                         onClickLabel = "Foto öffnen",
                         onClick = { onOpenPhoto(moment) },
                     )
@@ -431,6 +451,22 @@ private fun HistoryMomentThumbnail(
                 },
             ),
     )
+}
+
+@Composable
+private fun Modifier.tourOpeningEffect(active: Boolean): Modifier {
+    if (!active) return this
+    val transition = rememberInfiniteTransition(label = "Tour wird vorbereitet")
+    val opacity by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.45f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(650),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "Pulsierende Tour-Zeile",
+    )
+    return alpha(opacity)
 }
 
 private fun historySections(

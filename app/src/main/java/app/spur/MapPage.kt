@@ -79,7 +79,10 @@ internal fun MapPage(
     tour: Tour?,
     activeTour: Tour?,
     tourDisplayRequest: Long,
+    animateTourEntry: Boolean = false,
+    tourEntryPreparationRequest: Long? = null,
     routePoints: List<TrackPoint>,
+    preparedTourRoute: PreparedTourRoute? = null,
     pendingDeparturePreview: PendingDeparturePreview? = null,
     roadHistoryStore: TourStore? = null,
     roadTraversalFingerprint: RoadHistoryFingerprint? = null,
@@ -97,6 +100,7 @@ internal fun MapPage(
     initialLoadingComplete: Boolean = false,
     splashExitComplete: Boolean = true,
     onInitialLoadingComplete: () -> Unit = {},
+    onTourEntryPrepared: (Long) -> Unit = {},
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -149,6 +153,7 @@ internal fun MapPage(
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
     var showSettingsMenu by rememberSaveable { mutableStateOf(false) }
     var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var showBackupBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showThemePicker by rememberSaveable { mutableStateOf(false) }
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
@@ -182,6 +187,9 @@ internal fun MapPage(
     }
     var presentation by remember { mutableStateOf(TourPresentation.Empty) }
     var presentationGeneration by remember { mutableLongStateOf(0L) }
+    var presentedTourId by remember { mutableStateOf<Long?>(null) }
+    var presentedRoutePoints by remember { mutableStateOf<List<TrackPoint>?>(null) }
+    var presentedMapMoments by remember { mutableStateOf<List<MapMoment>?>(null) }
     LaunchedEffect(tour, routePoints, visibleMapMoments) {
         val generation = ++presentationGeneration
         val result = tour?.let { displayedTour ->
@@ -193,8 +201,21 @@ internal fun MapPage(
             editorLocations = emptyList(),
             editorLocationsByPointId = emptyMap(),
         )
-        if (generation == presentationGeneration) presentation = result
+        if (generation == presentationGeneration) {
+            presentation = result
+            presentedTourId = tour?.id
+            presentedRoutePoints = routePoints
+            presentedMapMoments = visibleMapMoments
+        }
     }
+    val isTourPresentationReady = isTourPresentationReadyForEntry(
+        presentedTourId = presentedTourId,
+        tourId = tour?.id,
+        presentedRoutePoints = presentedRoutePoints,
+        routePoints = routePoints,
+        presentedMapMoments = presentedMapMoments,
+        mapMoments = visibleMapMoments,
+    )
     val renderedMapMoments = remember(presentation.mapMoments, homeSettings) {
         normalizedHomeMoments(presentation.mapMoments, homeSettings)
     }
@@ -246,6 +267,8 @@ internal fun MapPage(
     val settingsMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val homeAutoStartBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val backupBottomSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val directionBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val aboutBottomSheetState =
@@ -263,7 +286,7 @@ internal fun MapPage(
         followRequest++
     }
     val requestMapZoom: (Double, Boolean) -> Unit = { zoom, animated ->
-        val target = zoom.coerceIn(MapZoomMinimum, MapZoomMaximum)
+        val target = normalizedMapZoom(zoom, isSatelliteView)
         displayedMapZoom = target
         mapZoomRequestId++
         mapZoomRequest = MapZoomRequest(
@@ -473,11 +496,15 @@ internal fun MapPage(
                 showTourEndpoints = !isDisplayedActiveTour && !showsPendingDeparture,
                 departureCheckActive = showsPendingDeparture,
                 deferAlternateMapPreview =
+                    tourEntryPreparationRequest != null ||
                     (isWaypointRailScrolling && !isFollowingLocation) ||
                     isMapGestureActive ||
                     isZoomControlInteracting,
                 isZoomControlInteracting = isZoomControlInteracting,
                 tourDisplayRequest = tourDisplayRequest,
+                animateTourEntry = animateTourEntry,
+                tourEntryPreparationRequest = tourEntryPreparationRequest,
+                tourEntryContentReady = isTourPresentationReady,
                 followRequest = followRequest,
                 tourOverviewRequest = tourOverviewRequest,
                 isFollowingLocation = isFollowingLocation,
@@ -491,6 +518,7 @@ internal fun MapPage(
                 mapMoments = renderedMapMoments,
                 momentImageRevision = photoRevision,
                 routePoints = mapRoutePoints,
+                preparedTourRoute = preparedTourRoute,
                 roadHistoryStore = roadHistoryStore,
                 roadTraversalFingerprint = roadTraversalFingerprint,
                 trailColors = trailColors,
@@ -518,7 +546,7 @@ internal fun MapPage(
                 onAlternateMapPreviewChanged = { alternateMapPreview = it },
                 onViewportChanged = {
                     mapViewport = it
-                    displayedMapZoom = it.zoom.coerceIn(MapZoomMinimum, MapZoomMaximum)
+                    displayedMapZoom = normalizedMapZoom(it.zoom, it.satellite)
                 },
                 onMomentPlaced = { moment ->
                     val updatedMoments = mapMoments + moment.copy(
@@ -585,6 +613,7 @@ internal fun MapPage(
                 onMovementChanged = { isUserMoving = it },
                 onMapReadyChanged = { isMapRendered = it },
                 onMapGestureActiveChanged = { isMapGestureActive = it },
+                onTourEntryPrepared = onTourEntryPrepared,
             )
             }
 
@@ -736,6 +765,7 @@ internal fun MapPage(
                     MapZoomControl(
                         zoom = displayedMapZoom,
                         defaultZoom = defaultMapZoom,
+                        maximumZoom = mapZoomMaximum(isSatelliteView),
                         isInteractionActive = isZoomControlInteracting,
                         onZoomChange = requestMapZoom,
                         onDefaultZoomSelected = { zoom ->
@@ -798,6 +828,10 @@ internal fun MapPage(
                         onClick = {
                             alternateMapPreview = null
                             isSatelliteView = !isSatelliteView
+                            displayedMapZoom = normalizedMapZoom(
+                                displayedMapZoom,
+                                isSatelliteView,
+                            )
                         },
                         preview = alternateMapPreview,
                         fallbackPreview = if (isSatelliteView) {
@@ -1212,6 +1246,14 @@ internal fun MapPage(
                         hideCurrent = { showSettingsMenu = false },
                     )
                 },
+                onOpenBackup = {
+                    scope.swapBottomSheets(
+                        currentState = settingsMenuState,
+                        nextState = backupBottomSheetState,
+                        showNext = { showBackupBottomSheet = true },
+                        hideCurrent = { showSettingsMenu = false },
+                    )
+                },
                 onOpenTheme = {
                     showThemePicker = true
                     scope.launch {
@@ -1298,6 +1340,26 @@ internal fun MapPage(
                         openHomeSelection()
                     }
                 },
+            )
+        }
+    }
+
+    if (showBackupBottomSheet) {
+        val closeBackup: () -> Unit = {
+            scope.swapBottomSheets(
+                currentState = backupBottomSheetState,
+                nextState = settingsMenuState,
+                showNext = { showSettingsMenu = true },
+                hideCurrent = { showBackupBottomSheet = false },
+            )
+        }
+        SpurModalBottomSheet(
+            onDismissRequest = { showBackupBottomSheet = false },
+            sheetState = backupBottomSheetState,
+        ) {
+            BackupBottomSheet(
+                hasActiveTour = activeTour != null,
+                onBack = closeBackup,
             )
         }
     }
@@ -1510,6 +1572,18 @@ internal fun MapPage(
         )
     }
 }
+
+internal fun isTourPresentationReadyForEntry(
+    presentedTourId: Long?,
+    tourId: Long?,
+    presentedRoutePoints: List<TrackPoint>?,
+    routePoints: List<TrackPoint>,
+    presentedMapMoments: List<MapMoment>?,
+    mapMoments: List<MapMoment>,
+): Boolean =
+    presentedTourId == tourId &&
+        presentedRoutePoints === routePoints &&
+        presentedMapMoments === mapMoments
 
 @Composable
 private fun ActiveTourNavigationBar(active: Boolean) {

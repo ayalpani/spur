@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.maplibre.android.MapLibre
+import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
@@ -23,6 +24,8 @@ import org.maplibre.android.maps.MapLibreMap
 import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+
+internal const val TourEntryZoomOutLevels = 2.0
 
 @Composable
 internal fun TourEditorMap(
@@ -105,6 +108,9 @@ internal fun MapLibreMap.fitMapScreenTourRoute(
     density: Float,
     pointZoom: Double,
     animated: Boolean,
+    zoomOutBeforeAnimation: Double = 0.0,
+    tourEntryStartIsPrepared: Boolean = false,
+    onAnimationFinished: () -> Unit = {},
 ) = fitTourRoute(
     points = points,
     leftPaddingPixels = (40 * density).roundToInt(),
@@ -113,6 +119,9 @@ internal fun MapLibreMap.fitMapScreenTourRoute(
     bottomPaddingPixels = (184 * density).roundToInt(),
     pointZoom = pointZoom,
     animated = animated,
+    zoomOutBeforeAnimation = zoomOutBeforeAnimation,
+    tourEntryStartIsPrepared = tourEntryStartIsPrepared,
+    onAnimationFinished = onAnimationFinished,
 )
 
 private fun MapLibreMap.fitTourRoute(
@@ -123,20 +132,25 @@ private fun MapLibreMap.fitTourRoute(
     bottomPaddingPixels: Int,
     pointZoom: Double,
     animated: Boolean,
+    zoomOutBeforeAnimation: Double = 0.0,
+    tourEntryStartIsPrepared: Boolean = false,
+    onAnimationFinished: () -> Unit = {},
 ) {
     if (points.isEmpty()) return
-    val update = if (points.size == 1) {
-        CameraUpdateFactory.newCameraPosition(
-            org.maplibre.android.camera.CameraPosition.Builder(cameraPosition)
-                .target(LatLng(points.first().latitude, points.first().longitude))
-                .zoom(pointZoom)
-                .build(),
-        )
-    } else {
-        val bounds = LatLngBounds.Builder()
+    val bounds = if (points.size > 1) {
+        LatLngBounds.Builder()
             .includes(points.map { LatLng(it.latitude, it.longitude) })
             .build()
-        val camera = getCameraForLatLngBounds(
+    } else {
+        null
+    }
+    val targetCamera = if (bounds == null) {
+        CameraPosition.Builder(cameraPosition)
+            .target(LatLng(points.first().latitude, points.first().longitude))
+            .zoom(pointZoom)
+            .build()
+    } else {
+        getCameraForLatLngBounds(
             bounds,
             intArrayOf(
                 leftPaddingPixels,
@@ -147,14 +161,51 @@ private fun MapLibreMap.fitTourRoute(
             cameraPosition.bearing,
             cameraPosition.tilt,
         )
-        camera?.let(CameraUpdateFactory::newCameraPosition)
-            ?: CameraUpdateFactory.newLatLngBounds(
-                bounds,
+    }
+    val update = targetCamera?.let(CameraUpdateFactory::newCameraPosition)
+        ?: bounds?.let {
+            CameraUpdateFactory.newLatLngBounds(
+                it,
                 leftPaddingPixels,
                 topPaddingPixels,
                 rightPaddingPixels,
                 bottomPaddingPixels,
             )
+        } ?: return
+    if (animated) {
+        if (
+            targetCamera != null &&
+            zoomOutBeforeAnimation > 0.0 &&
+            !tourEntryStartIsPrepared
+        ) {
+            moveCamera(
+                CameraUpdateFactory.newCameraPosition(
+                    CameraPosition.Builder(targetCamera)
+                        .zoom(tourEntryStartZoom(targetCamera.zoom, zoomOutBeforeAnimation))
+                        .build(),
+                ),
+            )
+        }
+        animateCamera(
+            update,
+            if (zoomOutBeforeAnimation > 0.0) {
+                HomePanelMotionDurationMillis
+            } else {
+                220
+            },
+            object : MapLibreMap.CancelableCallback {
+                override fun onCancel() = onAnimationFinished()
+
+                override fun onFinish() = onAnimationFinished()
+            },
+        )
+    } else {
+        moveCamera(update)
+        onAnimationFinished()
     }
-    if (animated) animateCamera(update, 220) else moveCamera(update)
 }
+
+internal fun tourEntryStartZoom(
+    targetZoom: Double,
+    zoomOutLevels: Double = TourEntryZoomOutLevels,
+): Double = (targetZoom - zoomOutLevels).coerceAtLeast(MapZoomMinimum)

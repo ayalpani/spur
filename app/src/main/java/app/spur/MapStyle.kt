@@ -94,7 +94,9 @@ internal fun setMapStyle(
 
 private fun Style.installSatelliteBaseMap() {
     if (getSource(SatelliteSource) == null) {
-        val tileSet = TileSet("2.2.0", SatelliteTileUrl)
+        val tileSet = TileSet("2.2.0", SatelliteTileUrl).apply {
+            maxZoom = SatelliteMapZoomMaximum.toFloat()
+        }
         addSource(RasterSource(SatelliteSource, tileSet, 256))
     }
     if (getLayer(SatelliteLayer) == null) {
@@ -190,6 +192,7 @@ internal fun prepareMapMoments(
             addStringProperty(MapMomentIdProperty, moment.id)
             addStringProperty(MapMomentImageProperty, imageId)
             addNumberProperty(MapMomentRepresentativeProperty, index)
+            addNumberProperty(MapMomentAtUserSpotProperty, 0)
         }
     }
     return PreparedMapMoments(
@@ -204,9 +207,16 @@ internal fun Style.showMapMomentImages(prepared: PreparedMapMomentImages) {
 
 internal fun Style.showMapMoments(
     prepared: PreparedMapMoments,
+    userSpotMomentIds: Set<String>,
 ) {
     val moments = prepared.moments
     val features = prepared.features
+    features.forEach { feature ->
+        feature.addNumberProperty(
+            MapMomentAtUserSpotProperty,
+            if (feature.getStringProperty(MapMomentIdProperty) in userSpotMomentIds) 1 else 0,
+        )
+    }
 
     val source = getSourceAs<GeoJsonSource>(MapMomentSource)
         ?: GeoJsonSource(
@@ -223,6 +233,14 @@ internal fun Style.showMapMoments(
                         Expression.get(MapMomentRepresentativeProperty),
                     ),
                     Expression.get(MapMomentRepresentativeProperty),
+                )
+                .withClusterProperty(
+                    MapMomentAtUserSpotProperty,
+                    Expression.max(
+                        Expression.accumulated(),
+                        Expression.get(MapMomentAtUserSpotProperty),
+                    ),
+                    Expression.get(MapMomentAtUserSpotProperty),
                 )
         ).also(::addSource)
     source.setGeoJson(
@@ -252,7 +270,20 @@ internal fun Style.showMapMoments(
     }
 
     val clusterImage = clusterMomentImageExpression(moments)
-    val regularClusterFilter = Expression.has("point_count")
+    val userSpotClusterFilter = Expression.all(
+        Expression.has("point_count"),
+        Expression.eq(
+            Expression.toNumber(Expression.get(MapMomentAtUserSpotProperty)),
+            Expression.literal(1),
+        ),
+    )
+    val regularClusterFilter = Expression.all(
+        Expression.has("point_count"),
+        Expression.neq(
+            Expression.toNumber(Expression.get(MapMomentAtUserSpotProperty)),
+            Expression.literal(1),
+        ),
+    )
     val clusterLayer = getLayerAs<SymbolLayer>(MapMomentClusterLayer)
     if (clusterLayer == null) {
         addLayerBelowLocationPulse(
@@ -269,7 +300,33 @@ internal fun Style.showMapMoments(
                 ),
         )
     } else {
-        clusterLayer.setProperties(iconImage(clusterImage))
+        clusterLayer.setProperties(
+            iconImage(clusterImage),
+        )
+    }
+    val userSpotClusterLayer = getLayerAs<SymbolLayer>(MapMomentUserSpotClusterLayer)
+    if (userSpotClusterLayer == null) {
+        addLayerBelowLocationPulse(
+            SymbolLayer(MapMomentUserSpotClusterLayer, MapMomentSource)
+                .withFilter(userSpotClusterFilter)
+                .withProperties(
+                    iconImage(clusterImage),
+                    iconOffset(
+                        arrayOf(
+                            UserSpotMomentClusterOffsetX,
+                            UserSpotMomentClusterOffsetY,
+                        ),
+                    ),
+                    iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+                    iconAllowOverlap(true),
+                    iconIgnorePlacement(true),
+                    iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                    iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                    symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
+                ),
+        )
+    } else {
+        userSpotClusterLayer.setProperties(iconImage(clusterImage))
     }
 
     if (getLayer(MapMomentClusterCountBadgeLayer) == null) {
@@ -292,6 +349,23 @@ internal fun Style.showMapMoments(
         } else {
             addLayerBelow(countBadgeLayer, MapMomentClusterCountLayer)
         }
+    }
+    if (getLayer(MapMomentUserSpotClusterCountBadgeLayer) == null) {
+        val countBadgeLayer =
+            CircleLayer(MapMomentUserSpotClusterCountBadgeLayer, MapMomentSource)
+                .withFilter(userSpotClusterFilter)
+                .withProperties(
+                    circleRadius(MapMomentClusterCountBadgeRadius),
+                    circleColor(Ink.toArgb()),
+                    circleTranslate(
+                        arrayOf(
+                            MapMomentClusterCountPositionX + UserSpotMomentClusterOffsetX,
+                            MapMomentClusterCountPositionY + UserSpotMomentClusterOffsetY,
+                        ),
+                    ),
+                    circleTranslateAnchor(Property.CIRCLE_TRANSLATE_ANCHOR_VIEWPORT),
+                )
+        addLayerBelowLocationPulse(countBadgeLayer)
     }
 
     if (getLayer(MapMomentClusterCountLayer) == null) {
@@ -317,7 +391,29 @@ internal fun Style.showMapMoments(
             ),
         )
     }
-
+    if (getLayer(MapMomentUserSpotClusterCountLayer) == null) {
+        addLayerBelowLocationPulse(
+            SymbolLayer(MapMomentUserSpotClusterCountLayer, MapMomentSource)
+                .withFilter(userSpotClusterFilter)
+                .withProperties(
+                    textField(Expression.toString(Expression.get("point_count_abbreviated"))),
+                    textFont(arrayOf("Noto Sans Bold")),
+                    textSize(13f),
+                    textColor(android.graphics.Color.WHITE),
+                    textTranslate(
+                        arrayOf(
+                            MapMomentClusterCountPositionX + UserSpotMomentClusterOffsetX,
+                            MapMomentClusterCountPositionY + UserSpotMomentClusterOffsetY,
+                        ),
+                    ),
+                    textTranslateAnchor(Property.TEXT_TRANSLATE_ANCHOR_VIEWPORT),
+                    textAnchor(Property.TEXT_ANCHOR_CENTER),
+                    textAllowOverlap(true),
+                    textIgnorePlacement(true),
+                    symbolZOrder(Property.SYMBOL_Z_ORDER_VIEWPORT_Y),
+                ),
+        )
+    }
 }
 
 private fun clusterMomentImageExpression(moments: List<MapMoment>): Expression =

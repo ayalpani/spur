@@ -7,9 +7,6 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
 import android.view.animation.AccelerateDecelerateInterpolator
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -21,6 +18,8 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import java.io.File
+
+private const val LocationAnimationMaximumFps = 30
 
 internal fun satelliteStyleBuilder(): Style.Builder {
     return Style.Builder().fromJson(SatelliteMapStyleJson)
@@ -50,6 +49,7 @@ internal fun enableLocationTracking(
             .useDefaultLocationEngine(false)
             .build(),
     )
+    locationComponent.setMaxAnimationFps(LocationAnimationMaximumFps)
     locationComponent.isLocationComponentEnabled = manualLocation == null
     locationComponent.renderMode = RenderMode.NORMAL
     locationComponent.cameraMode = CameraMode.NONE
@@ -79,12 +79,12 @@ internal fun enableLocationTracking(
     }
 }
 
-internal fun MapLibreMap.restartLocationPulse(
+internal fun MapLibreMap.refreshLocationAppearance(
     colors: LocationMarkerColors,
     pulseColor: Color,
 ) {
     val component = locationComponent
-    if (!component.isLocationComponentActivated || !component.isLocationComponentEnabled) return
+    if (!component.isLocationComponentActivated) return
     component.applyStyle(
         component.locationComponentOptions
             .toBuilder()

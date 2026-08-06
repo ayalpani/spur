@@ -6,6 +6,8 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.location.Location
 import android.os.SystemClock
+import java.io.File
+import java.io.IOException
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -186,7 +188,8 @@ private data class StoredRoadHistoryPoint(
 )
 
 class TourStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "spur.db", null, 4) {
+    SQLiteOpenHelper(context.applicationContext, SpurDatabaseName, null, 4) {
+    private val appContext = context.applicationContext
     private val gpsStartGates = mutableMapOf<Long, GpsStartGate>()
     private val stationaryExitFixes = mutableMapOf<Long, MutableList<Location>>()
 
@@ -261,12 +264,14 @@ class TourStore(context: Context) :
     fun finishTour(id: Long, now: Long = System.currentTimeMillis()): Boolean {
         gpsStartGates.remove(id)
         stationaryExitFixes.remove(id)
-        return writableDatabase.update(
+        val finished = writableDatabase.update(
             "tours",
             ContentValues().apply { put("ended_at", now) },
             "id = ? AND ended_at IS NULL",
             arrayOf(id.toString()),
         ) > 0
+        if (finished) appContext.scheduleAutomaticBackup()
+        return finished
     }
 
     @Synchronized
@@ -290,7 +295,7 @@ class TourStore(context: Context) :
         stationaryExitFixes.remove(id)
         val db = writableDatabase
         db.beginTransaction()
-        try {
+        val finished = try {
             val activeTail = latestPointOfActiveTour(db, id) ?: return false
             val endRecordedAt = automaticTourEndRecordedAt(
                 lastRecordedAt = activeTail.point?.recordedAt,
@@ -304,7 +309,7 @@ class TourStore(context: Context) :
                 recordedAt = endRecordedAt,
                 accuracyMeters = 3f,
             )
-            val finished = db.update(
+            val updated = db.update(
                 "tours",
                 ContentValues().apply {
                     put("ended_at", endRecordedAt)
@@ -313,12 +318,14 @@ class TourStore(context: Context) :
                 "id = ? AND ended_at IS NULL",
                 arrayOf(id.toString()),
             ) > 0
-            if (!finished) return false
+            if (!updated) return false
             db.setTransactionSuccessful()
-            return true
+            true
         } finally {
             db.endTransaction()
         }
+        if (finished) appContext.scheduleAutomaticBackup()
+        return finished
     }
 
     @Synchronized
@@ -1127,6 +1134,51 @@ class TourStore(context: Context) :
         }
     }
 
+    @Synchronized
+    internal fun copyDatabaseTo(target: File) {
+        val database = writableDatabase
+        database.rawQuery("PRAGMA wal_checkpoint(FULL)", null).use { cursor ->
+            if (cursor.moveToFirst()) check(cursor.getInt(0) == 0) {
+                "Die Tourdatenbank ist noch beschäftigt."
+            }
+        }
+        val source = File(database.path).canonicalFile
+        val destination = target.canonicalFile
+        require(source != destination)
+        destination.parentFile?.mkdirs()
+        source.inputStream().use { input ->
+            destination.outputStream().use(input::copyTo)
+        }
+    }
+
+    @Synchronized
+    internal fun replaceDatabaseFrom(source: File) {
+        validateSpurDatabase(source)
+        val destination = appContext.getDatabasePath(SpurDatabaseName)
+        require(source.canonicalFile != destination.canonicalFile)
+        destination.parentFile?.mkdirs()
+        val staged = File(destination.parentFile, "$SpurDatabaseName.restore")
+        val previous = File(destination.parentFile, "$SpurDatabaseName.before-restore")
+        close()
+        staged.delete()
+        previous.delete()
+        source.copyTo(staged, overwrite = true)
+        File("${destination.path}-wal").delete()
+        File("${destination.path}-shm").delete()
+        val hadDatabase = destination.exists()
+        if (hadDatabase && !destination.renameTo(previous)) {
+            staged.delete()
+            throw IOException("Die aktuelle Tourdatenbank konnte nicht gesichert werden.")
+        }
+        if (!staged.renameTo(destination)) {
+            if (hadDatabase) previous.renameTo(destination)
+            throw IOException("Die wiederhergestellte Tourdatenbank konnte nicht aktiviert werden.")
+        }
+        previous.delete()
+        gpsStartGates.clear()
+        stationaryExitFixes.clear()
+    }
+
     private fun queryTours(
         where: String? = null,
         args: Array<String> = emptyArray(),
@@ -1186,4 +1238,5 @@ class TourStore(context: Context) :
 }
 
 private const val RoadHistorySignaturePrime = 1_000_000_007L
+internal const val SpurDatabaseName = "spur.db"
 private const val RoadHistoryCoordinatePrecision = 1_000_000L

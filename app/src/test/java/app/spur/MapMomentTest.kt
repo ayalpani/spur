@@ -1,5 +1,6 @@
 package app.spur
 
+import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -194,6 +195,35 @@ class MapMomentTest {
         offsets.values.forEach { offset ->
             assertTrue(offset.getDistance() > MomentMarkerWidth / 2f)
         }
+    }
+
+    @Test
+    fun userSpotMarksOnlyNearbyMoments() {
+        val moments = listOf(
+            MapMoment(
+                id = "at-user-spot",
+                type = MomentType.PHOTO,
+                latitude = 52.52,
+                longitude = 13.40501,
+                payload = "/near.jpg",
+            ),
+            MapMoment(
+                id = "elsewhere",
+                type = MomentType.PHOTO,
+                latitude = 52.52,
+                longitude = 13.4051,
+                payload = "/far.jpg",
+            ),
+        )
+
+        assertEquals(
+            setOf("at-user-spot"),
+            userSpotMomentIds(
+                moments = moments,
+                userSpot = SpurCoordinate(latitude = 52.52, longitude = 13.405),
+            ),
+        )
+        assertTrue(userSpotMomentIds(moments, null).isEmpty())
     }
 
     @Test
