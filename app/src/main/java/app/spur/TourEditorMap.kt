@@ -109,6 +109,8 @@ internal fun MapLibreMap.fitMapScreenTourRoute(
     pointZoom: Double,
     animated: Boolean,
     zoomOutBeforeAnimation: Double = 0.0,
+    tourEntryStartIsPrepared: Boolean = false,
+    onAnimationFinished: () -> Unit = {},
 ) = fitTourRoute(
     points = points,
     leftPaddingPixels = (40 * density).roundToInt(),
@@ -118,6 +120,8 @@ internal fun MapLibreMap.fitMapScreenTourRoute(
     pointZoom = pointZoom,
     animated = animated,
     zoomOutBeforeAnimation = zoomOutBeforeAnimation,
+    tourEntryStartIsPrepared = tourEntryStartIsPrepared,
+    onAnimationFinished = onAnimationFinished,
 )
 
 private fun MapLibreMap.fitTourRoute(
@@ -129,6 +133,8 @@ private fun MapLibreMap.fitTourRoute(
     pointZoom: Double,
     animated: Boolean,
     zoomOutBeforeAnimation: Double = 0.0,
+    tourEntryStartIsPrepared: Boolean = false,
+    onAnimationFinished: () -> Unit = {},
 ) {
     if (points.isEmpty()) return
     val bounds = if (points.size > 1) {
@@ -167,7 +173,11 @@ private fun MapLibreMap.fitTourRoute(
             )
         } ?: return
     if (animated) {
-        if (targetCamera != null && zoomOutBeforeAnimation > 0.0) {
+        if (
+            targetCamera != null &&
+            zoomOutBeforeAnimation > 0.0 &&
+            !tourEntryStartIsPrepared
+        ) {
             moveCamera(
                 CameraUpdateFactory.newCameraPosition(
                     CameraPosition.Builder(targetCamera)
@@ -183,9 +193,15 @@ private fun MapLibreMap.fitTourRoute(
             } else {
                 220
             },
+            object : MapLibreMap.CancelableCallback {
+                override fun onCancel() = onAnimationFinished()
+
+                override fun onFinish() = onAnimationFinished()
+            },
         )
     } else {
         moveCamera(update)
+        onAnimationFinished()
     }
 }
 

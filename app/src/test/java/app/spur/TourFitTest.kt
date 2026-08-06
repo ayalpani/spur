@@ -21,4 +21,51 @@ class TourFitTest {
         assertEquals(15.5, tourEntryStartZoom(17.5), 0.0001)
         assertEquals(MapZoomMinimum, tourEntryStartZoom(2.0, 5.0), 0.0001)
     }
+
+    @Test
+    fun tourEntryWaitsForPresentationBuiltFromCurrentInputs() {
+        val points = mutableListOf<TrackPoint>()
+        val moments = mutableListOf<MapMoment>()
+
+        assertTrue(
+            isTourPresentationReadyForEntry(
+                presentedTourId = 7L,
+                tourId = 7L,
+                presentedRoutePoints = points,
+                routePoints = points,
+                presentedMapMoments = moments,
+                mapMoments = moments,
+            ),
+        )
+        assertFalse(
+            isTourPresentationReadyForEntry(
+                presentedTourId = 7L,
+                tourId = 7L,
+                presentedRoutePoints = mutableListOf<TrackPoint>(),
+                routePoints = points,
+                presentedMapMoments = moments,
+                mapMoments = moments,
+            ),
+        )
+        assertFalse(
+            isTourPresentationReadyForEntry(
+                presentedTourId = 7L,
+                tourId = 7L,
+                presentedRoutePoints = points,
+                routePoints = points,
+                presentedMapMoments = mutableListOf<MapMoment>(),
+                mapMoments = moments,
+            ),
+        )
+        assertFalse(
+            isTourPresentationReadyForEntry(
+                presentedTourId = 8L,
+                tourId = 7L,
+                presentedRoutePoints = points,
+                routePoints = points,
+                presentedMapMoments = moments,
+                mapMoments = moments,
+            ),
+        )
+    }
 }

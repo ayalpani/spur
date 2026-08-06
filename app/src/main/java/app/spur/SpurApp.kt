@@ -3,7 +3,6 @@ package app.spur
 import android.Manifest
 import android.content.Intent
 import android.os.Build
-import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.EnterTransition
@@ -57,6 +56,14 @@ internal data class RestoredActiveTourState(
     val displayedTourId: Long,
 )
 
+private data class HomeTourMapSnapshot(
+    val revision: TourRevision?,
+    val tour: Tour?,
+    val tourId: Long?,
+    val routePoints: List<TrackPoint>,
+    val preparedRoute: PreparedTourRoute?,
+)
+
 internal fun restoredActiveTourState(
     activeTour: Tour,
     displayedTourId: Long?,
@@ -91,6 +98,9 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var historyPhotoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var historyPhotos by remember { mutableStateOf(emptyList<MapMoment>()) }
     var openingTourId by remember { mutableStateOf<Long?>(null) }
+    var homeTourPreparationGeneration by remember { mutableLongStateOf(0L) }
+    var homeTourPreparationRequest by remember { mutableLongStateOf(-1L) }
+    var homeTourMapSnapshot by remember { mutableStateOf<HomeTourMapSnapshot?>(null) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var initialMapLoadingComplete by rememberSaveable { mutableStateOf(false) }
     var historyPreloadingEnabled by remember { mutableStateOf(false) }
@@ -121,6 +131,18 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     val showFeedbackNotice: ShowFeedbackNotice = { kind, message ->
         feedbackNoticeId++
         feedbackNotice = FeedbackNotice(feedbackNoticeId, kind, message)
+    }
+    val cancelHomeTourOpening = {
+        openingTourId = null
+        homeTourPreparationRequest = -1L
+        homeTourMapSnapshot?.let { snapshot ->
+            displayedTourRevision = snapshot.revision
+            displayedTour = snapshot.tour
+            displayedTourId = snapshot.tourId
+            routePoints = snapshot.routePoints
+            preparedDisplayedTourRoute = snapshot.preparedRoute
+        }
+        homeTourMapSnapshot = null
     }
 
     LaunchedEffect(initialMapLoadingComplete) {
@@ -386,7 +408,10 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         activeTour = activeTour,
                         tourDisplayRequest = displayedTourRequest,
                         animateTourEntry =
-                            displayedTourRequest == homeTourEntryRequest,
+                            homeTourPreparationRequest < 0L &&
+                                displayedTourRequest == homeTourEntryRequest,
+                        tourEntryPreparationRequest = homeTourPreparationRequest
+                            .takeIf { it >= 0L },
                         routePoints = routePoints,
                         preparedTourRoute = preparedDisplayedTourRoute,
                         pendingDeparturePreview = pendingDeparturePreview,
@@ -524,6 +549,20 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         onInitialLoadingComplete = {
                             initialMapLoadingComplete = true
                         },
+                        onTourEntryPrepared = { request ->
+                            if (
+                                request == homeTourPreparationRequest &&
+                                openingTourId == displayedTourId &&
+                                navController.currentDestination?.route == SpurRoute.HOME
+                            ) {
+                                displayedTourRequest++
+                                homeTourEntryRequest = displayedTourRequest
+                                homeTourPreparationRequest = -1L
+                                homeTourMapSnapshot = null
+                                openingTourId = null
+                                navController.navigate(SpurRoute.MAP)
+                            }
+                        },
                     )
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         val panelWidth = with(LocalDensity.current) {
@@ -545,11 +584,12 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 loadingEnabled = historyPreloadingEnabled,
                                 backEnabled = homeVisible,
                                 openingTourId = openingTourId,
-                                onBack = { navController.popBackStack() },
+                                onBack = {
+                                    cancelHomeTourOpening()
+                                    navController.popBackStack()
+                                },
                                 onOpenTour = { id ->
                                     if (openingTourId == null) {
-                                        val openingStartedAtMillis =
-                                            SystemClock.elapsedRealtime()
                                         openingTourId = id
                                         scope.launch {
                                             val loadedTour = withContext(Dispatchers.IO) {
@@ -562,12 +602,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                                     prepareTourRoute(it.second)
                                                 }
                                             }
-                                            delay(
-                                                remainingTourOpeningMillis(
-                                                    startedAtMillis = openingStartedAtMillis,
-                                                    nowMillis = SystemClock.elapsedRealtime(),
-                                                ),
-                                            )
                                             if (
                                                 openingTourId != id ||
                                                 navController.currentDestination?.route !=
@@ -584,15 +618,21 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                                 )
                                                 return@launch
                                             }
+                                            homeTourMapSnapshot = HomeTourMapSnapshot(
+                                                revision = displayedTourRevision,
+                                                tour = displayedTour,
+                                                tourId = displayedTourId,
+                                                routePoints = routePoints,
+                                                preparedRoute = preparedDisplayedTourRoute,
+                                            )
                                             displayedTourRevision = loadedTour.first
                                             displayedTour = loadedTour.first.asTour()
                                             displayedTourId = id
                                             routePoints = loadedTour.second
                                             preparedDisplayedTourRoute = preparedRoute
-                                            displayedTourRequest++
-                                            homeTourEntryRequest = displayedTourRequest
-                                            openingTourId = null
-                                            navController.navigate(SpurRoute.MAP)
+                                            homeTourPreparationGeneration++
+                                            homeTourPreparationRequest =
+                                                homeTourPreparationGeneration
                                         }
                                     }
                                 },

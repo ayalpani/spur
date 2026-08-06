@@ -1,19 +1,10 @@
 package app.spur
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HomeNavigationTest {
-    @Test
-    fun tourOpeningLoaderRunsForAtLeastHalfASecond() {
-        assertEquals(500L, remainingTourOpeningMillis(1_000L, 1_000L))
-        assertEquals(200L, remainingTourOpeningMillis(1_000L, 1_300L))
-        assertEquals(0L, remainingTourOpeningMillis(1_000L, 1_500L))
-        assertEquals(0L, remainingTourOpeningMillis(1_000L, 2_000L))
-    }
-
     @Test
     fun archivedTourOpenedFromHomeReturnsBeforeDeletion() {
         val archivedTour = tour(id = 7L, endedAt = 2L)

@@ -1,10 +1,7 @@
 package app.spur
 
-import android.graphics.RenderEffect as AndroidRenderEffect
-import android.graphics.RuntimeShader
-import android.os.Build
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -40,9 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -64,23 +60,11 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
-import kotlin.math.sin
 
 private val HistoryThumbnailSize = 80.dp
 private const val InitialHistoryTourCount = 10
 private const val RecentDaySectionCount = 7L
 private const val DatedDaySectionCount = 30L
-internal const val MinimumTourOpeningDurationMillis = 500L
-private const val FullWaveRadians = 6.2831855f
-private const val TourOpeningShader = """
-    uniform shader content;
-    uniform float phase;
-    half4 main(float2 position) {
-        float offset = sin(position.y * 0.055 + phase * 6.2831855) * 4.2;
-        offset += sin(position.y * 0.021 - phase * 4.712389) * 1.2;
-        return content.eval(position + float2(offset, 0.0));
-    }
-"""
 
 private data class HistoryTourItem(
     val tour: Tour,
@@ -473,39 +457,17 @@ private fun HistoryMomentThumbnail(
 private fun Modifier.tourOpeningEffect(active: Boolean): Modifier {
     if (!active) return this
     val transition = rememberInfiniteTransition(label = "Tour wird vorbereitet")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
+    val opacity by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.45f,
         animationSpec = infiniteRepeatable(
-            animation = tween(700, easing = LinearEasing),
+            animation = tween(650),
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "Fließende Tour-Zeile",
+        label = "Pulsierende Tour-Zeile",
     )
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        val shader = remember { RuntimeShader(TourOpeningShader) }
-        val effect = remember(shader) {
-            AndroidRenderEffect
-                .createRuntimeShaderEffect(shader, "content")
-                .asComposeRenderEffect()
-        }
-        return graphicsLayer {
-            shader.setFloatUniform("phase", phase)
-            renderEffect = effect
-        }
-    }
-    return graphicsLayer {
-        translationX = sin(phase * FullWaveRadians) * 2f
-        scaleX = 1f + sin(phase * FullWaveRadians * 2f) * 0.004f
-    }
+    return alpha(opacity)
 }
-
-internal fun remainingTourOpeningMillis(
-    startedAtMillis: Long,
-    nowMillis: Long,
-): Long = (
-    MinimumTourOpeningDurationMillis -
-        (nowMillis - startedAtMillis).coerceAtLeast(0L)
-).coerceAtLeast(0L)
 
 private fun historySections(
     items: List<HistoryTourItem>,
