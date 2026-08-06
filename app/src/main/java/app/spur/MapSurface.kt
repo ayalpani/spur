@@ -691,6 +691,7 @@ internal fun MapSurface(
             val cluster = readyMap.queryRenderedFeatures(
                 screenPoint,
                 MapMomentClusterLayer,
+                MapMomentUserSpotClusterLayer,
             ).firstOrNull()
             if (cluster != null) {
                 val source = readyMap.style?.getSourceAs<GeoJsonSource>(MapMomentSource)
