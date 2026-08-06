@@ -112,6 +112,7 @@ internal fun MapPage(
     var homeStartPoint by remember { mutableStateOf<SpurCoordinate?>(null) }
     val isTourActive = activeTour != null
     val isDisplayedActiveTour = isDisplayedActiveTour(tour, activeTour)
+    val playerActiveTour = activeTourForPlayer(tour, activeTour)
     val showsPendingDeparture =
         pendingDeparturePreview != null && tour == null && activeTour == null
     val mapRoutePoints = if (showsPendingDeparture) {
@@ -157,6 +158,7 @@ internal fun MapPage(
     var showThemePicker by rememberSaveable { mutableStateOf(false) }
     var showDirectionBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showAboutBottomSheet by rememberSaveable { mutableStateOf(false) }
+    var showTourEndConfirmation by rememberSaveable { mutableStateOf(false) }
     var tourTitleEditor by remember(tour?.id) {
         mutableStateOf<TextFieldValue?>(null)
     }
@@ -275,6 +277,11 @@ internal fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val tourDeleteSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val tourEndSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    LaunchedEffect(isDisplayedActiveTour) {
+        if (!isDisplayedActiveTour) showTourEndConfirmation = false
+    }
     val followOwnLocation: () -> Unit = {
         isTourOverview = false
         isFollowingLocation = true
@@ -842,11 +849,11 @@ internal fun MapPage(
                     )
                 }
                 val playerControl: @Composable (Modifier) -> Unit = { modifier ->
-                    if (activeTour != null) {
+                    if (playerActiveTour != null) {
                         TourPlayer(
-                            tour = activeTour,
+                            tour = playerActiveTour,
                             routePoints = routePoints,
-                            onStop = onEndTour,
+                            onStop = { showTourEndConfirmation = true },
                             modifier = modifier,
                         )
                     } else if (tour != null) {
@@ -1191,8 +1198,12 @@ internal fun MapPage(
                 },
                 onStopTour = if (isDisplayedActiveTour) {
                     {
-                        showMainMenu = false
-                        onEndTour()
+                        scope.swapBottomSheets(
+                            currentState = mainMenuState,
+                            nextState = tourEndSheetState,
+                            showNext = { showTourEndConfirmation = true },
+                            hideCurrent = { showMainMenu = false },
+                        )
                     }
                 } else {
                     null
@@ -1271,6 +1282,19 @@ internal fun MapPage(
                 },
             )
         }
+    }
+
+    if (showTourEndConfirmation) {
+        EditorDeleteSheet(
+            title = "Tour beenden?",
+            primaryLabel = "Tour beenden",
+            sheetState = tourEndSheetState,
+            onDismiss = { showTourEndConfirmation = false },
+            onConfirm = {
+                showTourEndConfirmation = false
+                onEndTour()
+            },
+        )
     }
 
     tourToDelete?.let { selectedTour ->

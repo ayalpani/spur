@@ -48,7 +48,7 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 import kotlinx.coroutines.flow.filter
 
-private const val MapMomentLocationClearance = 8f
+internal const val MapMomentLocationClearance = 8f
 
 internal fun setMapStyle(
     context: Context,

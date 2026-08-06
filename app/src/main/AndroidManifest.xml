@@ -29,6 +29,7 @@
         android:theme="@style/Theme.Spur">
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>

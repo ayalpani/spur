@@ -1,10 +1,34 @@
 package app.spur
 
+import androidx.compose.ui.geometry.Rect
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PhotoDetailTransitionTest {
+    @Test
+    fun locationMapExpandsFromPreviewBoundsToFullScreen() {
+        val source = Rect(left = 0f, top = 100f, right = 100f, bottom = 200f)
+
+        assertEquals(
+            PhotoLocationMapTransform(0f, 100f, 0.1f, 0.05f),
+            photoLocationMapTransform(source, 1_000f, 2_000f, 0f),
+        )
+        assertEquals(
+            PhotoLocationMapTransform(0f, 0f, 1f, 1f),
+            photoLocationMapTransform(source, 1_000f, 2_000f, 1f),
+        )
+    }
+
+    @Test
+    fun locationMapCrossfadesWithThePreparedPreviewAtTheSmallEnd() {
+        assertEquals(0f, photoLocationMapAlpha(0f, mapReady = true))
+        assertEquals(0.5f, photoLocationMapAlpha(0.25f, mapReady = true))
+        assertEquals(1f, photoLocationMapAlpha(0.5f, mapReady = true))
+        assertEquals(0f, photoLocationMapAlpha(1f, mapReady = false))
+    }
+
     @Test
     fun previewRemainsUntilOpeningAnimationAndFullImageLoadAreComplete() {
         assertTrue(

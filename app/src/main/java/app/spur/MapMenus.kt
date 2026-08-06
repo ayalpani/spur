@@ -109,7 +109,7 @@ internal fun MainMenu(
             }
             onStopTour?.let {
                 SheetMenuActionItem(
-                    label = "Tour stoppen",
+                    label = "Tour beenden",
                     onClick = it,
                     destructive = true,
                     icon = {

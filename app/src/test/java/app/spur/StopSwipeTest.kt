@@ -7,6 +7,22 @@ import org.junit.Test
 
 class StopSwipeTest {
     @Test
+    fun archivedTourDoesNotBorrowTheRunningToursPlayer() {
+        val activeTour = Tour(
+            id = 7L,
+            startedAt = 1_000L,
+            endedAt = null,
+            distanceMeters = 100.0,
+            pointCount = 2,
+        )
+        val archivedTour = activeTour.copy(id = 6L, endedAt = 2_000L)
+
+        assertEquals(activeTour, activeTourForPlayer(null, activeTour))
+        assertEquals(activeTour, activeTourForPlayer(activeTour, activeTour))
+        assertEquals(null, activeTourForPlayer(archivedTour, activeTour))
+    }
+
+    @Test
     fun swipeMustReachTheEndOfTheTrack() {
         assertFalse(shouldCompleteStopSwipe(offset = 0f, maximum = 100f))
         assertFalse(shouldCompleteStopSwipe(offset = 81f, maximum = 100f))

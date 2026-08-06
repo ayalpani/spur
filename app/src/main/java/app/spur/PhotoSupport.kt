@@ -11,6 +11,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,11 +34,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
@@ -68,6 +73,8 @@ private fun photoCaptureLabel(photo: MapMoment): String {
 @Composable
 internal fun PhotoLocationMetadata(
     photo: MapMoment,
+    onMapClick: () -> Unit,
+    onMapBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -87,7 +94,11 @@ internal fun PhotoLocationMetadata(
             .background(Color.Black.copy(alpha = 0.58f)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PhotoMapPreview(photo = photo)
+        PhotoMapPreview(
+            photo = photo,
+            onClick = onMapClick,
+            onBoundsChanged = onMapBoundsChanged,
+        )
         Column(
             modifier = Modifier
                 .widthIn(max = 228.dp)
@@ -115,6 +126,8 @@ internal fun PhotoLocationMetadata(
 @Composable
 private fun PhotoMapPreview(
     photo: MapMoment,
+    onClick: () -> Unit,
+    onBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -153,7 +166,15 @@ private fun PhotoMapPreview(
         modifier = modifier
             .size(PhotoMapPreviewSize)
             .background(NeutralSurface)
-            .semantics { contentDescription = "Karte des Aufnahmeorts" },
+            .onGloballyPositioned { coordinates ->
+                onBoundsChanged(coordinates.boundsInRoot())
+            }
+            .clickable(
+                role = Role.Button,
+                onClickLabel = "Karte öffnen",
+                onClick = onClick,
+            )
+            .semantics { contentDescription = "Karte des Aufnahmeorts öffnen" },
         contentAlignment = Alignment.Center,
     ) {
         preview?.let { bitmap ->
