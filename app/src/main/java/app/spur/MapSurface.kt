@@ -97,6 +97,7 @@ internal fun MapSurface(
     mapMoments: List<MapMoment>,
     momentImageRevision: Long,
     routePoints: List<TrackPoint>,
+    preparedTourRoute: PreparedTourRoute?,
     roadHistoryStore: TourStore?,
     roadTraversalFingerprint: RoadHistoryFingerprint?,
     trailColors: TrailColors,
@@ -1159,14 +1160,13 @@ internal fun MapSurface(
     LaunchedEffect(routePoints, trailColors, showTourEndpoints, mapStyleRevision) {
         if (mapStyleRevision == 0) return@LaunchedEffect
         val points = routePoints
-        val (routeFeatures, pauseFeatures) = withContext(Dispatchers.Default) {
-            tourRouteFeatures(points) to tourPauseFeatures(points)
-        }
+        val prepared = preparedTourRoute?.takeIf { it.points === points }
+            ?: withContext(Dispatchers.Default) { prepareTourRoute(points) }
         mapView.getMapAsync { map ->
             if (points !== currentRoutePoints) return@getMapAsync
             map.style?.let { style ->
-                style.showTourRoute(routeFeatures, currentTrailColors)
-                style.showTourPauses(pauseFeatures, tourPauseMarker)
+                style.showTourRoute(prepared.routeFeatures, currentTrailColors)
+                style.showTourPauses(prepared.pauseFeatures, tourPauseMarker)
                 style.showTourEndpoints(
                     points.takeIf { showTourEndpoints }.orEmpty(),
                     currentTrailColors,

@@ -1,6 +1,14 @@
 package app.spur
 
+import android.graphics.RenderEffect as AndroidRenderEffect
+import android.graphics.RuntimeShader
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,11 +41,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -53,11 +64,23 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
+import kotlin.math.sin
 
 private val HistoryThumbnailSize = 80.dp
 private const val InitialHistoryTourCount = 10
 private const val RecentDaySectionCount = 7L
 private const val DatedDaySectionCount = 30L
+internal const val MinimumTourOpeningDurationMillis = 500L
+private const val FullWaveRadians = 6.2831855f
+private const val TourOpeningShader = """
+    uniform shader content;
+    uniform float phase;
+    half4 main(float2 position) {
+        float offset = sin(position.y * 0.055 + phase * 6.2831855) * 4.2;
+        offset += sin(position.y * 0.021 - phase * 4.712389) * 1.2;
+        return content.eval(position + float2(offset, 0.0));
+    }
+"""
 
 private data class HistoryTourItem(
     val tour: Tour,
@@ -78,6 +101,7 @@ internal fun HomeScreen(
     revision: Long,
     loadingEnabled: Boolean,
     backEnabled: Boolean,
+    openingTourId: Long? = null,
     onBack: () -> Unit,
     onOpenTour: (Long) -> Unit,
     onOpenPhoto: (MapMoment, List<MapMoment>) -> Unit,
@@ -221,6 +245,8 @@ internal fun HomeScreen(
                         Column(modifier = Modifier.animateItem()) {
                             HistoryTourRow(
                                 item = item,
+                                isOpening = openingTourId == item.tour.id,
+                                enabled = openingTourId == null,
                                 onClick = { onOpenTour(item.tour.id) },
                                 onOpenPhoto = { photo ->
                                     onOpenPhoto(
@@ -309,16 +335,23 @@ private fun HistorySectionHeader(
 @Composable
 private fun HistoryTourRow(
     item: HistoryTourItem,
+    isOpening: Boolean,
+    enabled: Boolean,
     onClick: () -> Unit,
     onOpenPhoto: (MapMoment) -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .tourOpeningEffect(isOpening)
             .clickable(
+                enabled = enabled,
                 onClickLabel = "${historyTourTitle(item)} öffnen",
                 onClick = onClick,
             )
+            .semantics {
+                if (isOpening) stateDescription = "Tour wird vorbereitet"
+            }
             .padding(vertical = 14.dp),
     ) {
         Text(
@@ -355,6 +388,7 @@ private fun HistoryTourRow(
                 ) { moment ->
                     HistoryMomentThumbnail(
                         moment = moment,
+                        enabled = enabled,
                         onOpenPhoto = onOpenPhoto,
                     )
                 }
@@ -393,6 +427,7 @@ private fun HistoryMapThumbnail(
 @Composable
 private fun HistoryMomentThumbnail(
     moment: MapMoment,
+    enabled: Boolean,
     onOpenPhoto: (MapMoment) -> Unit,
 ) {
     val context = LocalContext.current
@@ -423,6 +458,7 @@ private fun HistoryMomentThumbnail(
             .then(
                 if (moment.type == MomentType.PHOTO) {
                     Modifier.clickable(
+                        enabled = enabled,
                         onClickLabel = "Foto öffnen",
                         onClick = { onOpenPhoto(moment) },
                     )
@@ -432,6 +468,44 @@ private fun HistoryMomentThumbnail(
             ),
     )
 }
+
+@Composable
+private fun Modifier.tourOpeningEffect(active: Boolean): Modifier {
+    if (!active) return this
+    val transition = rememberInfiniteTransition(label = "Tour wird vorbereitet")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = LinearEasing),
+        ),
+        label = "Fließende Tour-Zeile",
+    )
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val shader = remember { RuntimeShader(TourOpeningShader) }
+        val effect = remember(shader) {
+            AndroidRenderEffect
+                .createRuntimeShaderEffect(shader, "content")
+                .asComposeRenderEffect()
+        }
+        return graphicsLayer {
+            shader.setFloatUniform("phase", phase)
+            renderEffect = effect
+        }
+    }
+    return graphicsLayer {
+        translationX = sin(phase * FullWaveRadians) * 2f
+        scaleX = 1f + sin(phase * FullWaveRadians * 2f) * 0.004f
+    }
+}
+
+internal fun remainingTourOpeningMillis(
+    startedAtMillis: Long,
+    nowMillis: Long,
+): Long = (
+    MinimumTourOpeningDurationMillis -
+        (nowMillis - startedAtMillis).coerceAtLeast(0L)
+).coerceAtLeast(0L)
 
 private fun historySections(
     items: List<HistoryTourItem>,

@@ -3,6 +3,7 @@ package app.spur
 import android.Manifest
 import android.content.Intent
 import android.os.Build
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.EnterTransition
@@ -76,6 +77,9 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var displayedTourRequest by rememberSaveable { mutableLongStateOf(0L) }
     var homeTourEntryRequest by remember { mutableLongStateOf(-1L) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
+    var preparedDisplayedTourRoute by remember {
+        mutableStateOf<PreparedTourRoute?>(null)
+    }
     var pendingDeparturePreview by remember {
         mutableStateOf<PendingDeparturePreview?>(null)
     }
@@ -126,6 +130,11 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         }
         delay(InitialLoaderExitDurationMillis.toLong())
         historyPreloadingEnabled = true
+    }
+    LaunchedEffect(routePoints) {
+        if (preparedDisplayedTourRoute?.points !== routePoints) {
+            preparedDisplayedTourRoute = null
+        }
     }
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -379,6 +388,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         animateTourEntry =
                             displayedTourRequest == homeTourEntryRequest,
                         routePoints = routePoints,
+                        preparedTourRoute = preparedDisplayedTourRoute,
                         pendingDeparturePreview = pendingDeparturePreview,
                         roadHistoryStore = store,
                         roadTraversalFingerprint = roadTraversalFingerprint,
@@ -534,9 +544,12 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 revision = historyRevision,
                                 loadingEnabled = historyPreloadingEnabled,
                                 backEnabled = homeVisible,
+                                openingTourId = openingTourId,
                                 onBack = { navController.popBackStack() },
                                 onOpenTour = { id ->
                                     if (openingTourId == null) {
+                                        val openingStartedAtMillis =
+                                            SystemClock.elapsedRealtime()
                                         openingTourId = id
                                         scope.launch {
                                             val loadedTour = withContext(Dispatchers.IO) {
@@ -544,6 +557,17 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                                     revision to store.points(id)
                                                 }
                                             }
+                                            val preparedRoute = loadedTour?.let {
+                                                withContext(Dispatchers.Default) {
+                                                    prepareTourRoute(it.second)
+                                                }
+                                            }
+                                            delay(
+                                                remainingTourOpeningMillis(
+                                                    startedAtMillis = openingStartedAtMillis,
+                                                    nowMillis = SystemClock.elapsedRealtime(),
+                                                ),
+                                            )
                                             if (
                                                 openingTourId != id ||
                                                 navController.currentDestination?.route !=
@@ -564,6 +588,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                             displayedTour = loadedTour.first.asTour()
                                             displayedTourId = id
                                             routePoints = loadedTour.second
+                                            preparedDisplayedTourRoute = preparedRoute
                                             displayedTourRequest++
                                             homeTourEntryRequest = displayedTourRequest
                                             openingTourId = null
@@ -572,8 +597,10 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                     }
                                 },
                                 onOpenPhoto = { photo, photos ->
-                                    historyPhotos = photos
-                                    historyPhotoDetail = photo
+                                    if (openingTourId == null) {
+                                        historyPhotos = photos
+                                        historyPhotoDetail = photo
+                                    }
                                 },
                             )
                         }
