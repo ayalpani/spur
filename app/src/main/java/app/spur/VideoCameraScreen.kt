@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +52,7 @@ internal fun VideoCameraScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val landscape = CameraOrientation()
     val previewView = remember {
         PreviewView(context).apply {
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
@@ -63,6 +65,7 @@ internal fun VideoCameraScreen(
     val accepted = remember { AtomicBoolean(false) }
     val disposed = remember { AtomicBoolean(false) }
     var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
+    var cameraPreview by remember { mutableStateOf<Preview?>(null) }
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     var recording by remember { mutableStateOf<Recording?>(null) }
     var pendingVideo by remember { mutableStateOf<File?>(null) }
@@ -110,10 +113,14 @@ internal fun VideoCameraScreen(
                     if (bindingDisposed) return@addListener
                     runCatching {
                         val provider = providerFuture.get()
-                        val preview = Preview.Builder().build().also {
-                            it.surfaceProvider = previewView.surfaceProvider
+                        val targetRotation = cameraTargetRotation(previewView.display?.rotation)
+                        val preview = Preview.Builder()
+                            .setTargetRotation(targetRotation)
+                            .build()
+                            .also { it.surfaceProvider = previewView.surfaceProvider }
+                        val capture = VideoCapture.withOutput(Recorder.Builder().build()).also {
+                            it.targetRotation = targetRotation
                         }
-                        val capture = VideoCapture.withOutput(Recorder.Builder().build())
                         val selector = CameraSelector.Builder()
                             .requireLensFacing(lensFacing)
                             .build()
@@ -125,6 +132,7 @@ internal fun VideoCameraScreen(
                             preview,
                             capture,
                         )
+                        cameraPreview = preview
                         videoCapture = capture
                     }.onFailure {
                         showFeedbackNotice(
@@ -138,12 +146,19 @@ internal fun VideoCameraScreen(
 
             onDispose {
                 bindingDisposed = true
+                cameraPreview = null
                 videoCapture = null
                 if (providerFuture.isDone) {
                     runCatching { providerFuture.get().unbindAll() }
                 }
             }
         }
+    }
+
+    LaunchedEffect(landscape, cameraPreview, videoCapture, recording) {
+        val targetRotation = cameraTargetRotation(previewView.display?.rotation)
+        cameraPreview?.targetRotation = targetRotation
+        if (recording == null) videoCapture?.targetRotation = targetRotation
     }
 
     DisposableEffect(Unit) {
@@ -170,6 +185,9 @@ internal fun VideoCameraScreen(
             return
         }
         val capture = videoCapture ?: return
+        val targetRotation = cameraTargetRotation(previewView.display?.rotation)
+        cameraPreview?.targetRotation = targetRotation
+        capture.targetRotation = targetRotation
         val video = context.createMomentFile(MomentType.VIDEO)
         val output = FileOutputOptions.Builder(video).build()
         discardRequested.set(false)
@@ -228,6 +246,7 @@ internal fun VideoCameraScreen(
             isFinalizing = isFinalizing,
             recordedDurationMillis = recordedDurationMillis,
             canRecord = videoCapture != null,
+            landscape = landscape,
             onClose = ::discardAndClose,
             onSwitchCamera = {
                 lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
@@ -248,6 +267,7 @@ internal fun VideoCameraScreen(
     } else {
         VideoConfirmationSurface(
             video = video,
+            landscape = landscape,
             onDiscard = {
                 video.delete()
                 capturedVideo = null
@@ -267,6 +287,7 @@ private fun VideoRecordingSurface(
     isFinalizing: Boolean,
     recordedDurationMillis: Long,
     canRecord: Boolean,
+    landscape: Boolean,
     onClose: () -> Unit,
     onSwitchCamera: () -> Unit,
     onRecord: () -> Unit,
@@ -307,6 +328,7 @@ private fun VideoRecordingSurface(
         if (!isRecording && !isFinalizing) {
             CameraSwitchButton(
                 contentDescription = "Videokamera wechseln",
+                landscape = landscape,
                 onClick = onSwitchCamera,
             )
         }
@@ -318,6 +340,7 @@ private fun VideoRecordingSurface(
                 else -> "Videoaufnahme starten"
             },
             color = if (isFinalizing) CameraChrome else StopRed,
+            landscape = landscape,
             shape = if (isRecording) RoundedCornerShape(8.dp) else CircleShape,
             onClick = onRecord,
         )

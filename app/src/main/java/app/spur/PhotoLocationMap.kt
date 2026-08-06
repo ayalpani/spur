@@ -101,9 +101,10 @@ internal fun PhotoLocationMapOverlay(
             exit = fadeOut(tween(MotionDurationDefaultMillis / 2)),
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                PhotoActionButton(
+                MapIconButton(
                     contentDescription = "Karte schließen",
                     onClick = onClose,
+                    secondary = true,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()

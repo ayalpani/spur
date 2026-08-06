@@ -156,7 +156,7 @@ private object ActivityNavigationBarOverrides {
     }
 }
 
-private tailrec fun Context.findComponentActivity(): ComponentActivity? = when (this) {
+internal tailrec fun Context.findComponentActivity(): ComponentActivity? = when (this) {
     is ComponentActivity -> this
     is ContextWrapper -> baseContext.findComponentActivity()
     else -> null

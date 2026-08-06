@@ -17,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,6 +53,7 @@ internal fun CameraScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val landscape = CameraOrientation()
     val previewView = remember {
         PreviewView(context).apply {
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
@@ -59,6 +61,7 @@ internal fun CameraScreen(
         }
     }
     var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
+    var cameraPreview by remember { mutableStateOf<Preview?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var capturedPhoto by remember { mutableStateOf<File?>(null) }
     var isCapturing by remember { mutableStateOf(false) }
@@ -75,54 +78,59 @@ internal fun CameraScreen(
 
     BackHandler { discardAndClose() }
 
-    DisposableEffect(lifecycleOwner, lensFacing, previewView) {
-        val providerFuture = ProcessCameraProvider.getInstance(context)
-        val mainExecutor = ContextCompat.getMainExecutor(context)
-        var disposed = false
+    DisposableEffect(lifecycleOwner, lensFacing, previewView, landscape, capturedPhoto) {
+        if (capturedPhoto != null) {
+            onDispose { }
+        } else {
+            val providerFuture = ProcessCameraProvider.getInstance(context)
+            val mainExecutor = ContextCompat.getMainExecutor(context)
+            var disposed = false
 
-        fun bindCamera() {
-            if (disposed) return
-            runCatching {
-                val provider = providerFuture.get()
-                val preview = Preview.Builder().build().also {
-                    it.surfaceProvider = previewView.surfaceProvider
+            fun bindCamera() {
+                if (disposed) return
+                runCatching {
+                    val provider = providerFuture.get()
+                    val targetRotation = cameraTargetRotation(previewView.display?.rotation)
+                    val preview = Preview.Builder()
+                        .setTargetRotation(targetRotation)
+                        .build()
+                        .also { it.surfaceProvider = previewView.surfaceProvider }
+                    val capture = ImageCapture.Builder()
+                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                        .setTargetRotation(targetRotation)
+                        .build()
+                    val selector = CameraSelector.Builder()
+                        .requireLensFacing(lensFacing)
+                        .build()
+                    val useCases = UseCaseGroup.Builder()
+                        .addUseCase(preview)
+                        .addUseCase(capture)
+                        .setViewPort(requireNotNull(previewView.viewPort))
+                        .build()
+
+                    provider.unbindAll()
+                    provider.bindToLifecycle(lifecycleOwner, selector, useCases)
+                    cameraPreview = preview
+                    imageCapture = capture
+                }.onFailure {
+                    showFeedbackNotice(
+                        FeedbackNoticeKind.ERROR,
+                        "Die Kamera konnte nicht geöffnet werden.",
+                    )
                 }
-                val capture = ImageCapture.Builder()
-                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                    .build()
-                val selector = CameraSelector.Builder()
-                    .requireLensFacing(lensFacing)
-                    .build()
-                val useCases = UseCaseGroup.Builder()
-                    .addUseCase(preview)
-                    .addUseCase(capture)
-                    .setViewPort(requireNotNull(previewView.viewPort))
-                    .build()
-
-                provider.unbindAll()
-                provider.bindToLifecycle(lifecycleOwner, selector, useCases)
-                imageCapture = capture
-            }.onFailure {
-                showFeedbackNotice(
-                    FeedbackNoticeKind.ERROR,
-                    "Die Kamera konnte nicht geöffnet werden.",
-                )
             }
-        }
 
-        providerFuture.addListener({
-            if (previewView.viewPort == null) {
+            providerFuture.addListener({
                 previewView.doOnLayout { bindCamera() }
-            } else {
-                bindCamera()
-            }
-        }, mainExecutor)
+            }, mainExecutor)
 
-        onDispose {
-            disposed = true
-            imageCapture = null
-            if (providerFuture.isDone) {
-                runCatching { providerFuture.get().unbindAll() }
+            onDispose {
+                disposed = true
+                cameraPreview = null
+                imageCapture = null
+                if (providerFuture.isDone) {
+                    runCatching { providerFuture.get().unbindAll() }
+                }
             }
         }
     }
@@ -148,6 +156,7 @@ internal fun CameraScreen(
 
             CameraSwitchButton(
                 contentDescription = "Kamera wechseln",
+                landscape = landscape,
                 onClick = {
                     lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
                         CameraSelector.LENS_FACING_FRONT
@@ -161,10 +170,13 @@ internal fun CameraScreen(
                 enabled = imageCapture != null && !isCapturing,
                 contentDescription = "Foto aufnehmen",
                 color = Color.White,
+                landscape = landscape,
                 onClick = cameraCapture@{
                     val capture = imageCapture ?: return@cameraCapture
                     val output = context.createMomentFile(MomentType.PHOTO)
-                    previewView.display?.rotation?.let { capture.targetRotation = it }
+                    val targetRotation = cameraTargetRotation(previewView.display?.rotation)
+                    cameraPreview?.targetRotation = targetRotation
+                    capture.targetRotation = targetRotation
                     isCapturing = true
                     capture.takePicture(
                         ImageCapture.OutputFileOptions.Builder(output).build(),
@@ -194,47 +206,85 @@ internal fun CameraScreen(
             LaunchedEffect(photo) {
                 bitmap = withContext(Dispatchers.IO) { decodePreviewBitmap(photo) }
             }
-            Column(
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.TopCenter,
-                ) {
-                    val renderedBitmap = bitmap
-                    if (renderedBitmap != null) {
-                        val photoAspectRatio =
-                            renderedBitmap.width.toFloat() /
-                                renderedBitmap.height.coerceAtLeast(1)
-                        val mediaModifier = if (maxWidth / maxHeight > photoAspectRatio) {
-                            Modifier
-                                .fillMaxHeight()
-                                .aspectRatio(photoAspectRatio)
-                        } else {
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(photoAspectRatio)
-                        }
-                        Image(
-                            bitmap = renderedBitmap.asImageBitmap(),
-                            contentDescription = "Aufgenommenes Foto",
-                            modifier = mediaModifier,
-                            alignment = Alignment.TopCenter,
-                            contentScale = ContentScale.Fit,
-                        )
-                    }
-                }
-                AnimatedMediaConfirmationPanel(
-                    onDiscard = {
-                        photo.delete()
-                        capturedPhoto = null
-                    },
-                    onAccept = { onPhotoAccepted(photo) },
-                )
-            }
+            PhotoConfirmationSurface(
+                bitmap = bitmap,
+                landscape = landscape,
+                onDiscard = {
+                    photo.delete()
+                    capturedPhoto = null
+                },
+                onAccept = { onPhotoAccepted(photo) },
+            )
         }
+    }
+}
+
+@Composable
+private fun PhotoConfirmationSurface(
+    bitmap: Bitmap?,
+    landscape: Boolean,
+    onDiscard: () -> Unit,
+    onAccept: () -> Unit,
+) {
+    if (landscape) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            PhotoConfirmationPreview(
+                bitmap = bitmap,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            AnimatedMediaConfirmationPanel(
+                landscape = true,
+                onDiscard = onDiscard,
+                onAccept = onAccept,
+            )
+        }
+    } else {
+        Column(modifier = Modifier.fillMaxSize()) {
+            PhotoConfirmationPreview(
+                bitmap = bitmap,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            )
+            AnimatedMediaConfirmationPanel(
+                landscape = false,
+                onDiscard = onDiscard,
+                onAccept = onAccept,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PhotoConfirmationPreview(
+    bitmap: Bitmap?,
+    modifier: Modifier,
+) {
+    BoxWithConstraints(
+        modifier = modifier,
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        val renderedBitmap = bitmap ?: return@BoxWithConstraints
+        val photoAspectRatio =
+            renderedBitmap.width.toFloat() / renderedBitmap.height.coerceAtLeast(1)
+        val mediaModifier = if (maxWidth / maxHeight > photoAspectRatio) {
+            Modifier
+                .fillMaxHeight()
+                .aspectRatio(photoAspectRatio)
+        } else {
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(photoAspectRatio)
+        }
+        Image(
+            bitmap = renderedBitmap.asImageBitmap(),
+            contentDescription = "Aufgenommenes Foto",
+            modifier = mediaModifier,
+            alignment = Alignment.TopCenter,
+            contentScale = ContentScale.Fit,
+        )
     }
 }
 

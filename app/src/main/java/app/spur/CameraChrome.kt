@@ -1,5 +1,8 @@
 package app.spur
 
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.view.Surface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +16,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,6 +28,27 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 internal val CameraChrome = Color.Black.copy(alpha = 0.42f)
+
+@Composable
+internal fun CameraOrientation(): Boolean {
+    val activity = LocalContext.current.findComponentActivity()
+    DisposableEffect(activity) {
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+    return LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+}
+
+internal fun cameraTargetRotation(displayRotation: Int?): Int = when (displayRotation) {
+    Surface.ROTATION_0,
+    Surface.ROTATION_90,
+    Surface.ROTATION_180,
+    Surface.ROTATION_270,
+    -> displayRotation
+    else -> Surface.ROTATION_0
+}
 
 @Composable
 internal fun BoxScope.CameraCloseButton(
@@ -48,6 +75,7 @@ internal fun BoxScope.CameraCloseButton(
 @Composable
 internal fun BoxScope.CameraSwitchButton(
     contentDescription: String,
+    landscape: Boolean = false,
     onClick: () -> Unit,
 ) {
     IconButton(
@@ -55,7 +83,10 @@ internal fun BoxScope.CameraSwitchButton(
         modifier = Modifier
             .align(Alignment.BottomEnd)
             .navigationBarsPadding()
-            .padding(end = 26.dp, bottom = 25.dp)
+            .padding(
+                end = 26.dp,
+                bottom = if (landscape) 18.dp else 25.dp,
+            )
             .size(58.dp)
             .semantics { this.contentDescription = contentDescription },
         colors = IconButtonDefaults.filledIconButtonColors(
@@ -72,14 +103,18 @@ internal fun BoxScope.CameraCaptureButton(
     enabled: Boolean,
     contentDescription: String,
     color: Color,
+    landscape: Boolean = false,
     shape: Shape = CircleShape,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
-            .align(Alignment.BottomCenter)
+            .align(if (landscape) Alignment.CenterEnd else Alignment.BottomCenter)
             .navigationBarsPadding()
-            .padding(bottom = 18.dp)
+            .padding(
+                end = if (landscape) 18.dp else 0.dp,
+                bottom = if (landscape) 0.dp else 18.dp,
+            )
             .size(78.dp)
             .border(4.dp, Color.White, CircleShape)
             .padding(7.dp)

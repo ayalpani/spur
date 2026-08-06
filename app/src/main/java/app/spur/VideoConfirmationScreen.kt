@@ -44,10 +44,10 @@ import kotlin.math.roundToInt
 @Composable
 internal fun VideoConfirmationSurface(
     video: File,
+    landscape: Boolean,
     onDiscard: () -> Unit,
     onAccept: () -> Unit,
 ) {
-    val context = LocalContext.current
     var textureView by remember { mutableStateOf<TextureView?>(null) }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -131,99 +131,167 @@ internal fun VideoConfirmationSurface(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-    ) {
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            contentAlignment = Alignment.TopCenter,
-        ) {
-            val mediaModifier = if (maxWidth / maxHeight > videoAspectRatio) {
-                Modifier
-                    .fillMaxHeight()
-                    .aspectRatio(videoAspectRatio)
+    val discard = {
+        runCatching { player?.release() }
+        player = null
+        onDiscard()
+    }
+    val seek: (Float) -> Unit = {
+        position = it
+        player?.seekTo(it.roundToInt())
+    }
+    val togglePlayback = {
+        val current = player
+        if (current != null) {
+            if (current.isPlaying) {
+                current.pause()
+                isPlaying = false
             } else {
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(videoAspectRatio)
-            }
-            Box(
-                modifier = mediaModifier,
-                contentAlignment = Alignment.Center,
-            ) {
-                AndroidView(
-                    factory = {
-                        TextureView(context).also { textureView = it }
-                    },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .semantics { contentDescription = "Aufgenommenes Video" },
-                )
-                IconButton(
-                    onClick = {
-                        val current = player ?: return@IconButton
-                        if (current.isPlaying) {
-                            current.pause()
-                            isPlaying = false
-                        } else {
-                            current.start()
-                            isPlaying = true
-                        }
-                    },
-                    modifier = Modifier
-                        .size(72.dp)
-                        .semantics {
-                            contentDescription = if (isPlaying) {
-                                "Videowiedergabe pausieren"
-                            } else {
-                                "Video abspielen"
-                            }
-                        },
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = SheetBackground.copy(alpha = 0.88f),
-                        contentColor = Ink,
-                    ),
-                ) {
-                    if (isPlaying) PauseIcon() else PlayIcon(modifier = Modifier.size(30.dp))
-                }
+                current.start()
+                isPlaying = true
             }
         }
-        AnimatedMediaConfirmationPanel(
-            onDiscard = {
-                runCatching { player?.release() }
-                player = null
-                onDiscard()
-            },
-            onAccept = onAccept,
+    }
+
+    if (landscape) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Slider(
-                    value = position.coerceIn(0f, duration),
-                    onValueChange = {
-                        position = it
-                        player?.seekTo(it.roundToInt())
+            VideoConfirmationPreview(
+                aspectRatio = videoAspectRatio,
+                isPlaying = isPlaying,
+                onTextureView = { textureView = it },
+                onTogglePlayback = togglePlayback,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            VideoConfirmationPanel(
+                landscape = true,
+                position = position,
+                duration = duration,
+                onSeek = seek,
+                onDiscard = discard,
+                onAccept = onAccept,
+            )
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+        ) {
+            VideoConfirmationPreview(
+                aspectRatio = videoAspectRatio,
+                isPlaying = isPlaying,
+                onTextureView = { textureView = it },
+                onTogglePlayback = togglePlayback,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            )
+            VideoConfirmationPanel(
+                landscape = false,
+                position = position,
+                duration = duration,
+                onSeek = seek,
+                onDiscard = discard,
+                onAccept = onAccept,
+            )
+        }
+    }
+}
+
+@Composable
+private fun VideoConfirmationPreview(
+    aspectRatio: Float,
+    isPlaying: Boolean,
+    onTextureView: (TextureView) -> Unit,
+    onTogglePlayback: () -> Unit,
+    modifier: Modifier,
+) {
+    val context = LocalContext.current
+    BoxWithConstraints(
+        modifier = modifier,
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        val mediaModifier = if (maxWidth / maxHeight > aspectRatio) {
+            Modifier
+                .fillMaxHeight()
+                .aspectRatio(aspectRatio)
+        } else {
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(aspectRatio)
+        }
+        Box(
+            modifier = mediaModifier,
+            contentAlignment = Alignment.Center,
+        ) {
+            AndroidView(
+                factory = { TextureView(context).also(onTextureView) },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .semantics { contentDescription = "Aufgenommenes Video" },
+            )
+            IconButton(
+                onClick = onTogglePlayback,
+                modifier = Modifier
+                    .size(72.dp)
+                    .semantics {
+                        contentDescription = if (isPlaying) {
+                            "Videowiedergabe pausieren"
+                        } else {
+                            "Video abspielen"
+                        }
                     },
-                    valueRange = 0f..duration,
-                    modifier = Modifier.weight(1f),
-                    colors = SliderDefaults.colors(
-                        thumbColor = Ink,
-                        activeTrackColor = Ink,
-                        inactiveTrackColor = Ink.copy(alpha = 0.24f),
-                    ),
-                )
-                Text(
-                    text = formatDuration(duration.toLong()),
-                    color = Ink,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = SheetBackground.copy(alpha = 0.88f),
+                    contentColor = Ink,
+                ),
+            ) {
+                if (isPlaying) PauseIcon() else PlayIcon(modifier = Modifier.size(30.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun VideoConfirmationPanel(
+    landscape: Boolean,
+    position: Float,
+    duration: Float,
+    onSeek: (Float) -> Unit,
+    onDiscard: () -> Unit,
+    onAccept: () -> Unit,
+) {
+    AnimatedMediaConfirmationPanel(
+        landscape = landscape,
+        onDiscard = onDiscard,
+        onAccept = onAccept,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Slider(
+                value = position.coerceIn(0f, duration),
+                onValueChange = onSeek,
+                valueRange = 0f..duration,
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(
+                    thumbColor = Ink,
+                    activeTrackColor = Ink,
+                    inactiveTrackColor = Ink.copy(alpha = 0.24f),
+                ),
+            )
+            Text(
+                text = formatDuration(duration.toLong()),
+                color = Ink,
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
