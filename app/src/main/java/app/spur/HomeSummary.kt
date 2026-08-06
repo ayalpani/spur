@@ -51,16 +51,14 @@ internal fun HomeWeeklySummary(summary: HomeWeekSummary) {
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 28.dp),
     ) {
-        Text(
-            text = if (summary.tourCount == 0) {
-                "Die Stadt wartet."
-            } else {
-                "Hey ho, let's go."
-            },
-            color = Ink.copy(alpha = 0.62f),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+        if (summary.tourCount == 0) {
+            Text(
+                text = "Die Stadt wartet.",
+                color = Ink.copy(alpha = 0.62f),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
         Text(
             text = homeWeekHeadline(summary.tourCount),
             style = MaterialTheme.typography.headlineLarge,
