@@ -461,7 +461,10 @@ private fun Modifier.tourOpeningEffect(active: Boolean): Modifier {
         initialValue = 1f,
         targetValue = 0.45f,
         animationSpec = infiniteRepeatable(
-            animation = tween(650),
+            animation = tween(
+                durationMillis = LocationSignalPeriodMillis / 2,
+                easing = LocationPulseEasing,
+            ),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "Pulsierende Tour-Zeile",
