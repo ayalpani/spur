@@ -152,9 +152,24 @@ class FollowLocationTest {
     @Test
     fun storedMapRotationFallsBackToNorth() {
         assertEquals(MapRotation.WEST, mapRotationFromStored("WEST"))
-        assertEquals(270.0, MapRotation.WEST.bearing, 0.0)
+        assertEquals(270.0, checkNotNull(MapRotation.WEST.bearing), 0.0)
+        assertEquals(
+            MapRotation.TRAVEL_DIRECTION,
+            mapRotationFromStored("TRAVEL_DIRECTION"),
+        )
         assertEquals(MapRotation.NORTH, mapRotationFromStored("invalid"))
         assertEquals(MapRotation.NORTH, mapRotationFromStored(null))
+    }
+
+    @Test
+    fun travelBearingStaysStillInsideTenDegrees() {
+        assertEquals(20f, stabilizedTravelBearing(null, 20f, isMoving = true))
+        assertEquals(20f, stabilizedTravelBearing(20f, 30f, isMoving = true))
+        assertEquals(31f, stabilizedTravelBearing(20f, 31f, isMoving = true))
+        assertEquals(355f, stabilizedTravelBearing(355f, 5f, isMoving = true))
+        assertEquals(6f, stabilizedTravelBearing(355f, 6f, isMoving = true))
+        assertEquals(20f, stabilizedTravelBearing(20f, 80f, isMoving = false))
+        assertEquals(20f, stabilizedTravelBearing(20f, null, isMoving = true))
     }
 
     @Test

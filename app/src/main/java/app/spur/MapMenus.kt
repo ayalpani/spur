@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -26,6 +27,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -282,11 +285,15 @@ internal fun MapRotationPicker(
     onSelect: (MapRotation) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val fixedRotations = MapRotation.entries.filter { it.bearing != null }
     Layout(
         modifier = modifier,
         content = {
-            CompassCircle()
-            MapRotation.entries.forEach { rotation ->
+            CompassCircle(
+                selected = selectedRotation == MapRotation.TRAVEL_DIRECTION,
+                onSelect = { onSelect(MapRotation.TRAVEL_DIRECTION) },
+            )
+            fixedRotations.forEach { rotation ->
                 FilterChip(
                     selected = selectedRotation == rotation,
                     onClick = { onSelect(rotation) },
@@ -312,8 +319,9 @@ internal fun MapRotationPicker(
                 x = (centerX - circle.width / 2f).roundToInt(),
                 y = (centerY - circle.height / 2f).roundToInt(),
             )
-            MapRotation.entries.zip(options).forEach { (rotation, option) ->
-                val angle = (rotation.bearing - 90.0 + compassRotation) * PI / 180.0
+            fixedRotations.zip(options).forEach { (rotation, option) ->
+                val bearing = checkNotNull(rotation.bearing)
+                val angle = (bearing - 90.0 + compassRotation) * PI / 180.0
                 val radius = mapRotationOptionCenterDistance(
                     circleRadius = circle.width / 2f,
                     gap = gap.toFloat(),
@@ -333,24 +341,42 @@ internal fun MapRotationPicker(
 }
 
 @Composable
-private fun CompassCircle() {
-    Canvas(modifier = Modifier.size(84.dp)) {
-        val strokeWidth = 1.5.dp.toPx()
-        drawCircle(
-            color = Moss.copy(alpha = 0.3f),
-            style = Stroke(width = strokeWidth),
-        )
-        drawLine(
-            color = Moss.copy(alpha = 0.22f),
-            start = Offset(size.width / 2, 0f),
-            end = Offset(size.width / 2, size.height),
-            strokeWidth = strokeWidth,
-        )
-        drawLine(
-            color = Moss.copy(alpha = 0.22f),
-            start = Offset(0f, size.height / 2),
-            end = Offset(size.width, size.height / 2),
-            strokeWidth = strokeWidth,
+private fun CompassCircle(
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.size(84.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = 1.5.dp.toPx()
+            drawCircle(
+                color = Moss.copy(alpha = 0.3f),
+                style = Stroke(width = strokeWidth),
+            )
+            drawLine(
+                color = Moss.copy(alpha = 0.22f),
+                start = Offset(size.width / 2, 0f),
+                end = Offset(size.width / 2, size.height),
+                strokeWidth = strokeWidth,
+            )
+            drawLine(
+                color = Moss.copy(alpha = 0.22f),
+                start = Offset(0f, size.height / 2),
+                end = Offset(size.width, size.height / 2),
+                strokeWidth = strokeWidth,
+            )
+        }
+        FilterChip(
+            selected = selected,
+            onClick = onSelect,
+            label = {
+                TravelDirectionIcon(modifier = Modifier.size(24.dp))
+            },
+            modifier = Modifier.semantics {
+                contentDescription = MapRotation.TRAVEL_DIRECTION.label
+            },
         )
     }
 }

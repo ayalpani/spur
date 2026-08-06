@@ -52,6 +52,7 @@ internal const val LocationPulseWatchdogMillis = LocationSignalPeriodMillis * 10
 internal const val LocationPuckHitTargetDp = 60f
 internal const val MovementStartSpeedKilometersPerHour = 1.0
 internal const val MovementStopSpeedKilometersPerHour = 0.5
+internal const val TravelDirectionBearingToleranceDegrees = 10f
 internal val LocationPulseEasing = Easing { fraction ->
     (cos((fraction + 1f) * PI) / 2f + 0.5f).toFloat()
 }
@@ -109,11 +110,12 @@ internal const val MapMomentClusterRadius = MomentMarkerHeight / 2 - 1
 internal const val MapLibreWorldSizeAtZoomZero = 512.0
 internal const val GoogleMapsWorldSizeAtZoomZero = 256.0
 
-internal enum class MapRotation(val label: String, val bearing: Double) {
+internal enum class MapRotation(val label: String, val bearing: Double?) {
     NORTH("Norden", 0.0),
     EAST("Osten", 90.0),
     SOUTH("Süden", 180.0),
     WEST("Westen", 270.0),
+    TRAVEL_DIRECTION("Fahrtrichtung", null),
 }
 
 internal data class SelectedBuilding(
@@ -205,6 +207,22 @@ internal fun movingForMapSignal(
 ): Boolean {
     if (isAtHome) return false
     return movingForSpeed(speedKilometersPerHour, wasMoving)
+}
+
+internal fun stabilizedTravelBearing(
+    current: Float?,
+    candidate: Float?,
+    isMoving: Boolean,
+): Float? {
+    if (!isMoving || candidate == null) return current
+    val normalizedCandidate = ((candidate % 360f) + 360f) % 360f
+    val currentBearing = current ?: return normalizedCandidate
+    val difference = abs((normalizedCandidate - currentBearing + 540f) % 360f - 180f)
+    return if (difference > TravelDirectionBearingToleranceDegrees) {
+        normalizedCandidate
+    } else {
+        currentBearing
+    }
 }
 
 internal fun mapRotationOptionCenterDistance(

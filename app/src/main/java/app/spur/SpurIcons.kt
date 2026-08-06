@@ -76,6 +76,19 @@ internal fun WaypointsIcon(
 )
 
 @Composable
+internal fun TravelDirectionIcon(
+    modifier: Modifier = Modifier.size(MapControlIconSize),
+) = LucideIcon(
+    paths = listOf(
+        "M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15",
+        "M9 19a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+        "M21 5a3 3 0 1 1-6 0 3 3 0 1 1 6 0",
+    ),
+    modifier = modifier,
+    strokeWidth = LucideRegularStrokeWidth,
+)
+
+@Composable
 internal fun ExternalLinkIcon() = LucideIcon(
     paths = listOf(
         "M15 3h6v6",

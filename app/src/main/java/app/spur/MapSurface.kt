@@ -95,7 +95,7 @@ internal fun MapSurface(
     manualLocation: SpurCoordinate?,
     defaultMapZoom: Double,
     zoomRequest: MapZoomRequest?,
-    defaultMapBearing: Double,
+    defaultMapRotation: MapRotation,
     mapSettingsVisible: Boolean,
     mapMoments: List<MapMoment>,
     momentImageRevision: Long,
@@ -178,7 +178,7 @@ internal fun MapSurface(
     val currentLocationMarkerColors by rememberUpdatedState(locationMarkerColors)
     val currentIsFollowingLocation by rememberUpdatedState(isFollowingLocation)
     val currentIsSatelliteView by rememberUpdatedState(isSatelliteView)
-    val currentDefaultMapBearing by rememberUpdatedState(defaultMapBearing)
+    val currentDefaultMapRotation by rememberUpdatedState(defaultMapRotation)
     var roadProgressSnapshot by remember { mutableStateOf(RoadProgressSnapshot()) }
     val roadProgressTracker = remember { RoadProgressTracker() }
     var roadProgressTourId by remember { mutableStateOf<Long?>(null) }
@@ -225,6 +225,7 @@ internal fun MapSurface(
     var preparedMapMoments by remember { mutableStateOf<PreparedMapMoments?>(null) }
     var mapMomentImagePreparationGeneration by remember { mutableLongStateOf(0L) }
     var currentLocation by remember { mutableStateOf<SpurCoordinate?>(null) }
+    var stableTravelBearing by remember { mutableStateOf<Float?>(null) }
     var isAtHome by remember { mutableStateOf(false) }
     var renderedVoicePlaybackId by remember { mutableStateOf<String?>(null) }
     var mapStyleRevision by remember { mutableStateOf(0) }
@@ -235,7 +236,7 @@ internal fun MapSurface(
     var fittedTourDisplayRequest by remember { mutableLongStateOf(-1L) }
     var preparedTourEntryId by remember { mutableStateOf<Long?>(null) }
     var preparedTourEntryPoints by remember { mutableStateOf<List<TrackPoint>?>(null) }
-    var lastMapSettingsBearing by remember { mutableStateOf(defaultMapBearing) }
+    var lastMapSettingsRotation by remember { mutableStateOf(defaultMapRotation) }
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context).apply {
@@ -265,6 +266,7 @@ internal fun MapSurface(
         } else {
             var updatesRequested = false
             var isMoving = false
+            var isTraveling = false
             val client = LocationServices.getFusedLocationProviderClient(context)
             fun publishLocation(location: android.location.Location) {
                 val settings = context.loadHomeAutoStartSettings()
@@ -273,26 +275,53 @@ internal fun MapSurface(
                 currentLocation = normalizedCoordinate
                 val locationIsAtHome = isWithinHomeZone(settings, coordinate)
                 isAtHome = locationIsAtHome
+                val speedKilometersPerHour = location.speed
+                    .takeIf { location.hasSpeed() }
+                    ?.times(3.6f)
+                    ?.toDouble()
                 val nextIsMoving = movingForMapSignal(
                     isAtHome = locationIsAtHome,
-                    speedKilometersPerHour = location.speed
-                        .takeIf { location.hasSpeed() }
-                        ?.times(3.6f)
-                        ?.toDouble(),
+                    speedKilometersPerHour = speedKilometersPerHour,
                     wasMoving = isMoving,
                 )
                 if (nextIsMoving != isMoving) {
                     isMoving = nextIsMoving
                     currentOnMovementChanged(isMoving)
                 }
+                isTraveling = movingForSpeed(
+                    speedKilometersPerHour = speedKilometersPerHour,
+                    wasMoving = isTraveling,
+                )
+                stableTravelBearing = stabilizedTravelBearing(
+                    current = stableTravelBearing,
+                    candidate = location.bearing.takeIf { location.hasBearing() },
+                    isMoving = isTraveling,
+                )
+                val travelBearing = stableTravelBearing
                 mapView.getMapAsync { map ->
                     if (map.locationComponent.isLocationComponentActivated) {
                         map.locationComponent.forceLocationUpdate(
                             android.location.Location(location).apply {
                                 latitude = normalizedCoordinate.latitude
                                 longitude = normalizedCoordinate.longitude
+                                travelBearing?.let { bearing = it }
                             },
                         )
+                        if (
+                            currentIsFollowingLocation &&
+                            currentDefaultMapRotation == MapRotation.TRAVEL_DIRECTION &&
+                            travelBearing != null &&
+                            map.locationComponent.cameraMode == CameraMode.TRACKING
+                        ) {
+                            map.followLocation(
+                                context = context,
+                                manualLocation = null,
+                                transitionDuration = MapRotationAnimationMillis,
+                                targetZoom = map.cameraPosition.zoom,
+                                defaultMapBearing = travelBearing.toDouble(),
+                                followTravelDirection = true,
+                            )
+                        }
                     }
                 }
             }
@@ -355,13 +384,17 @@ internal fun MapSurface(
 
     LaunchedEffect(
         mapSettingsVisible,
-        defaultMapBearing,
+        defaultMapRotation,
     ) {
-        val animateRotation = defaultMapBearing != lastMapSettingsBearing
-        lastMapSettingsBearing = defaultMapBearing
+        val animateRotation = defaultMapRotation != lastMapSettingsRotation
+        lastMapSettingsRotation = defaultMapRotation
         if (!mapSettingsVisible) return@LaunchedEffect
         mapView.getMapAsync { map ->
-            val targetBearing = defaultMapBearing
+            val targetRotation = defaultMapRotation
+            val targetTravelBearing = stableTravelBearing
+            val targetBearing = targetRotation.bearing
+                ?: targetTravelBearing?.toDouble()
+                ?: map.cameraPosition.bearing
             val resumeTracking =
                 currentIsFollowingLocation &&
                     currentManualLocation == null &&
@@ -376,7 +409,7 @@ internal fun MapSurface(
                 if (
                     resumeTracking &&
                     currentIsFollowingLocation &&
-                    currentDefaultMapBearing == targetBearing
+                    currentDefaultMapRotation == targetRotation
                 ) {
                     map.followLocation(
                         context = context,
@@ -384,6 +417,9 @@ internal fun MapSurface(
                         transitionDuration = 0L,
                         targetZoom = map.cameraPosition.zoom,
                         defaultMapBearing = targetBearing,
+                        followTravelDirection =
+                            targetRotation == MapRotation.TRAVEL_DIRECTION &&
+                                targetTravelBearing != null,
                     )
                 }
             }
@@ -442,7 +478,7 @@ internal fun MapSurface(
                 centerOnLocation = !hasLoadedMapStyle,
                 manualLocation = manualLocation,
                 initialMapZoom = defaultMapZoom,
-                defaultMapBearing = defaultMapBearing,
+                defaultMapBearing = defaultMapRotation.bearing ?: 0.0,
                 routePoints = currentRoutePoints,
                 trailColors = currentTrailColors,
                 locationMarkerColors = currentLocationMarkerColors,
@@ -463,7 +499,12 @@ internal fun MapSurface(
                             manualLocation = currentManualLocation,
                             transitionDuration = 0L,
                             targetZoom = currentDefaultMapZoom,
-                            defaultMapBearing = defaultMapBearing,
+                            defaultMapBearing = currentDefaultMapRotation.bearing
+                                ?: stableTravelBearing?.toDouble()
+                                ?: map.cameraPosition.bearing,
+                            followTravelDirection =
+                                currentDefaultMapRotation == MapRotation.TRAVEL_DIRECTION &&
+                                    stableTravelBearing != null,
                         )
                     }
                     mapView.postOnAnimation {
@@ -903,7 +944,12 @@ internal fun MapSurface(
                 manualLocation = manualLocation,
                 transitionDuration = 500L,
                 targetZoom = currentDefaultMapZoom,
-                defaultMapBearing = defaultMapBearing,
+                defaultMapBearing = currentDefaultMapRotation.bearing
+                    ?: stableTravelBearing?.toDouble()
+                    ?: map.cameraPosition.bearing,
+                followTravelDirection =
+                    currentDefaultMapRotation == MapRotation.TRAVEL_DIRECTION &&
+                        stableTravelBearing != null,
             )
         }
     }
@@ -1288,6 +1334,9 @@ internal fun MapSurface(
                         transitionDuration = 0L,
                         targetZoom = originalCamera.zoom,
                         defaultMapBearing = originalCamera.bearing,
+                        followTravelDirection =
+                            currentDefaultMapRotation == MapRotation.TRAVEL_DIRECTION &&
+                                stableTravelBearing != null,
                     )
                 } else {
                     map.moveCamera(
