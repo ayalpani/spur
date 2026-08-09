@@ -848,20 +848,25 @@ internal fun MapPage(
                         },
                     )
                 }
+                val focusedWaypoint = selectedEditorLocation?.takeIf {
+                    editorFocusRequest > 0L
+                }
                 val playerControl: @Composable (Modifier) -> Unit = { modifier ->
                     if (playerActiveTour != null) {
                         TourPlayer(
                             tour = playerActiveTour,
                             routePoints = routePoints,
                             onStop = { showTourEndConfirmation = true },
+                            focusedWaypoint = focusedWaypoint,
                             modifier = modifier,
                         )
                     } else if (tour != null) {
                         TourSummaryPlayer(
                             tourId = tour.id,
-                            distanceMeters = tour.distanceMeters,
-                            elapsedMillis =
-                                (tour.endedAt ?: System.currentTimeMillis()) - tour.startedAt,
+                            distanceMeters = focusedWaypoint?.distanceFromStartMeters
+                                ?: tour.distanceMeters,
+                            elapsedMillis = focusedWaypoint?.elapsedMillis
+                                ?: (tour.endedAt ?: System.currentTimeMillis()) - tour.startedAt,
                             modifier = modifier.height(MapControlSize),
                         )
                     } else {
@@ -934,21 +939,7 @@ internal fun MapPage(
                             }
                             mapStyleControl()
                         }
-                        val focusedWaypoint = selectedEditorLocation?.takeIf {
-                            editorFocusRequest > 0L
-                        }
-                        if (tour != null && focusedWaypoint != null) {
-                            TourSummaryPlayer(
-                                tourId = tour.id,
-                                distanceMeters = focusedWaypoint.distanceFromStartMeters,
-                                elapsedMillis = focusedWaypoint.elapsedMillis,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(MapControlSize),
-                            )
-                        } else {
-                            playerControl(Modifier.weight(1f))
-                        }
+                        playerControl(Modifier.weight(1f))
                         if (!usesStackedMapPlayer) {
                             Spacer(modifier = Modifier.size(MapControlSize))
                         }
