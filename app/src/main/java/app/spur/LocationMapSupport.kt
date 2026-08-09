@@ -117,10 +117,11 @@ internal fun MapLibreMap.followLocation(
     transitionDuration: Long,
     targetZoom: Double,
     defaultMapBearing: Double,
+    followTravelDirection: Boolean = false,
 ) {
     if (manualLocation == null && locationComponent.isLocationComponentActivated) {
         locationComponent.setCameraMode(
-            CameraMode.TRACKING,
+            if (followTravelDirection) CameraMode.TRACKING_GPS else CameraMode.TRACKING,
             transitionDuration,
             targetZoom,
             defaultMapBearing,

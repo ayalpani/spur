@@ -520,7 +520,7 @@ internal fun MapPage(
                 manualLocation = manualLocation,
                 defaultMapZoom = defaultMapZoom,
                 zoomRequest = mapZoomRequest,
-                defaultMapBearing = defaultMapRotation.bearing,
+                defaultMapRotation = defaultMapRotation,
                 mapSettingsVisible = showDirectionBottomSheet,
                 mapMoments = renderedMapMoments,
                 momentImageRevision = photoRevision,
@@ -1398,13 +1398,14 @@ internal fun MapPage(
             )
         }
         val compassRotation = remember {
-            Animatable(-defaultMapRotation.bearing.toFloat())
+            Animatable(-(defaultMapRotation.bearing ?: 0.0).toFloat())
         }
         LaunchedEffect(defaultMapRotation) {
+            val bearing = defaultMapRotation.bearing ?: return@LaunchedEffect
             compassRotation.animateTo(
                 targetValue = nearestCompassRotation(
                     current = compassRotation.value,
-                    target = -defaultMapRotation.bearing.toFloat(),
+                    target = -bearing.toFloat(),
                 ),
                 animationSpec = tween(MapRotationAnimationMillis.toInt()),
             )
