@@ -1623,6 +1623,32 @@ internal fun MapPage(
             target = momentTarget,
             showFeedbackNotice = showFeedbackNotice,
             onDismiss = { momentTarget = null },
+            onLandmarkAccepted = { target, title ->
+                val coordinate = when (target) {
+                    MomentPlacementTarget.CurrentLocation -> mapViewport?.center
+                    is MomentPlacementTarget.RecordedLocation -> target.coordinate
+                }
+                if (coordinate == null) {
+                    showFeedbackNotice(
+                        FeedbackNoticeKind.ERROR,
+                        "Der Standort ist noch nicht verfügbar.",
+                    )
+                } else {
+                    scope.launch {
+                        val landmark = withContext(Dispatchers.IO) {
+                            landmarkStore.add(title, coordinate)
+                        }
+                        if (landmark == null) {
+                            showFeedbackNotice(
+                                FeedbackNoticeKind.ERROR,
+                                "Die Landmark konnte nicht gespeichert werden.",
+                            )
+                        } else {
+                            landmarks = landmarks + landmark
+                        }
+                    }
+                }
+            },
             onMomentAccepted = { target, moment ->
                 when (target) {
                     MomentPlacementTarget.CurrentLocation -> pendingMoment = moment

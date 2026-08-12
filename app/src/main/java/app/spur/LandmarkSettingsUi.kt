@@ -1,6 +1,8 @@
 package app.spur
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
@@ -38,6 +41,88 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+
+@Composable
+internal fun LandmarkCreateBottomSheet(
+    onSave: (String) -> Unit,
+    onBack: () -> Unit,
+) {
+    var title by remember { mutableStateOf("") }
+    val normalizedTitle = normalizeLandmarkTitle(title)
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    BackHandler(onBack = onBack)
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboard?.show()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 24.dp),
+    ) {
+        BottomSheetHeader(title = "Landmark hinzufügen")
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp),
+            color = Color.Transparent,
+            shape = CircleShape,
+            border = BorderStroke(1.dp, Ink.copy(alpha = 0.5f)),
+        ) {
+            BasicTextField(
+                value = title,
+                onValueChange = {
+                    if (it.length <= LandmarkTitleMaximumCharacters) title = it
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .semantics { contentDescription = "Name der Landmark" },
+                textStyle = MaterialTheme.typography.titleMedium.copy(
+                    color = Ink,
+                    fontWeight = FontWeight.Medium,
+                ),
+                singleLine = true,
+                cursorBrush = SolidColor(Ink),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = { normalizedTitle?.let(onSave) },
+                ),
+                decorationBox = { field ->
+                    Box(
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (title.isEmpty()) {
+                            Text(
+                                text = "Name",
+                                color = Ink.copy(alpha = 0.5f),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                        field()
+                    }
+                },
+            )
+        }
+        SpurPrimaryButton(
+            label = "Landmark hinzufügen",
+            enabled = normalizedTitle != null,
+            modifier = Modifier.padding(top = 16.dp),
+            onClick = { normalizedTitle?.let(onSave) },
+        )
+        SpurSecondaryButton(
+            label = "Zurück",
+            modifier = Modifier.padding(top = 10.dp),
+            onClick = onBack,
+        )
+    }
+}
 
 @Composable
 internal fun LandmarkSettingsBottomSheet(

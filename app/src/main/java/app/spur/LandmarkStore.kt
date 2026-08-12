@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import java.util.UUID
 
 internal data class Landmark(
     val id: String,
@@ -81,6 +82,43 @@ internal class LandmarkStore(context: Context) :
             "id = ?",
             arrayOf(id),
         ) == 1
+    }
+
+    @Synchronized
+    fun add(title: String, coordinate: SpurCoordinate): Landmark? {
+        val normalized = normalizeLandmarkTitle(title) ?: return null
+        if (
+            !coordinate.latitude.isFinite() ||
+            !coordinate.longitude.isFinite() ||
+            coordinate.latitude !in -90.0..90.0 ||
+            coordinate.longitude !in -180.0..180.0
+        ) return null
+
+        val database = writableDatabase
+        database.beginTransaction()
+        return try {
+            val priority = database.rawQuery(
+                "SELECT COALESCE(MAX(priority), -1) + 1 FROM landmarks",
+                null,
+            ).use { cursor ->
+                cursor.moveToFirst()
+                cursor.getInt(0)
+            }
+            val landmark = Landmark(
+                id = "custom-${UUID.randomUUID()}",
+                title = normalized,
+                coordinate = coordinate,
+                priority = priority,
+            )
+            if (database.insert("landmarks", null, landmark.contentValues()) == -1L) {
+                null
+            } else {
+                database.setTransactionSuccessful()
+                landmark
+            }
+        } finally {
+            database.endTransaction()
+        }
     }
 
     @Synchronized
