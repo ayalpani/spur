@@ -369,6 +369,7 @@ private fun VideoRecordingSurface(
             color = if (isFinalizing) CameraChrome else StopRed,
             landscape = landscape,
             shape = if (isRecording) RoundedCornerShape(8.dp) else CircleShape,
+            innerSize = if (isRecording) 34.dp else 64.dp,
             onClick = onRecord,
         )
     }

@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 internal val CameraChrome = Color.Black.copy(alpha = 0.42f)
@@ -145,6 +146,7 @@ internal fun BoxScope.CameraCaptureButton(
     color: Color,
     landscape: Boolean = false,
     shape: Shape = CircleShape,
+    innerSize: Dp = 64.dp,
     onClick: () -> Unit,
 ) {
     Box(
@@ -157,11 +159,12 @@ internal fun BoxScope.CameraCaptureButton(
             )
             .size(78.dp)
             .border(4.dp, Color.White, CircleShape)
-            .padding(7.dp)
-            .background(color, shape)
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(innerSize).background(color, shape))
+    }
 }
 
 @Composable
