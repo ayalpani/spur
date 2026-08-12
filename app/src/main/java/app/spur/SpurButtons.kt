@@ -49,11 +49,7 @@ internal fun SpurPrimaryButton(
         }
         Text(
             text = label,
-            color = if (leadingIcon == null) {
-                renderedContentColor
-            } else {
-                renderedContentColor.copy(alpha = IconTextLabelAlpha)
-            },
+            color = renderedContentColor,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )

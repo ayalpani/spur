@@ -42,9 +42,10 @@ confirming that the command preserves app data.
   synchronized transition. The incoming and outgoing sheets must start in the
   same frame and use the same Material sheet motion spec; never await one sheet's
   closing animation before showing the next sheet.
-- When an icon and text jointly label one action, render the icon at the full
-  semantic foreground color and the label at `IconTextLabelAlpha`. Apply this
-  through shared buttons and action-menu rows; do not dim standalone labels,
+- In primary buttons, render both icon and label at the full semantic foreground
+  color so the action always reads as enabled. In secondary buttons and
+  action-menu rows, render the icon at the full semantic foreground color and
+  the paired label at `IconTextLabelAlpha`. Do not dim standalone labels,
   headers, navigation chevrons, or decorative icons.
 - Use `MapIconButton(secondary = true)` for secondary controls drawn over a
   map. All secondary map controls use `secondaryMapControlStyle`: it inverts

@@ -629,6 +629,7 @@ internal fun MapSurface(
         var isCameraMoving = false
         var showLandmarkIndicators = false
         var landmarkFramePosted = false
+        var landmarkHide: Runnable? = null
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
         var holdStart = PointF()
         var isTapCandidate = false
@@ -709,6 +710,29 @@ internal fun MapSurface(
             mapView.postOnAnimation(publishLandmarks)
         }
 
+        fun cancelLandmarkHide() {
+            landmarkHide?.let(mapView::removeCallbacks)
+            landmarkHide = null
+        }
+
+        fun revealLandmarks() {
+            cancelLandmarkHide()
+            showLandmarkIndicators = true
+            scheduleLandmarkPublish()
+        }
+
+        fun scheduleLandmarkHide() {
+            cancelLandmarkHide()
+            landmarkHide = Runnable {
+                landmarkHide = null
+                if (isMapTouchActive || isCameraMoving) return@Runnable
+                showLandmarkIndicators = false
+                landmarkIndicators.value = emptyList()
+            }.also { hide ->
+                mapView.postDelayed(hide, LandmarkIndicatorHideDelayMillis)
+            }
+        }
+
         fun publishHomeStartPoint() {
             if (!currentIsHomeStartPointSelection) return
             val target = map?.cameraPosition?.target ?: return
@@ -756,8 +780,7 @@ internal fun MapSurface(
             roadNetworkReadyViewportKey = null
             if (shouldStopFollowing(reason)) {
                 isSelectedTrackPointVisible = false
-                showLandmarkIndicators = true
-                scheduleLandmarkPublish()
+                revealLandmarks()
                 currentOnMapGestureActiveChanged(true)
             }
             if (currentIsFollowingLocation && shouldStopFollowing(reason)) {
@@ -768,8 +791,7 @@ internal fun MapSurface(
         val idleListener = MapLibreMap.OnCameraIdleListener {
             isCameraMoving = false
             if (!isMapTouchActive) {
-                showLandmarkIndicators = false
-                landmarkIndicators.value = emptyList()
+                if (showLandmarkIndicators) scheduleLandmarkHide()
                 currentOnMapGestureActiveChanged(false)
             }
             publishManualLocationPosition()
@@ -928,6 +950,7 @@ internal fun MapSurface(
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     isMapTouchActive = true
+                    revealLandmarks()
                     isTapCandidate = true
                     cancelManualLocationHold()
                     holdStart = PointF(event.x, event.y)
@@ -986,8 +1009,7 @@ internal fun MapSurface(
                     isTapCandidate = false
                     isMapTouchActive = false
                     if (!isCameraMoving) {
-                        showLandmarkIndicators = false
-                        landmarkIndicators.value = emptyList()
+                        scheduleLandmarkHide()
                         currentOnMapGestureActiveChanged(false)
                     }
                 }
@@ -996,8 +1018,7 @@ internal fun MapSurface(
                     cancelManualLocationHold()
                     isMapTouchActive = false
                     if (!isCameraMoving) {
-                        showLandmarkIndicators = false
-                        landmarkIndicators.value = emptyList()
+                        scheduleLandmarkHide()
                         currentOnMapGestureActiveChanged(false)
                     }
                 }
@@ -1017,6 +1038,7 @@ internal fun MapSurface(
         }
         onDispose {
             cancelManualLocationHold()
+            cancelLandmarkHide()
             mapView.removeCallbacks(publishLandmarks)
             landmarkIndicators.value = emptyList()
             currentOnMapGestureActiveChanged(false)

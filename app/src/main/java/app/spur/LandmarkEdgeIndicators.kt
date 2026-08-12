@@ -1,6 +1,6 @@
 package app.spur
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,9 +16,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -226,47 +225,45 @@ private fun LandmarkMarker(indicator: LandmarkEdgeIndicator) {
 
 @Composable
 private fun LandmarkArrow(angleDegrees: Float) {
-    val style = secondaryMapControlStyle(LocalMapControlColors.current)
-    Canvas(modifier = Modifier.size(LandmarkIndicatorArrowSize)) {
-        val bodyStart = 3.dp.toPx()
-        val verticalInset = 1.5.dp.toPx()
-        val arrow = Path().apply {
-            moveTo(size.width, size.height / 2f)
-            lineTo(bodyStart, verticalInset)
-            lineTo(bodyStart, size.height - verticalInset)
-            close()
-        }
-        rotate(degrees = angleDegrees, pivot = Offset(size.width / 2f, size.height / 2f)) {
-            drawLine(
-                color = style.colors.foreground,
-                start = Offset(0f, size.height / 2f),
-                end = Offset(bodyStart + 1.dp.toPx(), size.height / 2f),
-                strokeWidth = 1.5.dp.toPx(),
-            )
-            drawPath(path = arrow, color = style.colors.foreground)
-        }
+    Box(
+        modifier = Modifier
+            .size(LandmarkIndicatorArrowSize)
+            .rotate(angleDegrees + LandmarkNavigationDefaultAngleCorrection),
+        contentAlignment = Alignment.Center,
+    ) {
+        LucideIcon(
+            paths = LandmarkNavigationIconPaths,
+            color = SheetBackground,
+            modifier = Modifier.size(LandmarkIndicatorArrowSize),
+            strokeWidth = LandmarkNavigationOutlineWidth,
+        )
+        LucideIcon(
+            paths = LandmarkNavigationIconPaths,
+            color = Ink,
+            modifier = Modifier.size(LandmarkIndicatorArrowSize),
+            strokeWidth = LucideRegularStrokeWidth,
+        )
     }
 }
 
 @Composable
 private fun LandmarkDot() {
-    val style = secondaryMapControlStyle(LocalMapControlColors.current)
     Surface(
         modifier = Modifier.size(LandmarkIndicatorDotSize),
         shape = CircleShape,
-        color = style.colors.foreground,
+        color = Ink,
+        border = BorderStroke(1.5.dp, SheetBackground),
     ) {}
 }
 
 @Composable
 private fun LandmarkLabel(title: String) {
-    val style = secondaryMapControlStyle(LocalMapControlColors.current)
+    val colors = LocalMapControlColors.current.inverted
     Surface(
         modifier = Modifier.widthIn(max = 136.dp),
-        shape = CircleShape,
-        color = style.colors.background,
-        contentColor = style.colors.foreground,
-        border = style.border,
+        shape = RectangleShape,
+        color = colors.background.copy(alpha = 1f - HomeStatusBackgroundTransparency),
+        contentColor = colors.foreground,
     ) {
         Box(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -283,9 +280,13 @@ private fun LandmarkLabel(title: String) {
     }
 }
 
-private val LandmarkIndicatorArrowSize = 15.dp
-private val LandmarkIndicatorDotSize = 10.dp
+private val LandmarkNavigationIconPaths = listOf("M3 11 22 2l-9 19-2-8-8-2z")
+private const val LandmarkNavigationDefaultAngleCorrection = 45f
+private const val LandmarkNavigationOutlineWidth = 5f
+private val LandmarkIndicatorArrowSize = 18.dp
+private val LandmarkIndicatorDotSize = 12.dp
 private val LandmarkIndicatorGap = 6.dp
 internal const val LandmarkEdgeInsetDp = 24f
 internal const val LandmarkMinimumSeparationDp = 112f
 internal const val LandmarkMaximumVisibleCount = 5
+internal const val LandmarkIndicatorHideDelayMillis = 500L
