@@ -58,6 +58,31 @@ class LandmarkEdgeIndicatorsTest {
     }
 
     @Test
+    fun retainedIndicatorsNeverSwapDuringOneGesture() {
+        val bounds = LandmarkIndicatorBounds(0f, 0f, 100f, 100f)
+        val initial = landmarkEdgeIndicators(
+            projected = listOf(
+                projected("first", priority = 0, x = 200f, y = 45f),
+                projected("second", priority = 1, x = 200f, y = 90f),
+            ),
+            bounds = bounds,
+            minimumSeparation = 30f,
+            maximumCount = 1,
+        )
+
+        val moved = retainedLandmarkEdgeIndicators(
+            projected = listOf(
+                projected("first", priority = 0, x = 200f, y = 90f),
+                projected("second", priority = 1, x = 200f, y = 45f),
+            ),
+            bounds = bounds,
+            landmarkIds = initial.mapTo(linkedSetOf()) { it.landmark.id },
+        )
+
+        assertEquals(listOf("first"), moved.map { it.landmark.id })
+    }
+
+    @Test
     fun emptyLandmarkTitlesAreRejected() {
         assertNull(normalizeLandmarkTitle("   "))
         assertEquals("Fernsehturm", normalizeLandmarkTitle("  Fernsehturm  "))

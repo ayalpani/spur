@@ -1,5 +1,8 @@
 package app.spur
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +20,7 @@ import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
@@ -86,6 +90,23 @@ internal fun landmarkEdgeIndicators(
     return accepted
 }
 
+internal fun retainedLandmarkEdgeIndicators(
+    projected: List<ProjectedLandmark>,
+    bounds: LandmarkIndicatorBounds,
+    landmarkIds: Set<String>,
+): List<LandmarkEdgeIndicator> {
+    val center = LandmarkScreenPoint(
+        x = (bounds.left + bounds.right) / 2f,
+        y = (bounds.top + bounds.bottom) / 2f,
+    )
+    return projected
+        .asSequence()
+        .filter { it.landmark.id in landmarkIds }
+        .sortedBy { it.landmark.priority }
+        .mapNotNull { it.clampedTo(bounds, center) }
+        .toList()
+}
+
 private fun ProjectedLandmark.clampedTo(
     bounds: LandmarkIndicatorBounds,
     center: LandmarkScreenPoint,
@@ -137,16 +158,21 @@ private fun ProjectedLandmark.clampedTo(
 @Composable
 internal fun LandmarkEdgeOverlay(
     indicators: State<List<LandmarkEdgeIndicator>>,
+    visible: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val displayed = indicators.value
+    val alpha = animateFloatAsState(
+        targetValue = if (visible && displayed.isNotEmpty()) 1f else 0f,
+        animationSpec = tween(MotionDurationDefaultMillis),
+        label = "Landmark indicators",
+    )
     Layout(
-        modifier = modifier.semantics {
-            contentDescription = "Orte in der Umgebung"
-        },
+        modifier = modifier
+            .semantics { contentDescription = "Orte in der Umgebung" },
         content = {
             displayed.forEach { indicator ->
-                LandmarkIndicatorContent(indicator)
+                LandmarkIndicatorContent(indicator, alpha)
             }
         },
     ) { measurables, constraints ->
@@ -182,9 +208,14 @@ internal fun LandmarkEdgeOverlay(
 }
 
 @Composable
-private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
+private fun LandmarkIndicatorContent(
+    indicator: LandmarkEdgeIndicator,
+    alpha: State<Float>,
+) {
+    val fadeModifier = Modifier.graphicsLayer { this.alpha = alpha.value }
     when (indicator.labelPlacement) {
         LandmarkLabelPlacement.RIGHT -> Row(
+            modifier = fadeModifier,
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
@@ -192,6 +223,7 @@ private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
             LandmarkLabel(indicator.landmark)
         }
         LandmarkLabelPlacement.LEFT -> Row(
+            modifier = fadeModifier,
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
@@ -199,6 +231,7 @@ private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
             LandmarkMarker(indicator)
         }
         LandmarkLabelPlacement.BELOW -> Column(
+            modifier = fadeModifier,
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
@@ -206,6 +239,7 @@ private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
             LandmarkLabel(indicator.landmark)
         }
         LandmarkLabelPlacement.ABOVE -> Column(
+            modifier = fadeModifier,
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
@@ -217,10 +251,16 @@ private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
 
 @Composable
 private fun LandmarkMarker(indicator: LandmarkEdgeIndicator) {
-    if (indicator.isEdgeArrow) {
-        LandmarkArrow(indicator)
-    } else {
-        LandmarkDot(indicator.landmark)
+    Crossfade(
+        targetState = indicator.isEdgeArrow,
+        animationSpec = tween(MotionDurationDefaultMillis),
+        label = "Landmark marker type",
+    ) { isEdgeArrow ->
+        if (isEdgeArrow) {
+            LandmarkArrow(indicator)
+        } else {
+            LandmarkDot(indicator.landmark)
+        }
     }
 }
 

@@ -220,6 +220,7 @@ internal fun MapSurface(
     val landmarkIndicators = remember {
         mutableStateOf(emptyList<LandmarkEdgeIndicator>())
     }
+    var landmarkIndicatorsVisible by remember { mutableStateOf(false) }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
     }
@@ -609,6 +610,8 @@ internal fun MapSurface(
         var showLandmarkIndicators = false
         var landmarkFramePosted = false
         var landmarkHide: Runnable? = null
+        var landmarkClear: Runnable? = null
+        var retainedLandmarkIds: Set<String>? = null
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
         var holdStart = PointF()
         var isTapCandidate = false
@@ -641,7 +644,6 @@ internal fun MapSurface(
             landmarkFramePosted = false
             val readyMap = map
             if (
-                !showLandmarkIndicators ||
                 readyMap == null ||
                 mapView.width <= 0 ||
                 mapView.height <= 0
@@ -649,6 +651,7 @@ internal fun MapSurface(
                 landmarkIndicators.value = emptyList()
                 return@Runnable
             }
+            if (!showLandmarkIndicators) return@Runnable
             val density = context.resources.displayMetrics.density
             val edgeInset = LandmarkEdgeInsetDp * density
             val systemInsets = ViewCompat.getRootWindowInsets(mapView)
@@ -663,24 +666,39 @@ internal fun MapSurface(
                     (systemInsets?.bottom ?: 0) -
                     edgeInset,
             )
-            val projected = currentLandmarks.map { landmark ->
-                val point = readyMap.projection.toScreenLocation(
-                    LatLng(
-                        landmark.coordinate.latitude,
-                        landmark.coordinate.longitude,
-                    ),
-                )
-                ProjectedLandmark(
-                    landmark = landmark,
-                    point = LandmarkScreenPoint(point.x, point.y),
+            val retainedIds = retainedLandmarkIds
+            val projected = currentLandmarks
+                .asSequence()
+                .filter { retainedIds == null || it.id in retainedIds }
+                .map { landmark ->
+                    val point = readyMap.projection.toScreenLocation(
+                        LatLng(
+                            landmark.coordinate.latitude,
+                            landmark.coordinate.longitude,
+                        ),
+                    )
+                    ProjectedLandmark(
+                        landmark = landmark,
+                        point = LandmarkScreenPoint(point.x, point.y),
+                    )
+                }
+                .toList()
+            landmarkIndicators.value = if (retainedIds == null) {
+                landmarkEdgeIndicators(
+                    projected = projected,
+                    bounds = bounds,
+                    minimumSeparation = LandmarkMinimumSeparationDp * density,
+                    maximumCount = LandmarkMaximumVisibleCount,
+                ).also { selected ->
+                    retainedLandmarkIds = selected.mapTo(linkedSetOf()) { it.landmark.id }
+                }
+            } else {
+                retainedLandmarkEdgeIndicators(
+                    projected = projected,
+                    bounds = bounds,
+                    landmarkIds = retainedIds,
                 )
             }
-            landmarkIndicators.value = landmarkEdgeIndicators(
-                projected = projected,
-                bounds = bounds,
-                minimumSeparation = LandmarkMinimumSeparationDp * density,
-                maximumCount = LandmarkMaximumVisibleCount,
-            )
         }
 
         fun scheduleLandmarkPublish() {
@@ -692,11 +710,14 @@ internal fun MapSurface(
         fun cancelLandmarkHide() {
             landmarkHide?.let(mapView::removeCallbacks)
             landmarkHide = null
+            landmarkClear?.let(mapView::removeCallbacks)
+            landmarkClear = null
         }
 
         fun revealLandmarks() {
             cancelLandmarkHide()
             showLandmarkIndicators = true
+            landmarkIndicatorsVisible = true
             scheduleLandmarkPublish()
         }
 
@@ -706,7 +727,15 @@ internal fun MapSurface(
                 landmarkHide = null
                 if (isMapTouchActive || isCameraMoving) return@Runnable
                 showLandmarkIndicators = false
-                landmarkIndicators.value = emptyList()
+                landmarkIndicatorsVisible = false
+                landmarkClear = Runnable {
+                    landmarkClear = null
+                    if (showLandmarkIndicators) return@Runnable
+                    retainedLandmarkIds = null
+                    landmarkIndicators.value = emptyList()
+                }.also { clear ->
+                    mapView.postDelayed(clear, MotionDurationDefaultMillis.toLong())
+                }
             }.also { hide ->
                 mapView.postDelayed(hide, LandmarkIndicatorHideDelayMillis)
             }
@@ -1019,7 +1048,9 @@ internal fun MapSurface(
             cancelManualLocationHold()
             cancelLandmarkHide()
             mapView.removeCallbacks(publishLandmarks)
+            retainedLandmarkIds = null
             landmarkIndicators.value = emptyList()
+            landmarkIndicatorsVisible = false
             currentOnMapGestureActiveChanged(false)
             mapView.setOnTouchListener(null)
             mapView.removeOnSourceChangedListener(sourceChangedListener)
@@ -1890,6 +1921,7 @@ internal fun MapSurface(
 
         LandmarkEdgeOverlay(
             indicators = landmarkIndicators,
+            visible = landmarkIndicatorsVisible,
             modifier = Modifier.fillMaxSize(),
         )
 
