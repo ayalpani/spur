@@ -3,15 +3,16 @@ package app.spur
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -124,7 +125,6 @@ internal fun MomentComposer(
             sheetState = momentSheetState,
         ) {
             MomentPickerSheetContent(
-                onDismiss = onDismiss,
                 showLandmark = onLandmarkAccepted != null,
                 onSelect = { action ->
                     when (action) {
@@ -289,9 +289,16 @@ internal fun MomentComposer(
 @Composable
 private fun MomentPickerSheetContent(
     onSelect: (MomentPickerAction) -> Unit,
-    onDismiss: () -> Unit,
     showLandmark: Boolean,
 ) {
+    val actions = listOf(
+        MomentPickerAction.ROUND_SELFIE_VIDEO,
+        MomentPickerAction.PHOTO,
+        MomentPickerAction.VIDEO,
+        MomentPickerAction.VOICE,
+        MomentPickerAction.EMOJI,
+    ) + if (showLandmark) listOf(MomentPickerAction.LANDMARK) else emptyList()
+
     CompositionLocalProvider(
         LocalMapControlColors provides MapControlColors(
             background = MapControlColor.BLACK.color,
@@ -301,76 +308,58 @@ private fun MomentPickerSheetContent(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
         ) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(MomentPickerGridHeight),
-                horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
-                verticalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
-            ) {
-                item {
-                    SpurSecondaryButton(
-                        label = "Selfie",
-                        leadingIcon = { SelfieButtonPreview() },
-                        compactContent = true,
-                        onClick = { onSelect(MomentPickerAction.ROUND_SELFIE_VIDEO) },
-                    )
-                }
-                item {
-                    SpurSecondaryButton(
-                        label = "Foto",
-                        leadingIcon = { MomentPhotoIcon() },
-                        compactContent = true,
-                        onClick = { onSelect(MomentPickerAction.PHOTO) },
-                    )
-                }
-                item {
-                    SpurSecondaryButton(
-                        label = "Video",
-                        leadingIcon = { MomentVideoIcon() },
-                        compactContent = true,
-                        onClick = { onSelect(MomentPickerAction.VIDEO) },
-                    )
-                }
-                item {
-                    SpurSecondaryButton(
-                        label = "Sprache",
-                        leadingIcon = { MomentVoiceIcon() },
-                        compactContent = true,
-                        onClick = { onSelect(MomentPickerAction.VOICE) },
-                    )
-                }
-                item {
-                    SpurSecondaryButton(
-                        label = "Emoji",
-                        leadingIcon = { MomentEmojiIcon() },
-                        compactContent = true,
-                        onClick = { onSelect(MomentPickerAction.EMOJI) },
-                    )
-                }
-                if (showLandmark) {
-                    item {
-                        SpurSecondaryButton(
-                            label = "Landmark",
-                            leadingIcon = { MapPinIcon(modifier = Modifier.size(24.dp)) },
-                            compactContent = true,
-                            onClick = { onSelect(MomentPickerAction.LANDMARK) },
+            actions.chunked(2).forEach { rowActions ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
+                ) {
+                    rowActions.forEach { action ->
+                        MomentPickerButton(
+                            action = action,
+                            modifier = Modifier.weight(1f),
+                            onSelect = onSelect,
                         )
                     }
+                    if (rowActions.size == 1) Spacer(modifier = Modifier.weight(1f))
                 }
             }
-            SpurPrimaryButton(
-                label = "Abbrechen",
-                onClick = onDismiss,
-            )
         }
     }
 }
 
-private val MomentPickerGridHeight = 164.dp
+@Composable
+private fun MomentPickerButton(
+    action: MomentPickerAction,
+    modifier: Modifier,
+    onSelect: (MomentPickerAction) -> Unit,
+) {
+    SpurSecondaryButton(
+        label = when (action) {
+            MomentPickerAction.ROUND_SELFIE_VIDEO -> "Selfie"
+            MomentPickerAction.PHOTO -> "Foto"
+            MomentPickerAction.VIDEO -> "Video"
+            MomentPickerAction.VOICE -> "Sprache"
+            MomentPickerAction.EMOJI -> "Emoji"
+            MomentPickerAction.LANDMARK -> "Landmark"
+        },
+        modifier = modifier,
+        leadingIcon = {
+            when (action) {
+                MomentPickerAction.ROUND_SELFIE_VIDEO -> SelfieButtonPreview()
+                MomentPickerAction.PHOTO -> MomentPhotoIcon()
+                MomentPickerAction.VIDEO -> MomentVideoIcon()
+                MomentPickerAction.VOICE -> MomentVoiceIcon()
+                MomentPickerAction.EMOJI -> MomentEmojiIcon()
+                MomentPickerAction.LANDMARK -> MapPinIcon(modifier = Modifier.size(24.dp))
+            }
+        },
+        compactContent = true,
+        onClick = { onSelect(action) },
+    )
+}

@@ -55,6 +55,7 @@ internal data class LandmarkEdgeIndicator(
     val point: LandmarkScreenPoint,
     val labelPlacement: LandmarkLabelPlacement,
     val angleDegrees: Float,
+    val isEdgeArrow: Boolean,
 )
 
 internal fun landmarkEdgeIndicators(
@@ -98,6 +99,7 @@ private fun ProjectedLandmark.clampedTo(
             point = point,
             labelPlacement = LandmarkLabelPlacement.RIGHT,
             angleDegrees = 0f,
+            isEdgeArrow = false,
         )
     }
     val horizontalScale = when {
@@ -128,6 +130,7 @@ private fun ProjectedLandmark.clampedTo(
         point = clamped,
         labelPlacement = placement,
         angleDegrees = Math.toDegrees(atan2(deltaY, deltaX).toDouble()).toFloat(),
+        isEdgeArrow = scale < 1f,
     )
 }
 
@@ -148,19 +151,23 @@ internal fun LandmarkEdgeOverlay(
         },
     ) { measurables, constraints ->
         val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
-        val arrowRadius = LandmarkIndicatorArrowSize.roundToPx() / 2
         layout(constraints.maxWidth, constraints.maxHeight) {
             displayed.zip(placeables).forEach { (indicator, placeable) ->
+                val markerRadius = if (indicator.isEdgeArrow) {
+                    LandmarkIndicatorArrowSize.roundToPx() / 2
+                } else {
+                    LandmarkIndicatorDotSize.roundToPx() / 2
+                }
                 val anchorX = when (indicator.labelPlacement) {
-                    LandmarkLabelPlacement.RIGHT -> arrowRadius
-                    LandmarkLabelPlacement.LEFT -> placeable.width - arrowRadius
+                    LandmarkLabelPlacement.RIGHT -> markerRadius
+                    LandmarkLabelPlacement.LEFT -> placeable.width - markerRadius
                     LandmarkLabelPlacement.BELOW,
                     LandmarkLabelPlacement.ABOVE,
                     -> placeable.width / 2
                 }
                 val anchorY = when (indicator.labelPlacement) {
-                    LandmarkLabelPlacement.BELOW -> arrowRadius
-                    LandmarkLabelPlacement.ABOVE -> placeable.height - arrowRadius
+                    LandmarkLabelPlacement.BELOW -> markerRadius
+                    LandmarkLabelPlacement.ABOVE -> placeable.height - markerRadius
                     LandmarkLabelPlacement.RIGHT,
                     LandmarkLabelPlacement.LEFT,
                     -> placeable.height / 2
@@ -181,7 +188,7 @@ private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
-            LandmarkArrow(indicator.angleDegrees)
+            LandmarkMarker(indicator)
             LandmarkLabel(indicator.landmark.title)
         }
         LandmarkLabelPlacement.LEFT -> Row(
@@ -189,13 +196,13 @@ private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
             horizontalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
             LandmarkLabel(indicator.landmark.title)
-            LandmarkArrow(indicator.angleDegrees)
+            LandmarkMarker(indicator)
         }
         LandmarkLabelPlacement.BELOW -> Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
-            LandmarkArrow(indicator.angleDegrees)
+            LandmarkMarker(indicator)
             LandmarkLabel(indicator.landmark.title)
         }
         LandmarkLabelPlacement.ABOVE -> Column(
@@ -203,8 +210,17 @@ private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
             verticalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
             LandmarkLabel(indicator.landmark.title)
-            LandmarkArrow(indicator.angleDegrees)
+            LandmarkMarker(indicator)
         }
+    }
+}
+
+@Composable
+private fun LandmarkMarker(indicator: LandmarkEdgeIndicator) {
+    if (indicator.isEdgeArrow) {
+        LandmarkArrow(indicator.angleDegrees)
+    } else {
+        LandmarkDot()
     }
 }
 
@@ -212,16 +228,34 @@ private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
 private fun LandmarkArrow(angleDegrees: Float) {
     val style = secondaryMapControlStyle(LocalMapControlColors.current)
     Canvas(modifier = Modifier.size(LandmarkIndicatorArrowSize)) {
+        val bodyStart = 3.dp.toPx()
+        val verticalInset = 1.5.dp.toPx()
         val arrow = Path().apply {
             moveTo(size.width, size.height / 2f)
-            lineTo(0f, 0f)
-            lineTo(0f, size.height)
+            lineTo(bodyStart, verticalInset)
+            lineTo(bodyStart, size.height - verticalInset)
             close()
         }
         rotate(degrees = angleDegrees, pivot = Offset(size.width / 2f, size.height / 2f)) {
+            drawLine(
+                color = style.colors.foreground,
+                start = Offset(0f, size.height / 2f),
+                end = Offset(bodyStart + 1.dp.toPx(), size.height / 2f),
+                strokeWidth = 1.5.dp.toPx(),
+            )
             drawPath(path = arrow, color = style.colors.foreground)
         }
     }
+}
+
+@Composable
+private fun LandmarkDot() {
+    val style = secondaryMapControlStyle(LocalMapControlColors.current)
+    Surface(
+        modifier = Modifier.size(LandmarkIndicatorDotSize),
+        shape = CircleShape,
+        color = style.colors.foreground,
+    ) {}
 }
 
 @Composable
@@ -249,7 +283,8 @@ private fun LandmarkLabel(title: String) {
     }
 }
 
-private val LandmarkIndicatorArrowSize = 12.dp
+private val LandmarkIndicatorArrowSize = 15.dp
+private val LandmarkIndicatorDotSize = 10.dp
 private val LandmarkIndicatorGap = 6.dp
 internal const val LandmarkEdgeInsetDp = 24f
 internal const val LandmarkMinimumSeparationDp = 112f

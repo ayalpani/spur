@@ -1,7 +1,9 @@
 package app.spur
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LandmarkEdgeIndicatorsTest {
@@ -18,6 +20,7 @@ class LandmarkEdgeIndicatorsTest {
         assertEquals(65.357f, result.point.y, 0.001f)
         assertEquals(LandmarkLabelPlacement.LEFT, result.labelPlacement)
         assertEquals(6.116f, result.angleDegrees, 0.001f)
+        assertTrue(result.isEdgeArrow)
     }
 
     @Test
@@ -33,6 +36,7 @@ class LandmarkEdgeIndicatorsTest {
         assertEquals(80f, result.point.y)
         assertEquals(LandmarkLabelPlacement.RIGHT, result.labelPlacement)
         assertEquals(141.34f, result.angleDegrees, 0.001f)
+        assertFalse(result.isEdgeArrow)
     }
 
     @Test

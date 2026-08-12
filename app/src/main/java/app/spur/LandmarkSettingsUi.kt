@@ -1,25 +1,25 @@
 package app.spur
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,7 +38,9 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -65,61 +67,27 @@ internal fun LandmarkCreateBottomSheet(
             .padding(horizontal = 24.dp)
             .padding(bottom = 24.dp),
     ) {
-        BottomSheetHeader(title = "Landmark hinzufügen")
-        Surface(
+        BottomSheetHeader(title = "Landmark")
+        OutlinedTextField(
+            value = title,
+            onValueChange = {
+                if (it.length <= LandmarkTitleMaximumCharacters) title = it
+            },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp),
-            color = Color.Transparent,
-            shape = CircleShape,
-            border = BorderStroke(1.dp, Ink.copy(alpha = 0.5f)),
-        ) {
-            BasicTextField(
-                value = title,
-                onValueChange = {
-                    if (it.length <= LandmarkTitleMaximumCharacters) title = it
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester)
-                    .semantics { contentDescription = "Name der Landmark" },
-                textStyle = MaterialTheme.typography.titleMedium.copy(
-                    color = Ink,
-                    fontWeight = FontWeight.Medium,
-                ),
-                singleLine = true,
-                cursorBrush = SolidColor(Ink),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(
-                    onDone = { normalizedTitle?.let(onSave) },
-                ),
-                decorationBox = { field ->
-                    Box(
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        if (title.isEmpty()) {
-                            Text(
-                                text = "Name",
-                                color = Ink.copy(alpha = 0.5f),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                        }
-                        field()
-                    }
-                },
-            )
-        }
+                .focusRequester(focusRequester),
+            label = { Text("Name") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(
+                onDone = { normalizedTitle?.let(onSave) },
+            ),
+        )
         SpurPrimaryButton(
-            label = "Landmark hinzufügen",
+            label = "Hinzufügen",
             enabled = normalizedTitle != null,
             modifier = Modifier.padding(top = 16.dp),
             onClick = { normalizedTitle?.let(onSave) },
-        )
-        SpurSecondaryButton(
-            label = "Zurück",
-            modifier = Modifier.padding(top = 10.dp),
-            onClick = onBack,
         )
     }
 }
@@ -131,19 +99,22 @@ internal fun LandmarkSettingsBottomSheet(
     onDelete: (Landmark) -> Unit,
 ) {
     var editingId by remember { mutableStateOf<String?>(null) }
-    var draft by remember { mutableStateOf("") }
+    var draft by remember { mutableStateOf(TextFieldValue()) }
     val focusRequester = remember { FocusRequester() }
+    val listState = rememberLazyListState()
     val keyboard = LocalSoftwareKeyboardController.current
 
     fun cancelEditing() {
         editingId = null
-        draft = ""
+        draft = TextFieldValue()
         keyboard?.hide()
     }
 
     BackHandler(enabled = editingId != null, onBack = ::cancelEditing)
-    LaunchedEffect(editingId) {
-        if (editingId != null) {
+    LaunchedEffect(editingId, landmarks) {
+        val index = landmarks.indexOfFirst { it.id == editingId }
+        if (index >= 0) {
+            listState.animateScrollToItem(index)
             focusRequester.requestFocus()
             keyboard?.show()
         }
@@ -174,20 +145,27 @@ internal fun LandmarkSettingsBottomSheet(
                 style = MaterialTheme.typography.bodyLarge,
             )
         } else {
-            LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f),
+            ) {
                 items(landmarks, key = Landmark::id) { landmark ->
+                    val editing = editingId == landmark.id
                     LandmarkSettingsRow(
                         landmark = landmark,
-                        editing = editingId == landmark.id,
+                        editing = editing,
                         draft = draft,
                         focusRequester = focusRequester,
                         onDraftChanged = { draft = it },
                         onStartEditing = {
                             editingId = landmark.id
-                            draft = landmark.title
+                            draft = TextFieldValue(
+                                text = landmark.title,
+                                selection = TextRange(landmark.title.length),
+                            )
                         },
                         onSave = {
-                            val title = normalizeLandmarkTitle(draft)
+                            val title = normalizeLandmarkTitle(draft.text)
                             if (title != null) {
                                 onRename(landmark, title)
                                 cancelEditing()
@@ -198,6 +176,11 @@ internal fun LandmarkSettingsBottomSheet(
                     )
                     HorizontalDivider(color = Ink.copy(alpha = 0.12f))
                 }
+                if (editingId != null) {
+                    item(key = "edit-scroll-reserve") {
+                        Spacer(modifier = Modifier.fillParentMaxHeight())
+                    }
+                }
             }
         }
     }
@@ -207,14 +190,19 @@ internal fun LandmarkSettingsBottomSheet(
 private fun LandmarkSettingsRow(
     landmark: Landmark,
     editing: Boolean,
-    draft: String,
+    draft: TextFieldValue,
     focusRequester: FocusRequester,
-    onDraftChanged: (String) -> Unit,
+    onDraftChanged: (TextFieldValue) -> Unit,
     onStartEditing: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val textStyle = MaterialTheme.typography.titleMedium.copy(
+        color = Ink,
+        fontSize = SheetMenuTextSize,
+        fontWeight = FontWeight.Medium,
+    )
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -229,16 +217,13 @@ private fun LandmarkSettingsRow(
                 BasicTextField(
                     value = draft,
                     onValueChange = {
-                        if (it.length <= LandmarkTitleMaximumCharacters) onDraftChanged(it)
+                        if (it.text.length <= LandmarkTitleMaximumCharacters) onDraftChanged(it)
                     },
                     modifier = Modifier
                         .weight(1f)
                         .focusRequester(focusRequester)
                         .semantics { contentDescription = "Titel von ${landmark.title}" },
-                    textStyle = MaterialTheme.typography.titleMedium.copy(
-                        color = Ink,
-                        fontWeight = FontWeight.Medium,
-                    ),
+                    textStyle = textStyle,
                     singleLine = true,
                     cursorBrush = SolidColor(Ink),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -251,7 +236,7 @@ private fun LandmarkSettingsRow(
                     LucideIcon(
                         paths = listOf("m20 6-11 11-5-5"),
                         color = Ink,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(SheetMenuIconSize),
                     )
                 }
                 LandmarkRowIconButton(
@@ -261,7 +246,7 @@ private fun LandmarkSettingsRow(
                     LucideIcon(
                         paths = listOf("M18 6 6 18", "m6 6 12 12"),
                         color = Ink,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(SheetMenuIconSize),
                     )
                 }
             } else {
@@ -269,8 +254,7 @@ private fun LandmarkSettingsRow(
                     text = landmark.title,
                     modifier = Modifier.weight(1f),
                     color = Ink,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
+                    style = textStyle,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -278,7 +262,7 @@ private fun LandmarkSettingsRow(
                     contentDescription = "${landmark.title} umbenennen",
                     onClick = onStartEditing,
                 ) {
-                    PencilIcon(modifier = Modifier.size(22.dp))
+                    PencilIcon(modifier = Modifier.size(SheetMenuIconSize))
                 }
                 LandmarkRowIconButton(
                     contentDescription = "${landmark.title} löschen",
@@ -286,7 +270,7 @@ private fun LandmarkSettingsRow(
                 ) {
                     PhotoDeleteIcon(
                         color = StopRed,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(SheetMenuIconSize),
                     )
                 }
             }
