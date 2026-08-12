@@ -549,6 +549,9 @@ internal fun MomentType.editorLabel(): String = when (this) {
     MomentType.EMOJI -> "Emoji"
 }
 
+internal fun MapMoment.editorLabel(): String =
+    if (isRoundVideo) "Selfie-Video" else type.editorLabel()
+
 internal fun formatEditorElapsed(millis: Long): String {
     val minutes = millis.coerceAtLeast(0L) / 60_000
     return String.format(Locale.getDefault(), "%d:%02d", minutes / 60, minutes % 60)

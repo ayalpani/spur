@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -147,7 +148,13 @@ internal fun PendingMomentMarker(
                         modifier = Modifier
                             .padding(top = (7f + MomentMarkerVerticalOffset).dp)
                             .size(40.dp)
-                            .clip(RoundedCornerShape(5.dp)),
+                            .clip(
+                                if (moment.isRoundVideo) {
+                                    CircleShape
+                                } else {
+                                    RoundedCornerShape(5.dp)
+                                },
+                            ),
                     )
                 } else {
                     RotatingAsterisk(

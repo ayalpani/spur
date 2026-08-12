@@ -182,7 +182,14 @@ internal fun createMomentMarkerBitmap(
                     photoContentLeft + photoSide,
                     photoContentTop + photoSide,
                 )
-                drawMarkerPhoto(canvas, paint, photoContent, preview, scale)
+                drawMarkerPhoto(
+                    canvas = canvas,
+                    paint = paint,
+                    destination = photoContent,
+                    photo = preview,
+                    scale = scale,
+                    round = moment.isRoundVideo,
+                )
                 if (moment.type != MomentType.PHOTO || onPhotoDecoded == null) {
                     preview.recycle()
                 }
@@ -315,6 +322,7 @@ private fun drawMarkerPhoto(
     destination: android.graphics.RectF,
     photo: android.graphics.Bitmap,
     scale: Float,
+    round: Boolean = false,
 ) {
     val side = minOf(photo.width, photo.height)
     val source = android.graphics.Rect(
@@ -324,7 +332,11 @@ private fun drawMarkerPhoto(
         (photo.height + side) / 2,
     )
     val clip = android.graphics.Path().apply {
-        addRoundRect(destination, 5 * scale, 5 * scale, android.graphics.Path.Direction.CW)
+        if (round) {
+            addOval(destination, android.graphics.Path.Direction.CW)
+        } else {
+            addRoundRect(destination, 5 * scale, 5 * scale, android.graphics.Path.Direction.CW)
+        }
     }
     canvas.save()
     canvas.clipPath(clip)

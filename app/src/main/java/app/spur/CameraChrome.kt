@@ -4,7 +4,6 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.view.OrientationEventListener
 import android.view.Surface
-import androidx.camera.core.CameraSelector
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -87,9 +86,6 @@ internal fun cameraTargetRotationFromOrientation(orientation: Int): Int? = when 
     in 0..359 -> Surface.ROTATION_0
     else -> null
 }
-
-internal fun isSelfieLens(lensFacing: Int): Boolean =
-    lensFacing == CameraSelector.LENS_FACING_FRONT
 
 @Composable
 internal fun BoxScope.CameraCloseButton(

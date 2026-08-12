@@ -1,7 +1,6 @@
 package app.spur
 
 import android.view.Surface
-import androidx.camera.core.CameraSelector
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -36,12 +35,5 @@ class CameraOrientationTest {
     fun `unknown physical orientation leaves the current camera rotation unchanged`() {
         assertEquals(null, cameraTargetRotationFromOrientation(-1))
         assertEquals(null, cameraTargetRotationFromOrientation(Int.MAX_VALUE))
-    }
-
-    @Test
-    fun `only the front lens receives the round selfie presentation`() {
-        assertEquals(true, isSelfieLens(CameraSelector.LENS_FACING_FRONT))
-        assertEquals(false, isSelfieLens(CameraSelector.LENS_FACING_BACK))
-        assertEquals(false, isSelfieLens(CameraSelector.LENS_FACING_EXTERNAL))
     }
 }

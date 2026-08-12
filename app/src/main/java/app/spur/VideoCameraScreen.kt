@@ -51,6 +51,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 @Composable
 internal fun VideoCameraScreen(
+    roundSelfie: Boolean = false,
     showFeedbackNotice: ShowFeedbackNotice,
     onClose: () -> Unit,
     onVideoAccepted: (File) -> Unit,
@@ -70,7 +71,15 @@ internal fun VideoCameraScreen(
     val closeAfterDiscard = remember { AtomicBoolean(false) }
     val accepted = remember { AtomicBoolean(false) }
     val disposed = remember { AtomicBoolean(false) }
-    var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_FRONT) }
+    var lensFacing by remember(roundSelfie) {
+        mutableStateOf(
+            if (roundSelfie) {
+                CameraSelector.LENS_FACING_FRONT
+            } else {
+                CameraSelector.LENS_FACING_BACK
+            },
+        )
+    }
     var cameraPreview by remember { mutableStateOf<Preview?>(null) }
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     var recording by remember { mutableStateOf<Recording?>(null) }
@@ -194,7 +203,11 @@ internal fun VideoCameraScreen(
         val capture = videoCapture ?: return
         cameraPreview?.targetRotation = targetRotation
         capture.targetRotation = targetRotation
-        val video = context.createMomentFile(MomentType.VIDEO)
+        val video = if (roundSelfie) {
+            context.createRoundVideoMomentFile()
+        } else {
+            context.createMomentFile(MomentType.VIDEO)
+        }
         val output = FileOutputOptions.Builder(video).build()
         discardRequested.set(false)
         closeAfterDiscard.set(false)
@@ -252,14 +265,18 @@ internal fun VideoCameraScreen(
             isFinalizing = isFinalizing,
             recordedDurationMillis = recordedDurationMillis,
             canRecord = videoCapture != null,
-            selfie = isSelfieLens(lensFacing),
+            roundSelfie = roundSelfie,
             landscape = landscape,
             onClose = ::discardAndClose,
-            onSwitchCamera = {
-                lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-                    CameraSelector.LENS_FACING_FRONT
-                } else {
-                    CameraSelector.LENS_FACING_BACK
+            onSwitchCamera = if (roundSelfie) {
+                null
+            } else {
+                {
+                    lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                        CameraSelector.LENS_FACING_FRONT
+                    } else {
+                        CameraSelector.LENS_FACING_BACK
+                    }
                 }
             },
             onRecord = {
@@ -274,7 +291,7 @@ internal fun VideoCameraScreen(
     } else {
         VideoConfirmationSurface(
             video = video,
-            selfie = isSelfieLens(lensFacing),
+            roundSelfie = roundSelfie,
             landscape = landscape,
             onDiscard = {
                 video.delete()
@@ -295,10 +312,10 @@ private fun VideoRecordingSurface(
     isFinalizing: Boolean,
     recordedDurationMillis: Long,
     canRecord: Boolean,
-    selfie: Boolean,
+    roundSelfie: Boolean,
     landscape: Boolean,
     onClose: () -> Unit,
-    onSwitchCamera: () -> Unit,
+    onSwitchCamera: (() -> Unit)?,
     onRecord: () -> Unit,
 ) {
     Box(
@@ -307,7 +324,7 @@ private fun VideoRecordingSurface(
             .background(Color.Black),
     ) {
         Box(
-            modifier = if (selfie) {
+            modifier = if (roundSelfie) {
                 Modifier
                     .align(Alignment.Center)
                     .fillMaxWidth(0.86f)
@@ -320,9 +337,9 @@ private fun VideoRecordingSurface(
                 factory = { previewView },
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(if (selfie) Modifier.padding(5.dp).clip(CircleShape) else Modifier)
+                    .then(if (roundSelfie) Modifier.padding(5.dp).clip(CircleShape) else Modifier)
                     .semantics {
-                        contentDescription = if (selfie) {
+                        contentDescription = if (roundSelfie) {
                             "Runde Selfie-Videovorschau"
                         } else {
                             "Videokameravorschau"
@@ -352,7 +369,7 @@ private fun VideoRecordingSurface(
                 fontWeight = FontWeight.SemiBold,
             )
         }
-        if (!isRecording && !isFinalizing) {
+        if (!isRecording && !isFinalizing && onSwitchCamera != null) {
             CameraSwitchButton(
                 contentDescription = "Videokamera wechseln",
                 landscape = landscape,

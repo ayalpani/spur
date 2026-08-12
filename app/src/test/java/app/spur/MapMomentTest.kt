@@ -2,6 +2,7 @@ package app.spur
 
 import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -94,6 +95,22 @@ class MapMomentTest {
                 )
                 assertEquals(1_700_000_000_000L, moment.captureTimeMillis())
             }
+    }
+
+    @Test
+    fun roundVideosKeepTheirKindAndCaptureTimeWithoutAStorageMigration() {
+        val moment = MapMoment(
+            id = "round-video-1700000000000",
+            type = MomentType.VIDEO,
+            latitude = 0.0,
+            longitude = 0.0,
+            payload = "/moments/videos/round-video-1700000000000.mp4",
+        )
+
+        assertTrue(moment.isRoundVideo)
+        assertFalse(moment.copy(id = "video-1700000000000").isRoundVideo)
+        assertEquals(1_700_000_000_000L, moment.captureTimeMillis())
+        assertEquals(moment, decodeMapMoment(encodeMapMoment(moment)))
     }
 
     @Test

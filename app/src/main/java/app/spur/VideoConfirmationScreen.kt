@@ -47,7 +47,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun VideoConfirmationSurface(
     video: File,
-    selfie: Boolean,
+    roundSelfie: Boolean,
     landscape: Boolean,
     onDiscard: () -> Unit,
     onAccept: () -> Unit,
@@ -165,7 +165,7 @@ internal fun VideoConfirmationSurface(
         ) {
             VideoConfirmationPreview(
                 aspectRatio = videoAspectRatio,
-                selfie = selfie,
+                roundSelfie = roundSelfie,
                 isPlaying = isPlaying,
                 onTextureView = { textureView = it },
                 onTogglePlayback = togglePlayback,
@@ -190,7 +190,7 @@ internal fun VideoConfirmationSurface(
         ) {
             VideoConfirmationPreview(
                 aspectRatio = videoAspectRatio,
-                selfie = selfie,
+                roundSelfie = roundSelfie,
                 isPlaying = isPlaying,
                 onTextureView = { textureView = it },
                 onTogglePlayback = togglePlayback,
@@ -213,7 +213,7 @@ internal fun VideoConfirmationSurface(
 @Composable
 private fun VideoConfirmationPreview(
     aspectRatio: Float,
-    selfie: Boolean,
+    roundSelfie: Boolean,
     isPlaying: Boolean,
     onTextureView: (TextureView) -> Unit,
     onTogglePlayback: () -> Unit,
@@ -224,7 +224,7 @@ private fun VideoConfirmationPreview(
         modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
-        val mediaModifier = if (selfie) {
+        val mediaModifier = if (roundSelfie) {
             Modifier
                 .size(minOf(maxWidth, maxHeight))
                 .padding(5.dp)
@@ -242,11 +242,11 @@ private fun VideoConfirmationPreview(
             modifier = mediaModifier,
             contentAlignment = Alignment.Center,
         ) {
-            val videoModifier = if (selfie && aspectRatio > 1f) {
+            val videoModifier = if (roundSelfie && aspectRatio > 1f) {
                 Modifier
                     .fillMaxHeight()
                     .aspectRatio(aspectRatio)
-            } else if (selfie) {
+            } else if (roundSelfie) {
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(aspectRatio)
@@ -257,7 +257,7 @@ private fun VideoConfirmationPreview(
                 factory = { TextureView(context).also(onTextureView) },
                 modifier = videoModifier
                     .semantics {
-                        contentDescription = if (selfie) {
+                        contentDescription = if (roundSelfie) {
                             "Aufgenommenes rundes Selfie-Video"
                         } else {
                             "Aufgenommenes Video"

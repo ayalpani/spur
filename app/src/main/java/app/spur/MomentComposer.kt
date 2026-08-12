@@ -27,6 +27,16 @@ import java.io.File
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
+private enum class MomentPickerAction {
+    PHOTO,
+    VIDEO,
+    ROUND_SELFIE_VIDEO,
+    VOICE,
+    EMOJI,
+}
+
+private enum class VideoCaptureMode { STANDARD, ROUND_SELFIE }
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 internal fun MomentComposer(
@@ -40,7 +50,10 @@ internal fun MomentComposer(
     var showPicker by remember(target) { mutableStateOf(target != null) }
     var showEmojiPicker by remember(target) { mutableStateOf(false) }
     var showCamera by remember(target) { mutableStateOf(false) }
-    var showVideoCamera by remember(target) { mutableStateOf(false) }
+    var videoCameraMode by remember(target) { mutableStateOf<VideoCaptureMode?>(null) }
+    var requestedVideoCameraMode by remember(target) {
+        mutableStateOf<VideoCaptureMode?>(null)
+    }
     var showVoiceRecorder by remember(target) { mutableStateOf(false) }
     var audioPermissionGranted by remember(target) {
         mutableStateOf(context.hasAudioRecordingPermission())
@@ -71,8 +84,10 @@ internal fun MomentComposer(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
         if (context.hasCameraPermission() && context.hasAudioRecordingPermission()) {
-            showVideoCamera = true
+            videoCameraMode = requestedVideoCameraMode ?: VideoCaptureMode.STANDARD
+            requestedVideoCameraMode = null
         } else {
+            requestedVideoCameraMode = null
             showFeedbackNotice(
                 FeedbackNoticeKind.PERMISSION,
                 "Für Videos braucht Spur Zugriff auf Kamera und Mikrofon.",
@@ -103,9 +118,9 @@ internal fun MomentComposer(
         ) {
             MomentPickerSheetContent(
                 onDismiss = onDismiss,
-                onSelect = { type ->
-                    when (type) {
-                        MomentType.PHOTO -> {
+                onSelect = { action ->
+                    when (action) {
+                        MomentPickerAction.PHOTO -> {
                             showPicker = false
                             if (context.hasCameraPermission()) {
                                 showCamera = true
@@ -113,14 +128,22 @@ internal fun MomentComposer(
                                 cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                             }
                         }
-                        MomentType.VIDEO -> {
+                        MomentPickerAction.VIDEO,
+                        MomentPickerAction.ROUND_SELFIE_VIDEO,
+                        -> {
                             showPicker = false
+                            val mode = if (action == MomentPickerAction.ROUND_SELFIE_VIDEO) {
+                                VideoCaptureMode.ROUND_SELFIE
+                            } else {
+                                VideoCaptureMode.STANDARD
+                            }
                             if (
                                 context.hasCameraPermission() &&
                                 context.hasAudioRecordingPermission()
                             ) {
-                                showVideoCamera = true
+                                videoCameraMode = mode
                             } else {
+                                requestedVideoCameraMode = mode
                                 videoPermissionLauncher.launch(
                                     arrayOf(
                                         Manifest.permission.CAMERA,
@@ -129,7 +152,7 @@ internal fun MomentComposer(
                                 )
                             }
                         }
-                        MomentType.VOICE -> {
+                        MomentPickerAction.VOICE -> {
                             voiceRecordingStartRequest = 0L
                             scope.swapBottomSheets(
                                 currentState = momentSheetState,
@@ -138,7 +161,7 @@ internal fun MomentComposer(
                                 hideCurrent = { showPicker = false },
                             )
                         }
-                        MomentType.EMOJI -> {
+                        MomentPickerAction.EMOJI -> {
                             scope.swapBottomSheets(
                                 currentState = momentSheetState,
                                 nextState = emojiSheetState,
@@ -186,12 +209,13 @@ internal fun MomentComposer(
         )
     }
 
-    if (showVideoCamera) {
+    videoCameraMode?.let { mode ->
         VideoCameraScreen(
+            roundSelfie = mode == VideoCaptureMode.ROUND_SELFIE,
             showFeedbackNotice = showFeedbackNotice,
             onClose = onDismiss,
             onVideoAccepted = { video ->
-                showVideoCamera = false
+                videoCameraMode = null
                 scope.launch {
                     withContext(Dispatchers.IO) { ensureVideoThumbnail(video) }
                     accept(PendingMapMoment(MomentType.VIDEO, video))
@@ -224,7 +248,7 @@ internal fun MomentComposer(
 
 @Composable
 private fun MomentPickerSheetContent(
-    onSelect: (MomentType) -> Unit,
+    onSelect: (MomentPickerAction) -> Unit,
     onDismiss: () -> Unit,
 ) {
     CompositionLocalProvider(
@@ -250,16 +274,23 @@ private fun MomentPickerSheetContent(
                     modifier = Modifier.weight(1f),
                     leadingIcon = { MomentPhotoIcon() },
                     compactContent = true,
-                    onClick = { onSelect(MomentType.PHOTO) },
+                    onClick = { onSelect(MomentPickerAction.PHOTO) },
                 )
                 SpurSecondaryButton(
                     label = "Video",
                     modifier = Modifier.weight(1f),
                     leadingIcon = { MomentVideoIcon() },
                     compactContent = true,
-                    onClick = { onSelect(MomentType.VIDEO) },
+                    onClick = { onSelect(MomentPickerAction.VIDEO) },
                 )
             }
+            SpurSecondaryButton(
+                label = "Selfie-Video",
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { MomentVideoIcon() },
+                compactContent = true,
+                onClick = { onSelect(MomentPickerAction.ROUND_SELFIE_VIDEO) },
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
@@ -269,14 +300,14 @@ private fun MomentPickerSheetContent(
                     modifier = Modifier.weight(1f),
                     leadingIcon = { MomentVoiceIcon() },
                     compactContent = true,
-                    onClick = { onSelect(MomentType.VOICE) },
+                    onClick = { onSelect(MomentPickerAction.VOICE) },
                 )
                 SpurSecondaryButton(
                     label = "Emoji",
                     modifier = Modifier.weight(1f),
                     leadingIcon = { MomentEmojiIcon() },
                     compactContent = true,
-                    onClick = { onSelect(MomentType.EMOJI) },
+                    onClick = { onSelect(MomentPickerAction.EMOJI) },
                 )
             }
             SpurPrimaryButton(

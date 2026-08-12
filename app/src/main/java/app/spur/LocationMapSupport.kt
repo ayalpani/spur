@@ -166,6 +166,11 @@ internal fun Context.createMomentFile(type: MomentType): File {
     return File(directory, "${type.name.lowercase()}-${System.currentTimeMillis()}.$extension")
 }
 
+internal fun Context.createRoundVideoMomentFile(): File {
+    val directory = File(filesDir, "moments/videos").apply { mkdirs() }
+    return File(directory, "$RoundVideoIdPrefix${System.currentTimeMillis()}.mp4")
+}
+
 private fun Location.toSpurCoordinate() =
     SpurCoordinate(latitude = latitude, longitude = longitude)
 

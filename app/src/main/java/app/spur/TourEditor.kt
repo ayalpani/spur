@@ -288,7 +288,7 @@ private fun TourEditorScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    text = moment.type.editorLabel(),
+                                    text = moment.editorLabel(),
                                     modifier = Modifier.weight(1f),
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.Medium,
@@ -341,11 +341,11 @@ private fun TourEditorScreen(
         EditorDeleteSheet(
             title = when (target) {
                 is EditorDeleteTarget.Location -> "Wegpunkt löschen?"
-                is EditorDeleteTarget.Moment -> "${target.moment.type.editorLabel()} löschen?"
+                is EditorDeleteTarget.Moment -> "${target.moment.editorLabel()} löschen?"
             },
             primaryLabel = when (target) {
                 is EditorDeleteTarget.Location -> "Wegpunkt löschen"
-                is EditorDeleteTarget.Moment -> "${target.moment.type.editorLabel()} löschen"
+                is EditorDeleteTarget.Moment -> "${target.moment.editorLabel()} löschen"
             },
             onDismiss = { deleteTarget = null },
             onConfirm = {
@@ -359,7 +359,7 @@ private fun TourEditorScreen(
                         if (updated == null) {
                             showFeedbackNotice(
                                 FeedbackNoticeKind.ERROR,
-                                "${target.moment.type.editorLabel()} konnte nicht gelöscht werden.",
+                                "${target.moment.editorLabel()} konnte nicht gelöscht werden.",
                             )
                         } else {
                             moments = mapMomentsForTour(updated, currentTour ?: return@launch)
