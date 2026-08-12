@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -44,6 +47,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun VideoConfirmationSurface(
     video: File,
+    selfie: Boolean,
     landscape: Boolean,
     onDiscard: () -> Unit,
     onAccept: () -> Unit,
@@ -161,6 +165,7 @@ internal fun VideoConfirmationSurface(
         ) {
             VideoConfirmationPreview(
                 aspectRatio = videoAspectRatio,
+                selfie = selfie,
                 isPlaying = isPlaying,
                 onTextureView = { textureView = it },
                 onTogglePlayback = togglePlayback,
@@ -185,6 +190,7 @@ internal fun VideoConfirmationSurface(
         ) {
             VideoConfirmationPreview(
                 aspectRatio = videoAspectRatio,
+                selfie = selfie,
                 isPlaying = isPlaying,
                 onTextureView = { textureView = it },
                 onTogglePlayback = togglePlayback,
@@ -207,6 +213,7 @@ internal fun VideoConfirmationSurface(
 @Composable
 private fun VideoConfirmationPreview(
     aspectRatio: Float,
+    selfie: Boolean,
     isPlaying: Boolean,
     onTextureView: (TextureView) -> Unit,
     onTogglePlayback: () -> Unit,
@@ -215,9 +222,14 @@ private fun VideoConfirmationPreview(
     val context = LocalContext.current
     BoxWithConstraints(
         modifier = modifier,
-        contentAlignment = Alignment.TopCenter,
+        contentAlignment = Alignment.Center,
     ) {
-        val mediaModifier = if (maxWidth / maxHeight > aspectRatio) {
+        val mediaModifier = if (selfie) {
+            Modifier
+                .size(minOf(maxWidth, maxHeight))
+                .padding(5.dp)
+                .clip(CircleShape)
+        } else if (maxWidth / maxHeight > aspectRatio) {
             Modifier
                 .fillMaxHeight()
                 .aspectRatio(aspectRatio)
@@ -230,11 +242,27 @@ private fun VideoConfirmationPreview(
             modifier = mediaModifier,
             contentAlignment = Alignment.Center,
         ) {
+            val videoModifier = if (selfie && aspectRatio > 1f) {
+                Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(aspectRatio)
+            } else if (selfie) {
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(aspectRatio)
+            } else {
+                Modifier.fillMaxSize()
+            }
             AndroidView(
                 factory = { TextureView(context).also(onTextureView) },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .semantics { contentDescription = "Aufgenommenes Video" },
+                modifier = videoModifier
+                    .semantics {
+                        contentDescription = if (selfie) {
+                            "Aufgenommenes rundes Selfie-Video"
+                        } else {
+                            "Aufgenommenes Video"
+                        }
+                    },
             )
             IconButton(
                 onClick = onTogglePlayback,
