@@ -1,5 +1,7 @@
 package app.spur
 
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -59,6 +61,19 @@ class LandmarkEdgeIndicatorsTest {
     fun emptyLandmarkTitlesAreRejected() {
         assertNull(normalizeLandmarkTitle("   "))
         assertEquals("Fernsehturm", normalizeLandmarkTitle("  Fernsehturm  "))
+    }
+
+    @Test
+    fun landmarkColorsRepeatAcrossTheDarkPalette() {
+        assertEquals(
+            LandmarkColorPalette.first().toArgb(),
+            Landmark("first", "first", SpurCoordinate(0.0, 0.0), 0).colorArgb,
+        )
+        assertEquals(
+            LandmarkColorPalette.first().toArgb(),
+            landmarkColor(LandmarkColorPalette.size).toArgb(),
+        )
+        assertTrue(LandmarkColorPalette.all { it.luminance() < 0.5f })
     }
 
     private fun projected(

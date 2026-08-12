@@ -1,7 +1,6 @@
 package app.spur
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Box
@@ -21,7 +20,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -52,15 +49,19 @@ internal fun LandmarkCreateBottomSheet(
     onSave: (String) -> Unit,
     onCancel: () -> Unit,
 ) {
-    var title by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf(TextFieldValue()) }
     var loading by remember { mutableStateOf(true) }
-    val normalizedTitle = normalizeLandmarkTitle(title)
+    val normalizedTitle = normalizeLandmarkTitle(title.text)
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
     BackHandler(onBack = onCancel)
     LaunchedEffect(Unit) {
-        title = runCatching { loadSuggestedTitle() }.getOrNull().orEmpty()
+        val suggestion = runCatching { loadSuggestedTitle() }.getOrNull().orEmpty()
+        title = TextFieldValue(
+            text = suggestion,
+            selection = TextRange(suggestion.length),
+        )
         loading = false
     }
     LaunchedEffect(loading) {
@@ -92,10 +93,10 @@ internal fun LandmarkCreateBottomSheet(
                 )
             }
         } else {
-            OutlinedTextField(
+            SpurFormTextField(
                 value = title,
                 onValueChange = {
-                    if (it.length <= LandmarkTitleMaximumCharacters) title = it
+                    if (it.text.length <= LandmarkTitleMaximumCharacters) title = it
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -246,7 +247,7 @@ private fun LandmarkSettingsRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (editing) {
-                BasicTextField(
+                SpurInlineTextField(
                     value = draft,
                     onValueChange = {
                         if (it.text.length <= LandmarkTitleMaximumCharacters) onDraftChanged(it)
@@ -257,7 +258,6 @@ private fun LandmarkSettingsRow(
                         .semantics { contentDescription = "Titel von ${landmark.title}" },
                     textStyle = textStyle,
                     singleLine = true,
-                    cursorBrush = SolidColor(Ink),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { onSave() }),
                 )

@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import androidx.compose.ui.graphics.toArgb
 import java.util.UUID
 
 internal data class Landmark(
@@ -11,6 +12,7 @@ internal data class Landmark(
     val title: String,
     val coordinate: SpurCoordinate,
     val priority: Int,
+    val colorArgb: Int = landmarkColor(priority).toArgb(),
 )
 
 internal const val LandmarkTitleMaximumCharacters = 60
@@ -19,7 +21,12 @@ internal fun normalizeLandmarkTitle(title: String): String? =
     title.trim().take(LandmarkTitleMaximumCharacters).ifEmpty { null }
 
 internal class LandmarkStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, LandmarkDatabaseName, null, 1) {
+    SQLiteOpenHelper(
+        context.applicationContext,
+        LandmarkDatabaseName,
+        null,
+        LandmarkDatabaseVersion,
+    ) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -29,7 +36,8 @@ internal class LandmarkStore(context: Context) :
                 title TEXT NOT NULL,
                 latitude REAL NOT NULL,
                 longitude REAL NOT NULL,
-                priority INTEGER NOT NULL
+                priority INTEGER NOT NULL,
+                color INTEGER NOT NULL
             )
             """.trimIndent(),
         )
@@ -44,12 +52,40 @@ internal class LandmarkStore(context: Context) :
         }
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            db.execSQL(
+                "ALTER TABLE landmarks ADD COLUMN color INTEGER NOT NULL " +
+                    "DEFAULT ${landmarkColor(0).toArgb()}",
+            )
+            val priorities = db.query(
+                "landmarks",
+                arrayOf("id", "priority"),
+                null,
+                null,
+                null,
+                null,
+                null,
+            ).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) add(cursor.getString(0) to cursor.getInt(1))
+                }
+            }
+            priorities.forEach { (id, priority) ->
+                db.update(
+                    "landmarks",
+                    ContentValues().apply { put("color", landmarkColor(priority).toArgb()) },
+                    "id = ?",
+                    arrayOf(id),
+                )
+            }
+        }
+    }
 
     @Synchronized
     fun landmarks(): List<Landmark> = readableDatabase.query(
         "landmarks",
-        arrayOf("id", "title", "latitude", "longitude", "priority"),
+        arrayOf("id", "title", "latitude", "longitude", "priority", "color"),
         null,
         null,
         null,
@@ -67,6 +103,7 @@ internal class LandmarkStore(context: Context) :
                             longitude = cursor.getDouble(3),
                         ),
                         priority = cursor.getInt(4),
+                        colorArgb = cursor.getInt(5),
                     ),
                 )
             }
@@ -134,10 +171,12 @@ internal class LandmarkStore(context: Context) :
         put("latitude", coordinate.latitude)
         put("longitude", coordinate.longitude)
         put("priority", priority)
+        put("color", colorArgb)
     }
 }
 
 private const val LandmarkDatabaseName = "landmarks.db"
+private const val LandmarkDatabaseVersion = 2
 
 // Curated Berlin defaults. They seed a new local database once and are then user-owned.
 private val BerlinLandmarks = listOf(

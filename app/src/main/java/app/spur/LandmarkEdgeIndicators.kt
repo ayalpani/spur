@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -188,13 +189,13 @@ private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
             horizontalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
             LandmarkMarker(indicator)
-            LandmarkLabel(indicator.landmark.title)
+            LandmarkLabel(indicator.landmark)
         }
         LandmarkLabelPlacement.LEFT -> Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
-            LandmarkLabel(indicator.landmark.title)
+            LandmarkLabel(indicator.landmark)
             LandmarkMarker(indicator)
         }
         LandmarkLabelPlacement.BELOW -> Column(
@@ -202,13 +203,13 @@ private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
             verticalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
             LandmarkMarker(indicator)
-            LandmarkLabel(indicator.landmark.title)
+            LandmarkLabel(indicator.landmark)
         }
         LandmarkLabelPlacement.ABOVE -> Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(LandmarkIndicatorGap),
         ) {
-            LandmarkLabel(indicator.landmark.title)
+            LandmarkLabel(indicator.landmark)
             LandmarkMarker(indicator)
         }
     }
@@ -217,18 +218,19 @@ private fun LandmarkIndicatorContent(indicator: LandmarkEdgeIndicator) {
 @Composable
 private fun LandmarkMarker(indicator: LandmarkEdgeIndicator) {
     if (indicator.isEdgeArrow) {
-        LandmarkArrow(indicator.angleDegrees)
+        LandmarkArrow(indicator)
     } else {
-        LandmarkDot()
+        LandmarkDot(indicator.landmark)
     }
 }
 
 @Composable
-private fun LandmarkArrow(angleDegrees: Float) {
+private fun LandmarkArrow(indicator: LandmarkEdgeIndicator) {
+    val color = Color(indicator.landmark.colorArgb)
     Box(
         modifier = Modifier
             .size(LandmarkIndicatorArrowSize)
-            .rotate(angleDegrees + LandmarkNavigationDefaultAngleCorrection),
+            .rotate(indicator.angleDegrees + LandmarkNavigationDefaultAngleCorrection),
         contentAlignment = Alignment.Center,
     ) {
         LucideIcon(
@@ -239,25 +241,25 @@ private fun LandmarkArrow(angleDegrees: Float) {
         )
         LucideIcon(
             paths = LandmarkNavigationIconPaths,
-            color = Ink,
+            color = color,
             modifier = Modifier.size(LandmarkIndicatorArrowSize),
-            strokeWidth = LucideRegularStrokeWidth,
+            filled = true,
         )
     }
 }
 
 @Composable
-private fun LandmarkDot() {
+private fun LandmarkDot(landmark: Landmark) {
     Surface(
         modifier = Modifier.size(LandmarkIndicatorDotSize),
         shape = CircleShape,
-        color = Ink,
-        border = BorderStroke(1.5.dp, SheetBackground),
+        color = Color(landmark.colorArgb),
+        border = BorderStroke(LandmarkMarkerOutlineWidth, SheetBackground),
     ) {}
 }
 
 @Composable
-private fun LandmarkLabel(title: String) {
+private fun LandmarkLabel(landmark: Landmark) {
     val colors = LocalMapControlColors.current.inverted
     Surface(
         modifier = Modifier.widthIn(max = 136.dp),
@@ -270,7 +272,8 @@ private fun LandmarkLabel(title: String) {
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = title,
+                text = landmark.title,
+                color = Color(landmark.colorArgb),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
@@ -282,9 +285,10 @@ private fun LandmarkLabel(title: String) {
 
 private val LandmarkNavigationIconPaths = listOf("M3 11 22 2l-9 19-2-8-8-2z")
 private const val LandmarkNavigationDefaultAngleCorrection = 45f
-private const val LandmarkNavigationOutlineWidth = 5f
+private const val LandmarkNavigationOutlineWidth = 6f
 private val LandmarkIndicatorArrowSize = 18.dp
 private val LandmarkIndicatorDotSize = 12.dp
+private val LandmarkMarkerOutlineWidth = 3.dp
 private val LandmarkIndicatorGap = 6.dp
 internal const val LandmarkEdgeInsetDp = 24f
 internal const val LandmarkMinimumSeparationDp = 112f
