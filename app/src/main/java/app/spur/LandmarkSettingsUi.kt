@@ -46,15 +46,22 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun LandmarkCreateBottomSheet(
+    suggestedTitle: String?,
     onSave: (String) -> Unit,
-    onBack: () -> Unit,
+    onCancel: () -> Unit,
 ) {
-    var title by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf(suggestedTitle.orEmpty()) }
+    var userEdited by remember { mutableStateOf(false) }
     val normalizedTitle = normalizeLandmarkTitle(title)
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
-    BackHandler(onBack = onBack)
+    BackHandler(onBack = onCancel)
+    LaunchedEffect(suggestedTitle) {
+        if (!userEdited && title.isEmpty() && !suggestedTitle.isNullOrBlank()) {
+            title = suggestedTitle
+        }
+    }
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
         keyboard?.show()
@@ -71,7 +78,10 @@ internal fun LandmarkCreateBottomSheet(
         OutlinedTextField(
             value = title,
             onValueChange = {
-                if (it.length <= LandmarkTitleMaximumCharacters) title = it
+                if (it.length <= LandmarkTitleMaximumCharacters) {
+                    userEdited = true
+                    title = it
+                }
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -88,6 +98,11 @@ internal fun LandmarkCreateBottomSheet(
             enabled = normalizedTitle != null,
             modifier = Modifier.padding(top = 16.dp),
             onClick = { normalizedTitle?.let(onSave) },
+        )
+        SpurSecondaryButton(
+            label = "Abbrechen",
+            modifier = Modifier.padding(top = 10.dp),
+            onClick = onCancel,
         )
     }
 }
@@ -201,7 +216,7 @@ private fun LandmarkSettingsRow(
     val textStyle = MaterialTheme.typography.titleMedium.copy(
         color = Ink,
         fontSize = SheetMenuTextSize,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
     )
     Surface(
         modifier = Modifier
@@ -269,7 +284,7 @@ private fun LandmarkSettingsRow(
                     onClick = onDelete,
                 ) {
                     PhotoDeleteIcon(
-                        color = StopRed,
+                        color = Ink,
                         modifier = Modifier.size(SheetMenuIconSize),
                     )
                 }

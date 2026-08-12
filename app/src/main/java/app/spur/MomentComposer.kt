@@ -50,6 +50,8 @@ internal fun MomentComposer(
     onDismiss: () -> Unit,
     onMomentAccepted: (MomentPlacementTarget, PendingMapMoment) -> Unit,
     onLandmarkAccepted: ((MomentPlacementTarget, String) -> Unit)? = null,
+    landmarkTitleSuggestion: String? = null,
+    onLandmarkTitleRequested: ((MomentPlacementTarget) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -178,6 +180,7 @@ internal fun MomentComposer(
                             )
                         }
                         MomentPickerAction.LANDMARK -> {
+                            placementTarget?.let { onLandmarkTitleRequested?.invoke(it) }
                             scope.swapBottomSheets(
                                 currentState = momentSheetState,
                                 nextState = landmarkSheetState,
@@ -192,25 +195,25 @@ internal fun MomentComposer(
     }
 
     if (showLandmarkCreator) {
-        val closeLandmarkCreator: () -> Unit = {
-            scope.swapBottomSheets(
-                currentState = landmarkSheetState,
-                nextState = momentSheetState,
-                showNext = { showPicker = true },
-                hideCurrent = { showLandmarkCreator = false },
-            )
+        val dismissLandmarkCreator: () -> Unit = {
+            scope.launch {
+                landmarkSheetState.hide()
+                showLandmarkCreator = false
+                onDismiss()
+            }
         }
         SpurModalBottomSheet(
-            onDismissRequest = onDismiss,
+            onDismissRequest = dismissLandmarkCreator,
             sheetState = landmarkSheetState,
         ) {
             LandmarkCreateBottomSheet(
+                suggestedTitle = landmarkTitleSuggestion,
                 onSave = { title ->
                     showLandmarkCreator = false
                     placementTarget?.let { onLandmarkAccepted?.invoke(it, title) }
                     onDismiss()
                 },
-                onBack = closeLandmarkCreator,
+                onCancel = dismissLandmarkCreator,
             )
         }
     }
