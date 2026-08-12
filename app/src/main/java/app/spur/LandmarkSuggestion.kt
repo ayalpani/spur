@@ -5,37 +5,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.maplibre.android.maps.MapLibreMap
-import org.maplibre.android.style.layers.SymbolLayer
-import org.maplibre.android.style.sources.VectorSource
-import org.maplibre.geojson.Feature
-import org.maplibre.geojson.Point
 import org.json.JSONObject
-
-internal data class LandmarkTitleSuggestionRequest(
-    val id: Long,
-    val coordinate: SpurCoordinate,
-)
 
 internal data class NearbyLandmarkCandidate(
     val title: String,
     val coordinate: SpurCoordinate,
     val rank: Int,
 )
-
-internal fun MapLibreMap.nearbyLandmarkTitle(
-    coordinate: SpurCoordinate,
-): String? {
-    val poiSources = style
-        ?.layers
-        ?.filterIsInstance<SymbolLayer>()
-        ?.filter { it.sourceLayer == MapPoiSourceLayer }
-        ?.mapNotNull { style?.getSourceAs<VectorSource>(it.sourceId) }
-        ?.distinctBy(VectorSource::getId)
-        .orEmpty()
-    val candidates = poiSources.flatMap(VectorSource::nearbyLandmarkCandidates)
-    return bestNearbyLandmarkTitle(candidates, coordinate)
-}
 
 internal suspend fun Context.fetchNearbyLandmarkTitle(
     coordinate: SpurCoordinate,
@@ -111,32 +87,6 @@ internal fun bestNearbyLandmarkTitle(
     ?.first
     ?.title
 
-private fun Feature.toNearbyLandmarkCandidate(): NearbyLandmarkCandidate? {
-    val point = geometry() as? Point ?: return null
-    val title = LandmarkSuggestionNameProperties.firstNotNullOfOrNull { property ->
-        takeIf { hasProperty(property) }
-            ?.getStringProperty(property)
-            ?.trim()
-            ?.takeIf(String::isNotEmpty)
-    } ?: return null
-    val rank = takeIf { hasProperty(LandmarkSuggestionRankProperty) }
-        ?.getNumberProperty(LandmarkSuggestionRankProperty)
-        ?.toInt()
-        ?: Int.MAX_VALUE
-    return NearbyLandmarkCandidate(
-        title = title,
-        coordinate = SpurCoordinate(
-            latitude = point.latitude(),
-            longitude = point.longitude(),
-        ),
-        rank = rank,
-    )
-}
-
-private fun VectorSource.nearbyLandmarkCandidates(): List<NearbyLandmarkCandidate> =
-    querySourceFeatures(arrayOf(MapPoiSourceLayer), null)
-        .mapNotNull(Feature::toNearbyLandmarkCandidate)
-
 private fun overpassLandmarkRank(tags: JSONObject): Int = when {
     tags.has("wikipedia") || tags.has("wikidata") || tags.has("seamark:type") -> 0
     tags.has("tourism") || tags.has("historic") || tags.has("heritage") -> 1
@@ -148,7 +98,6 @@ private fun overpassLandmarkRank(tags: JSONObject): Int = when {
 private fun String.urlEncoded(): String = java.net.URLEncoder.encode(this, Charsets.UTF_8.name())
 
 private val LandmarkSuggestionNameProperties = listOf("name_de", "name", "name_en")
-private const val LandmarkSuggestionRankProperty = "rank"
 private const val LandmarkSuggestionPreferredRadiusMeters = 50.0
 private const val LandmarkSuggestionFallbackRadiusMeters = 100.0
 private const val LandmarkSuggestionOverpassUrl = "https://overpass-api.de/api/interpreter"

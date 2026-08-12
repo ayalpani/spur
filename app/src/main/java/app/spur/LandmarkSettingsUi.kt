@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,23 +48,23 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun LandmarkCreateBottomSheet(
-    suggestedTitle: String?,
+    loadSuggestedTitle: suspend () -> String?,
     onSave: (String) -> Unit,
     onCancel: () -> Unit,
 ) {
-    var title by remember { mutableStateOf(suggestedTitle.orEmpty()) }
-    var userEdited by remember { mutableStateOf(false) }
+    var title by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(true) }
     val normalizedTitle = normalizeLandmarkTitle(title)
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
     BackHandler(onBack = onCancel)
-    LaunchedEffect(suggestedTitle) {
-        if (!userEdited && title.isEmpty() && !suggestedTitle.isNullOrBlank()) {
-            title = suggestedTitle
-        }
-    }
     LaunchedEffect(Unit) {
+        title = runCatching { loadSuggestedTitle() }.getOrNull().orEmpty()
+        loading = false
+    }
+    LaunchedEffect(loading) {
+        if (loading) return@LaunchedEffect
         focusRequester.requestFocus()
         keyboard?.show()
     }
@@ -75,30 +77,43 @@ internal fun LandmarkCreateBottomSheet(
             .padding(bottom = 24.dp),
     ) {
         BottomSheetHeader(title = "Landmark")
-        OutlinedTextField(
-            value = title,
-            onValueChange = {
-                if (it.length <= LandmarkTitleMaximumCharacters) {
-                    userEdited = true
-                    title = it
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester),
-            label = { Text("Name") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(
-                onDone = { normalizedTitle?.let(onSave) },
-            ),
-        )
-        SpurPrimaryButton(
-            label = "Hinzufügen",
-            enabled = normalizedTitle != null,
-            modifier = Modifier.padding(top = 16.dp),
-            onClick = { normalizedTitle?.let(onSave) },
-        )
+        if (loading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(LandmarkCreateLoadingHeight),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .semantics { contentDescription = "Landmark-Name wird geladen" },
+                    color = Ink,
+                )
+            }
+        } else {
+            OutlinedTextField(
+                value = title,
+                onValueChange = {
+                    if (it.length <= LandmarkTitleMaximumCharacters) title = it
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
+                label = { Text("Name") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = { normalizedTitle?.let(onSave) },
+                ),
+            )
+            SpurPrimaryButton(
+                label = "Hinzufügen",
+                enabled = normalizedTitle != null,
+                modifier = Modifier.padding(top = 16.dp),
+                onClick = { normalizedTitle?.let(onSave) },
+            )
+        }
         SpurSecondaryButton(
             label = "Abbrechen",
             modifier = Modifier.padding(top = 10.dp),
@@ -106,6 +121,8 @@ internal fun LandmarkCreateBottomSheet(
         )
     }
 }
+
+private val LandmarkCreateLoadingHeight = 135.dp
 
 @Composable
 internal fun LandmarkSettingsBottomSheet(

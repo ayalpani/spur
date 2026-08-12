@@ -158,11 +158,6 @@ internal fun MapPage(
     var showStartTourBottomSheet by rememberSaveable { mutableStateOf(false) }
     var isStartingTour by rememberSaveable { mutableStateOf(false) }
     var momentTarget by remember { mutableStateOf<MomentPlacementTarget?>(null) }
-    var landmarkTitleSuggestionRequest by remember {
-        mutableStateOf<LandmarkTitleSuggestionRequest?>(null)
-    }
-    var landmarkTitleSuggestion by remember { mutableStateOf<String?>(null) }
-    var landmarkTitleSuggestionRequestId by remember { mutableLongStateOf(0L) }
     ActiveTourNavigationBar(active = isDisplayedActiveTour)
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
     var showSettingsMenu by rememberSaveable { mutableStateOf(false) }
@@ -542,7 +537,6 @@ internal fun MapPage(
                 defaultMapRotation = defaultMapRotation,
                 mapSettingsVisible = showDirectionBottomSheet,
                 landmarks = landmarks,
-                landmarkTitleSuggestionRequest = landmarkTitleSuggestionRequest,
                 mapMoments = renderedMapMoments,
                 momentImageRevision = photoRevision,
                 routePoints = mapRoutePoints,
@@ -575,11 +569,6 @@ internal fun MapPage(
                 onViewportChanged = {
                     mapViewport = it
                     displayedMapZoom = normalizedMapZoom(it.zoom, it.satellite)
-                },
-                onLandmarkTitleSuggested = { requestId, title ->
-                    if (landmarkTitleSuggestionRequest?.id == requestId) {
-                        landmarkTitleSuggestion = title
-                    }
                 },
                 onMomentPlaced = { moment ->
                     val updatedMoments = mapMoments + moment.copy(
@@ -773,8 +762,6 @@ internal fun MapPage(
                     MapIconButton(
                         contentDescription = "Moment hinzufügen",
                         onClick = {
-                            landmarkTitleSuggestionRequest = null
-                            landmarkTitleSuggestion = null
                             momentTarget = if (focusedWaypoint != null && tour != null) {
                                 isFollowingLocation = false
                                 isTourOverview = false
@@ -1635,24 +1622,13 @@ internal fun MapPage(
         MomentComposer(
             target = momentTarget,
             showFeedbackNotice = showFeedbackNotice,
-            onDismiss = {
-                momentTarget = null
-                landmarkTitleSuggestionRequest = null
-                landmarkTitleSuggestion = null
-            },
-            landmarkTitleSuggestion = landmarkTitleSuggestion,
-            onLandmarkTitleRequested = { target ->
+            onDismiss = { momentTarget = null },
+            loadLandmarkTitleSuggestion = { target ->
                 val coordinate = when (target) {
                     MomentPlacementTarget.CurrentLocation -> mapViewport?.center
                     is MomentPlacementTarget.RecordedLocation -> target.coordinate
                 }
-                landmarkTitleSuggestion = null
-                landmarkTitleSuggestionRequest = coordinate?.let {
-                    LandmarkTitleSuggestionRequest(
-                        id = ++landmarkTitleSuggestionRequestId,
-                        coordinate = it,
-                    )
-                }
+                coordinate?.let { context.fetchNearbyLandmarkTitle(it) }
             },
             onLandmarkAccepted = { target, title ->
                 val coordinate = when (target) {

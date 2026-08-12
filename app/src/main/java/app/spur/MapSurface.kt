@@ -100,7 +100,6 @@ internal fun MapSurface(
     defaultMapRotation: MapRotation,
     mapSettingsVisible: Boolean,
     landmarks: List<Landmark>,
-    landmarkTitleSuggestionRequest: LandmarkTitleSuggestionRequest?,
     mapMoments: List<MapMoment>,
     momentImageRevision: Long,
     routePoints: List<TrackPoint>,
@@ -121,7 +120,6 @@ internal fun MapSurface(
     voicePlaybackProgress: Float,
     onAlternateMapPreviewChanged: (ImageBitmap) -> Unit,
     onViewportChanged: (MapViewport) -> Unit,
-    onLandmarkTitleSuggested: (Long, String?) -> Unit,
     onMomentPlaced: (MapMoment) -> Unit,
     onMomentPlacementFailed: (PendingMapMoment) -> Unit,
     onMomentClick: (MapMoment, Offset, PhotoOpenPreview?) -> Unit,
@@ -161,10 +159,6 @@ internal fun MapSurface(
         onAlternateMapPreviewChanged,
     )
     val currentOnViewportChanged by rememberUpdatedState(onViewportChanged)
-    val currentOnLandmarkTitleSuggested by rememberUpdatedState(onLandmarkTitleSuggested)
-    val currentLandmarkTitleSuggestionRequest by rememberUpdatedState(
-        landmarkTitleSuggestionRequest,
-    )
     val currentLandmarks by rememberUpdatedState(landmarks)
     val currentMapMoments by rememberUpdatedState(mapMoments)
     val currentRoutePoints by rememberUpdatedState(routePoints)
@@ -469,21 +463,6 @@ internal fun MapSurface(
             } else {
                 map.moveCamera(update)
             }
-        }
-    }
-
-    LaunchedEffect(landmarkTitleSuggestionRequest?.id) {
-        val request = landmarkTitleSuggestionRequest ?: return@LaunchedEffect
-        val loadedMapTitle = suspendCancellableCoroutine<String?> { continuation ->
-            mapView.getMapAsync { map ->
-                if (continuation.isActive) {
-                    continuation.resume(map.nearbyLandmarkTitle(request.coordinate))
-                }
-            }
-        }
-        val title = loadedMapTitle ?: context.fetchNearbyLandmarkTitle(request.coordinate)
-        if (currentLandmarkTitleSuggestionRequest?.id == request.id) {
-            currentOnLandmarkTitleSuggested(request.id, title)
         }
     }
 

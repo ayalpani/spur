@@ -50,8 +50,7 @@ internal fun MomentComposer(
     onDismiss: () -> Unit,
     onMomentAccepted: (MomentPlacementTarget, PendingMapMoment) -> Unit,
     onLandmarkAccepted: ((MomentPlacementTarget, String) -> Unit)? = null,
-    landmarkTitleSuggestion: String? = null,
-    onLandmarkTitleRequested: ((MomentPlacementTarget) -> Unit)? = null,
+    loadLandmarkTitleSuggestion: (suspend (MomentPlacementTarget) -> String?)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -180,7 +179,6 @@ internal fun MomentComposer(
                             )
                         }
                         MomentPickerAction.LANDMARK -> {
-                            placementTarget?.let { onLandmarkTitleRequested?.invoke(it) }
                             scope.swapBottomSheets(
                                 currentState = momentSheetState,
                                 nextState = landmarkSheetState,
@@ -207,7 +205,9 @@ internal fun MomentComposer(
             sheetState = landmarkSheetState,
         ) {
             LandmarkCreateBottomSheet(
-                suggestedTitle = landmarkTitleSuggestion,
+                loadSuggestedTitle = {
+                    placementTarget?.let { loadLandmarkTitleSuggestion?.invoke(it) }
+                },
                 onSave = { title ->
                     showLandmarkCreator = false
                     placementTarget?.let { onLandmarkAccepted?.invoke(it, title) }
