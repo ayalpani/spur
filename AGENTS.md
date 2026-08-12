@@ -32,6 +32,8 @@ confirming that the command preserves app data.
   1 dp black outline at 50% opacity.
 - Use the compact regular-weight content style for the paired moment-picker
   buttons so all four labels stay on one line with their smaller icons.
+- When a prefilled form field receives focus programmatically, place the cursor
+  at the end of its existing value by default, never at the beginning.
 - In vertically stacked dialog and confirmation actions, place the primary or
   confirming action above the secondary cancel/discard action.
 - In bottom-sheet menus, use `SheetMenuNavigationItem` for destinations: no
