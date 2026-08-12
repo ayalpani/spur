@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -284,13 +285,19 @@ private fun MomentPickerSheetContent(
                     onClick = { onSelect(MomentPickerAction.VIDEO) },
                 )
             }
-            SpurSecondaryButton(
-                label = "Selfie-Video",
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                leadingIcon = { MomentVideoIcon() },
-                compactContent = true,
-                onClick = { onSelect(MomentPickerAction.ROUND_SELFIE_VIDEO) },
-            )
+                horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
+            ) {
+                SpurSecondaryButton(
+                    label = "Selfie",
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = { SelfieButtonPreview() },
+                    compactContent = true,
+                    onClick = { onSelect(MomentPickerAction.ROUND_SELFIE_VIDEO) },
+                )
+                Spacer(modifier = Modifier.weight(1f))
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
