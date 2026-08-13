@@ -16,6 +16,7 @@ internal data class Landmark(
 )
 
 internal const val LandmarkTitleMaximumCharacters = 60
+internal const val CustomLandmarkIdPrefix = "custom-"
 
 internal fun normalizeLandmarkTitle(title: String): String? =
     title.trim().take(LandmarkTitleMaximumCharacters).ifEmpty { null }
@@ -142,7 +143,7 @@ internal class LandmarkStore(context: Context) :
                 cursor.getInt(0)
             }
             val landmark = Landmark(
-                id = "custom-${UUID.randomUUID()}",
+                id = "$CustomLandmarkIdPrefix${UUID.randomUUID()}",
                 title = normalized,
                 coordinate = coordinate,
                 priority = priority,

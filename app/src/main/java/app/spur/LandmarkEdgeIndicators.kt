@@ -95,7 +95,7 @@ internal fun landmarkEdgeIndicators(
     )
     val minimumSeparationSquared = minimumSeparation * minimumSeparation
     val accepted = ArrayList<LandmarkEdgeIndicator>(maximumCount)
-    projected.sortedBy { it.landmark.priority }.forEach { candidate ->
+    projected.sortedWith(LandmarkSelectionOrder).forEach { candidate ->
         val indicator = candidate.clampedTo(bounds, center) ?: return@forEach
         val isSeparated = accepted.all { existing ->
             val deltaX = existing.point.x - indicator.point.x
@@ -120,10 +120,16 @@ internal fun retainedLandmarkEdgeIndicators(
     return projected
         .asSequence()
         .filter { it.landmark.id in landmarkIds }
-        .sortedBy { it.landmark.priority }
+        .sortedWith(LandmarkSelectionOrder)
         .mapNotNull { it.clampedTo(bounds, center) }
         .toList()
 }
+
+internal fun effectiveLocationIndicatorCoordinate(
+    gpsLocation: SpurCoordinate?,
+    manualLocation: SpurCoordinate?,
+    isTrackPointSelected: Boolean,
+): SpurCoordinate? = if (isTrackPointSelected) null else manualLocation ?: gpsLocation
 
 internal fun locationEdgeIndicatorFor(
     point: LandmarkScreenPoint,
@@ -509,6 +515,16 @@ private fun IndicatorLabel(
 }
 
 private val LandmarkNavigationIconPaths = listOf("M3 11 22 2l-9 19-2-8-8-2z")
+private val LandmarkSelectionOrder = compareBy<ProjectedLandmark>(
+    { !it.landmark.id.startsWith(CustomLandmarkIdPrefix) },
+    {
+        if (it.landmark.id.startsWith(CustomLandmarkIdPrefix)) {
+            -it.landmark.priority
+        } else {
+            it.landmark.priority
+        }
+    },
+)
 private const val LandmarkNavigationDefaultAngleCorrection = 45f
 private const val LandmarkNavigationOutlineWidth = 6f
 private const val LocationNavigationOuterOutlineWidth = 10f

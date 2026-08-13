@@ -672,10 +672,11 @@ internal fun MapSurface(
                     edgeInset,
             )
             val retainedIds = retainedLandmarkIds
-            locationEdgeIndicator.value = currentGpsLocation
-                ?.takeIf {
-                    currentManualLocation == null && currentSelectedTrackPoint == null
-                }
+            locationEdgeIndicator.value = effectiveLocationIndicatorCoordinate(
+                gpsLocation = currentGpsLocation,
+                manualLocation = currentManualLocation,
+                isTrackPointSelected = currentSelectedTrackPoint != null,
+            )
                 ?.let { location ->
                     val point = readyMap.projection.toScreenLocation(
                         LatLng(location.latitude, location.longitude),

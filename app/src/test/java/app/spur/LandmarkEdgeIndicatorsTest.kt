@@ -81,6 +81,36 @@ class LandmarkEdgeIndicatorsTest {
     }
 
     @Test
+    fun newestCustomLandmarksAreShownBeforeBundledDefaults() {
+        val result = landmarkEdgeIndicators(
+            projected = listOf(
+                projected("default-0", priority = 0, x = 10f, y = 10f),
+                projected("default-1", priority = 1, x = 20f, y = 20f),
+                projected("${CustomLandmarkIdPrefix}older", priority = 20, x = 30f, y = 30f),
+                projected("${CustomLandmarkIdPrefix}newer", priority = 21, x = 40f, y = 40f),
+            ),
+            bounds = LandmarkIndicatorBounds(0f, 0f, 100f, 100f),
+            minimumSeparation = 0f,
+            maximumCount = 2,
+        )
+
+        assertEquals(
+            listOf("${CustomLandmarkIdPrefix}newer", "${CustomLandmarkIdPrefix}older"),
+            result.map { it.landmark.id },
+        )
+    }
+
+    @Test
+    fun manualLocationUsesTheExistingLocationIndicatorPipeline() {
+        val gps = SpurCoordinate(52.5, 13.4)
+        val manual = SpurCoordinate(52.6, 13.5)
+
+        assertEquals(manual, effectiveLocationIndicatorCoordinate(gps, manual, false))
+        assertEquals(gps, effectiveLocationIndicatorCoordinate(gps, null, false))
+        assertNull(effectiveLocationIndicatorCoordinate(gps, manual, true))
+    }
+
+    @Test
     fun retainedIndicatorsNeverSwapDuringOneGesture() {
         val bounds = LandmarkIndicatorBounds(0f, 0f, 100f, 100f)
         val initial = landmarkEdgeIndicators(
