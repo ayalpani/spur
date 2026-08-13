@@ -112,13 +112,11 @@ internal fun createMomentMarkerBitmap(
             if (selected) {
                 paint.color = momentMarkerColor(moment.type).toArgb()
                 paint.style = android.graphics.Paint.Style.FILL
-                canvas.drawRoundRect(
+                canvas.drawRect(
                     3 * scale,
                     MomentMarkerVerticalOffset * scale,
                     59 * scale,
                     (57f + MomentMarkerVerticalOffset) * scale,
-                    12 * scale,
-                    12 * scale,
                     paint,
                 )
             }
@@ -143,12 +141,7 @@ internal fun createMomentMarkerBitmap(
                 canvas.save()
                 canvas.clipPath(
                     android.graphics.Path().apply {
-                        addRoundRect(
-                            flag,
-                            10 * scale,
-                            10 * scale,
-                            android.graphics.Path.Direction.CW,
-                        )
+                        addRect(flag, android.graphics.Path.Direction.CW)
                     },
                 )
                 paint.color = Color.White.copy(alpha = 0.24f).toArgb()
@@ -182,7 +175,12 @@ internal fun createMomentMarkerBitmap(
                     photoContentLeft + photoSide,
                     photoContentTop + photoSide,
                 )
-                drawMarkerPhoto(canvas, paint, photoContent, preview, scale)
+                drawMarkerPhoto(
+                    canvas = canvas,
+                    paint = paint,
+                    destination = photoContent,
+                    photo = preview,
+                )
                 if (moment.type != MomentType.PHOTO || onPhotoDecoded == null) {
                     preview.recycle()
                 }
@@ -233,7 +231,7 @@ private fun drawMomentMarkerShape(
     val path = momentMarkerPath(scale).asAndroidPath()
     paint.style = android.graphics.Paint.Style.STROKE
     paint.strokeWidth = MomentMarkerEdgeWidth * 2f * scale
-    paint.strokeJoin = android.graphics.Paint.Join.ROUND
+    paint.strokeJoin = android.graphics.Paint.Join.MITER
     paint.color = outlineColor.toArgb()
     canvas.drawPath(path, paint)
     paint.style = android.graphics.Paint.Style.FILL
@@ -243,46 +241,13 @@ private fun drawMomentMarkerShape(
 
 internal fun momentMarkerPath(scale: Float): Path = Path().apply {
     val verticalOffset = MomentMarkerVerticalOffset
-    moveTo(16f * scale, (2f + verticalOffset) * scale)
-    lineTo(46f * scale, (2f + verticalOffset) * scale)
-    cubicTo(
-        51.5f * scale,
-        (2f + verticalOffset) * scale,
-        56f * scale,
-        (6.5f + verticalOffset) * scale,
-        56f * scale,
-        (12f + verticalOffset) * scale,
-    )
-    lineTo(56f * scale, (42f + verticalOffset) * scale)
-    cubicTo(
-        56f * scale,
-        (47.5f + verticalOffset) * scale,
-        51.5f * scale,
-        (52f + verticalOffset) * scale,
-        46f * scale,
-        (52f + verticalOffset) * scale,
-    )
+    moveTo(6f * scale, (2f + verticalOffset) * scale)
+    lineTo(56f * scale, (2f + verticalOffset) * scale)
+    lineTo(56f * scale, (52f + verticalOffset) * scale)
     lineTo(34.5f * scale, (52f + verticalOffset) * scale)
     lineTo(31f * scale, (57f + verticalOffset) * scale)
     lineTo(27.5f * scale, (52f + verticalOffset) * scale)
-    lineTo(16f * scale, (52f + verticalOffset) * scale)
-    cubicTo(
-        10.5f * scale,
-        (52f + verticalOffset) * scale,
-        6f * scale,
-        (47.5f + verticalOffset) * scale,
-        6f * scale,
-        (42f + verticalOffset) * scale,
-    )
-    lineTo(6f * scale, (12f + verticalOffset) * scale)
-    cubicTo(
-        6f * scale,
-        (6.5f + verticalOffset) * scale,
-        10.5f * scale,
-        (2f + verticalOffset) * scale,
-        16f * scale,
-        (2f + verticalOffset) * scale,
-    )
+    lineTo(6f * scale, (52f + verticalOffset) * scale)
     close()
 }
 
@@ -314,7 +279,6 @@ private fun drawMarkerPhoto(
     paint: android.graphics.Paint,
     destination: android.graphics.RectF,
     photo: android.graphics.Bitmap,
-    scale: Float,
 ) {
     val side = minOf(photo.width, photo.height)
     val source = android.graphics.Rect(
@@ -323,11 +287,8 @@ private fun drawMarkerPhoto(
         (photo.width + side) / 2,
         (photo.height + side) / 2,
     )
-    val clip = android.graphics.Path().apply {
-        addRoundRect(destination, 5 * scale, 5 * scale, android.graphics.Path.Direction.CW)
-    }
     canvas.save()
-    canvas.clipPath(clip)
+    canvas.clipRect(destination)
     paint.style = android.graphics.Paint.Style.FILL
     canvas.drawBitmap(photo, source, destination, paint)
     canvas.restore()

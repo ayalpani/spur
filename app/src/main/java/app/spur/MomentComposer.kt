@@ -3,12 +3,19 @@ package app.spur
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -17,6 +24,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -27,6 +35,17 @@ import java.io.File
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
+private enum class MomentPickerAction {
+    PHOTO,
+    VIDEO,
+    ROUND_SELFIE_VIDEO,
+    VOICE,
+    EMOJI,
+    LANDMARK,
+}
+
+private enum class VideoCaptureMode { STANDARD, ROUND_SELFIE }
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 internal fun MomentComposer(
@@ -34,14 +53,20 @@ internal fun MomentComposer(
     showFeedbackNotice: ShowFeedbackNotice,
     onDismiss: () -> Unit,
     onMomentAccepted: (MomentPlacementTarget, PendingMapMoment) -> Unit,
+    onLandmarkAccepted: ((MomentPlacementTarget, String) -> Unit)? = null,
+    loadLandmarkTitleSuggestion: (suspend (MomentPlacementTarget) -> String?)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showPicker by remember(target) { mutableStateOf(target != null) }
     var showEmojiPicker by remember(target) { mutableStateOf(false) }
     var showCamera by remember(target) { mutableStateOf(false) }
-    var showVideoCamera by remember(target) { mutableStateOf(false) }
+    var videoCameraMode by remember(target) { mutableStateOf<VideoCaptureMode?>(null) }
+    var requestedVideoCameraMode by remember(target) {
+        mutableStateOf<VideoCaptureMode?>(null)
+    }
     var showVoiceRecorder by remember(target) { mutableStateOf(false) }
+    var showLandmarkCreator by remember(target) { mutableStateOf(false) }
     var audioPermissionGranted by remember(target) {
         mutableStateOf(context.hasAudioRecordingPermission())
     }
@@ -49,6 +74,7 @@ internal fun MomentComposer(
     val momentSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val emojiSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val voiceSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val landmarkSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val placementTarget = target
 
     val accept: (PendingMapMoment) -> Unit = { pending ->
@@ -71,8 +97,10 @@ internal fun MomentComposer(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
         if (context.hasCameraPermission() && context.hasAudioRecordingPermission()) {
-            showVideoCamera = true
+            videoCameraMode = requestedVideoCameraMode ?: VideoCaptureMode.STANDARD
+            requestedVideoCameraMode = null
         } else {
+            requestedVideoCameraMode = null
             showFeedbackNotice(
                 FeedbackNoticeKind.PERMISSION,
                 "Für Videos braucht Spur Zugriff auf Kamera und Mikrofon.",
@@ -102,10 +130,10 @@ internal fun MomentComposer(
             sheetState = momentSheetState,
         ) {
             MomentPickerSheetContent(
-                onDismiss = onDismiss,
-                onSelect = { type ->
-                    when (type) {
-                        MomentType.PHOTO -> {
+                showLandmark = onLandmarkAccepted != null,
+                onSelect = { action ->
+                    when (action) {
+                        MomentPickerAction.PHOTO -> {
                             showPicker = false
                             if (context.hasCameraPermission()) {
                                 showCamera = true
@@ -113,14 +141,22 @@ internal fun MomentComposer(
                                 cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                             }
                         }
-                        MomentType.VIDEO -> {
+                        MomentPickerAction.VIDEO,
+                        MomentPickerAction.ROUND_SELFIE_VIDEO,
+                        -> {
                             showPicker = false
+                            val mode = if (action == MomentPickerAction.ROUND_SELFIE_VIDEO) {
+                                VideoCaptureMode.ROUND_SELFIE
+                            } else {
+                                VideoCaptureMode.STANDARD
+                            }
                             if (
                                 context.hasCameraPermission() &&
                                 context.hasAudioRecordingPermission()
                             ) {
-                                showVideoCamera = true
+                                videoCameraMode = mode
                             } else {
+                                requestedVideoCameraMode = mode
                                 videoPermissionLauncher.launch(
                                     arrayOf(
                                         Manifest.permission.CAMERA,
@@ -129,7 +165,7 @@ internal fun MomentComposer(
                                 )
                             }
                         }
-                        MomentType.VOICE -> {
+                        MomentPickerAction.VOICE -> {
                             voiceRecordingStartRequest = 0L
                             scope.swapBottomSheets(
                                 currentState = momentSheetState,
@@ -138,7 +174,7 @@ internal fun MomentComposer(
                                 hideCurrent = { showPicker = false },
                             )
                         }
-                        MomentType.EMOJI -> {
+                        MomentPickerAction.EMOJI -> {
                             scope.swapBottomSheets(
                                 currentState = momentSheetState,
                                 nextState = emojiSheetState,
@@ -146,8 +182,42 @@ internal fun MomentComposer(
                                 hideCurrent = { showPicker = false },
                             )
                         }
+                        MomentPickerAction.LANDMARK -> {
+                            scope.swapBottomSheets(
+                                currentState = momentSheetState,
+                                nextState = landmarkSheetState,
+                                showNext = { showLandmarkCreator = true },
+                                hideCurrent = { showPicker = false },
+                            )
+                        }
                     }
                 },
+            )
+        }
+    }
+
+    if (showLandmarkCreator) {
+        val dismissLandmarkCreator: () -> Unit = {
+            scope.launch {
+                landmarkSheetState.hide()
+                showLandmarkCreator = false
+                onDismiss()
+            }
+        }
+        SpurModalBottomSheet(
+            onDismissRequest = dismissLandmarkCreator,
+            sheetState = landmarkSheetState,
+        ) {
+            LandmarkCreateBottomSheet(
+                loadSuggestedTitle = {
+                    placementTarget?.let { loadLandmarkTitleSuggestion?.invoke(it) }
+                },
+                onSave = { title ->
+                    showLandmarkCreator = false
+                    placementTarget?.let { onLandmarkAccepted?.invoke(it, title) }
+                    onDismiss()
+                },
+                onCancel = dismissLandmarkCreator,
             )
         }
     }
@@ -186,12 +256,13 @@ internal fun MomentComposer(
         )
     }
 
-    if (showVideoCamera) {
+    videoCameraMode?.let { mode ->
         VideoCameraScreen(
+            roundSelfie = mode == VideoCaptureMode.ROUND_SELFIE,
             showFeedbackNotice = showFeedbackNotice,
             onClose = onDismiss,
             onVideoAccepted = { video ->
-                showVideoCamera = false
+                videoCameraMode = null
                 scope.launch {
                     withContext(Dispatchers.IO) { ensureVideoThumbnail(video) }
                     accept(PendingMapMoment(MomentType.VIDEO, video))
@@ -224,9 +295,17 @@ internal fun MomentComposer(
 
 @Composable
 private fun MomentPickerSheetContent(
-    onSelect: (MomentType) -> Unit,
-    onDismiss: () -> Unit,
+    onSelect: (MomentPickerAction) -> Unit,
+    showLandmark: Boolean,
 ) {
+    val actions = listOf(
+        MomentPickerAction.ROUND_SELFIE_VIDEO,
+        MomentPickerAction.PHOTO,
+        MomentPickerAction.VIDEO,
+        MomentPickerAction.VOICE,
+        MomentPickerAction.EMOJI,
+    ) + if (showLandmark) listOf(MomentPickerAction.LANDMARK) else emptyList()
+
     CompositionLocalProvider(
         LocalMapControlColors provides MapControlColors(
             background = MapControlColor.BLACK.color,
@@ -236,53 +315,80 @@ private fun MomentPickerSheetContent(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
-            ) {
-                SpurSecondaryButton(
-                    label = "Foto",
-                    modifier = Modifier.weight(1f),
-                    leadingIcon = { MomentPhotoIcon() },
-                    compactContent = true,
-                    onClick = { onSelect(MomentType.PHOTO) },
-                )
-                SpurSecondaryButton(
-                    label = "Video",
-                    modifier = Modifier.weight(1f),
-                    leadingIcon = { MomentVideoIcon() },
-                    compactContent = true,
-                    onClick = { onSelect(MomentType.VIDEO) },
-                )
+            actions.chunked(2).forEach { rowActions ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
+                ) {
+                    rowActions.forEach { action ->
+                        MomentPickerButton(
+                            action = action,
+                            modifier = Modifier.weight(1f),
+                            onSelect = onSelect,
+                        )
+                    }
+                    if (rowActions.size == 1) Spacer(modifier = Modifier.weight(1f))
+                }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(MomentSheetGridGap),
-            ) {
-                SpurSecondaryButton(
-                    label = "Sprache",
-                    modifier = Modifier.weight(1f),
-                    leadingIcon = { MomentVoiceIcon() },
-                    compactContent = true,
-                    onClick = { onSelect(MomentType.VOICE) },
-                )
-                SpurSecondaryButton(
-                    label = "Emoji",
-                    modifier = Modifier.weight(1f),
-                    leadingIcon = { MomentEmojiIcon() },
-                    compactContent = true,
-                    onClick = { onSelect(MomentType.EMOJI) },
-                )
-            }
-            SpurPrimaryButton(
-                label = "Abbrechen",
-                onClick = onDismiss,
-            )
         }
     }
 }
+
+@Composable
+private fun MomentPickerButton(
+    action: MomentPickerAction,
+    modifier: Modifier,
+    onSelect: (MomentPickerAction) -> Unit,
+) {
+    SpurSecondaryButton(
+        label = when (action) {
+            MomentPickerAction.ROUND_SELFIE_VIDEO -> "Selfie-Cam"
+            MomentPickerAction.PHOTO -> "Foto"
+            MomentPickerAction.VIDEO -> "Video"
+            MomentPickerAction.VOICE -> "Sprache"
+            MomentPickerAction.EMOJI -> "Emoji"
+            MomentPickerAction.LANDMARK -> "Landmark"
+        },
+        modifier = modifier,
+        leadingIcon = {
+            when (action) {
+                MomentPickerAction.ROUND_SELFIE_VIDEO -> SelfieButtonPreview(
+                    modifier = Modifier.size(MomentPickerIconSlotSize),
+                )
+                else -> MomentPickerIconContainer {
+                    when (action) {
+                        MomentPickerAction.PHOTO -> MomentPhotoIcon()
+                        MomentPickerAction.VIDEO -> MomentVideoIcon()
+                        MomentPickerAction.VOICE -> MomentVoiceIcon()
+                        MomentPickerAction.EMOJI -> MomentEmojiIcon()
+                        MomentPickerAction.LANDMARK -> MapPinIcon(modifier = Modifier.size(24.dp))
+                        MomentPickerAction.ROUND_SELFIE_VIDEO -> Unit
+                    }
+                }
+            }
+        },
+        compactContent = true,
+        leadingIconSlotWidth = MomentPickerIconSlotSize,
+        onClick = { onSelect(action) },
+    )
+}
+
+@Composable
+private fun MomentPickerIconContainer(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(MomentPickerIconSlotSize)
+            .background(NeutralSurface, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
+private val MomentPickerIconSlotSize = 48.dp

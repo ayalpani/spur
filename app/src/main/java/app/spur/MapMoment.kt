@@ -17,6 +17,11 @@ internal data class MapMoment(
     val trackPointId: Long? = null,
 )
 
+internal const val RoundVideoIdPrefix = "round-video-"
+
+internal val MapMoment.isRoundVideo: Boolean
+    get() = type == MomentType.VIDEO && id.startsWith(RoundVideoIdPrefix)
+
 internal fun normalizedHomeMoments(
     moments: List<MapMoment>,
     settings: HomeAutoStartSettings,
@@ -105,6 +110,6 @@ internal fun orderedPhotoMoments(moments: List<MapMoment>): List<MapMoment> =
         )
 
 internal fun MapMoment.captureTimeMillis(): Long? =
-    id.removePrefix("${type.name.lowercase()}-")
+    id.removePrefix(if (isRoundVideo) RoundVideoIdPrefix else "${type.name.lowercase()}-")
         .takeIf { it != id }
         ?.toLongOrNull()

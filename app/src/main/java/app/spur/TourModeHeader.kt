@@ -7,7 +7,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Box
@@ -30,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -132,7 +130,7 @@ internal fun TourModeHeader(
                     }
                 }
                 if (editingTitle) {
-                    BasicTextField(
+                    SpurInlineTextField(
                         value = titleEditor!!,
                         onValueChange = { value ->
                             if (value.text.length <= TourTitleMaximumCharacters) {
@@ -148,7 +146,6 @@ internal fun TourModeHeader(
                             fontWeight = FontWeight.SemiBold,
                         ),
                         singleLine = true,
-                        cursorBrush = SolidColor(Ink),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { onSaveTitle() }),
                     )

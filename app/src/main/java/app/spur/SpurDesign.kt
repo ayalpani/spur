@@ -154,6 +154,21 @@ internal enum class MapControlColor(
 internal val HomeBuildingGold = MapControlColor.YELLOW.color
 internal val TourPauseMarkerColor = MapControlColor.VIOLET.color
 internal val TourPauseMarkerForeground = MapControlColor.VIOLET.contrastColor
+internal val LandmarkColorPalette = listOf(
+    Color(0xFF991B1B),
+    Color(0xFF9A3412),
+    Color(0xFF854D0E),
+    Color(0xFF166534),
+    Color(0xFF0F766E),
+    Color(0xFF0E7490),
+    Color(0xFF1D4ED8),
+    Color(0xFF4338CA),
+    Color(0xFF6D28D9),
+    Color(0xFF9D174D),
+)
+
+internal fun landmarkColor(priority: Int): Color =
+    LandmarkColorPalette[Math.floorMod(priority, LandmarkColorPalette.size)]
 
 internal enum class SpurColorTheme(
     val label: String,

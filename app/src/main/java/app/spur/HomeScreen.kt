@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -430,7 +431,9 @@ private fun HistoryMomentThumbnail(
     }
     AsyncImage(
         model = request,
-        contentDescription = if (moment.type == MomentType.VIDEO) {
+        contentDescription = if (moment.isRoundVideo) {
+            "Selfie-Video dieser Tour"
+        } else if (moment.type == MomentType.VIDEO) {
             "Video dieser Tour"
         } else {
             "Foto dieser Tour"
@@ -438,7 +441,7 @@ private fun HistoryMomentThumbnail(
         contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(HistoryThumbnailSize)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(if (moment.isRoundVideo) CircleShape else RoundedCornerShape(10.dp))
             .then(
                 if (moment.type == MomentType.PHOTO) {
                     Modifier.clickable(
