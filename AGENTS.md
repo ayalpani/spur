@@ -21,6 +21,11 @@ instrumentation tests must run on a disposable emulator or a dedicated test
 profile. Use only `adb install -r`/`scripts/spurctl start` for the personal device after
 confirming that the command preserves app data.
 
+Spur must never use `LoveDoves_API_36` or select an emulator by a volatile serial
+such as `emulator-5554` alone. If an emulator is required, use a dedicated
+`Spur_API_36` AVD, verify `ro.boot.qemu.avd_name` before every mutating command,
+and set `ANDROID_SERIAL` for Gradle device tests.
+
 ## Design system
 
 - Use `SpurPrimaryButton` for the promoted action in sheets and forms.
