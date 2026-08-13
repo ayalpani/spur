@@ -54,6 +54,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.location.modes.CameraMode
@@ -71,6 +72,8 @@ import kotlin.math.floor
 import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+
+private const val TourEntryPreparationTimeoutMillis = 1_500L
 
 @Composable
 @SuppressLint("MissingPermission")
@@ -1281,33 +1284,35 @@ internal fun MapSurface(
             map.locationComponent.cameraMode = CameraMode.NONE
         }
         try {
-            mapView.awaitFullyRenderedAfter {
-                style.showMapMomentImages(preparedImages)
-                style.showMapMoments(preparedMoments, momentsAtUserSpot)
-                style.showTourRoute(preparedRoute.routeFeatures, currentTrailColors)
-                style.showTourPauses(preparedRoute.pauseFeatures, tourPauseMarker)
-                style.showTourEndpoints(
-                    points.takeIf { showTourEndpoints }.orEmpty(),
-                    currentTrailColors,
-                )
-                map.fitMapScreenTourRoute(
-                    points = points,
-                    density = context.resources.displayMetrics.density,
-                    pointZoom = defaultMapZoom,
-                    animated = false,
-                )
-            }
-            val targetCamera = map.cameraPosition
-            val startZoom = tourEntryStartZoom(targetCamera.zoom)
-            if (startZoom != targetCamera.zoom) {
+            withTimeoutOrNull(TourEntryPreparationTimeoutMillis) {
                 mapView.awaitFullyRenderedAfter {
-                    map.moveCamera(
-                        CameraUpdateFactory.newCameraPosition(
-                            org.maplibre.android.camera.CameraPosition.Builder(targetCamera)
-                                .zoom(startZoom)
-                                .build(),
-                        ),
+                    style.showMapMomentImages(preparedImages)
+                    style.showMapMoments(preparedMoments, momentsAtUserSpot)
+                    style.showTourRoute(preparedRoute.routeFeatures, currentTrailColors)
+                    style.showTourPauses(preparedRoute.pauseFeatures, tourPauseMarker)
+                    style.showTourEndpoints(
+                        points.takeIf { showTourEndpoints }.orEmpty(),
+                        currentTrailColors,
                     )
+                    map.fitMapScreenTourRoute(
+                        points = points,
+                        density = context.resources.displayMetrics.density,
+                        pointZoom = defaultMapZoom,
+                        animated = false,
+                    )
+                }
+                val targetCamera = map.cameraPosition
+                val startZoom = tourEntryStartZoom(targetCamera.zoom)
+                if (startZoom != targetCamera.zoom) {
+                    mapView.awaitFullyRenderedAfter {
+                        map.moveCamera(
+                            CameraUpdateFactory.newCameraPosition(
+                                org.maplibre.android.camera.CameraPosition.Builder(targetCamera)
+                                    .zoom(startZoom)
+                                    .build(),
+                            ),
+                        )
+                    }
                 }
             }
             if (
