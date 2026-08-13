@@ -19,3 +19,11 @@ INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
 LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
+
+## Kenney Food Kit 2.0
+
+The bundled strawberry, pear, and banana GLB models and their preview images
+come from [Kenney's Food Kit](https://kenney.nl/assets/food-kit).
+
+Created and distributed by Kenney. Licensed under Creative Commons Zero 1.0
+(CC0): https://creativecommons.org/publicdomain/zero/1.0/

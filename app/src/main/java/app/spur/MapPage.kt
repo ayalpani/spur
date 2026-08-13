@@ -2,6 +2,7 @@ package app.spur
 
 import android.location.Location
 import android.media.MediaPlayer
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -39,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -104,6 +106,27 @@ internal fun MapPage(
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val itemsApi = remember { ItemsApi() }
+    val itemRepositoryResult = remember {
+        runCatching { ItemRepository(ItemInventoryStore(context.applicationContext), itemsApi) }
+    }
+    val itemRepository = itemRepositoryResult.getOrNull()
+    LaunchedEffect(itemRepositoryResult) {
+        itemRepositoryResult.exceptionOrNull()?.let {
+            Log.e("SpurItems", "Encrypted inventory unavailable", it)
+        }
+    }
+    val inventory by itemRepository?.inventory?.collectAsState()
+        ?: remember { mutableStateOf(ItemInventory()) }
+    var worldMode by rememberSaveable { mutableStateOf(WorldMode.MAP) }
+    var arClosing by remember { mutableStateOf(false) }
+    var latestItemLocation by remember { mutableStateOf<Location?>(null) }
+    var itemMapBounds by remember { mutableStateOf<ItemMapBounds?>(null) }
+    var publicItemsPage by remember { mutableStateOf(PublicItemsPage(emptyList(), emptyList())) }
+    var nearbyItems by remember { mutableStateOf(emptyList<PublicItem>()) }
+    var selectedPublicItem by remember { mutableStateOf<PublicItem?>(null) }
+    var itemTarget by remember { mutableStateOf<PublicItem?>(null) }
+    var showInventoryPage by rememberSaveable { mutableStateOf(false) }
     var isHomeSelectionMode by rememberSaveable { mutableStateOf(false) }
     var homeSelectionStep by rememberSaveable {
         mutableStateOf(HomeSelectionStep.BUILDING)
@@ -132,6 +155,19 @@ internal fun MapPage(
             MapControlVerticalPadding +
             if (usesStackedMapPlayer) MapControlSize + MapControlGap else 0.dp
     val scope = rememberCoroutineScope()
+    val closeAr: () -> Unit = {
+        if (worldMode == WorldMode.AR) {
+            worldMode = closeArMode(worldMode)
+            arClosing = true
+            scope.launch {
+                delay(3_000)
+                arClosing = false
+            }
+        }
+    }
+    val openAr: () -> Unit = {
+        worldMode = openArMode(worldMode, arClosing)
+    }
     var followRequest by rememberSaveable { mutableStateOf(0) }
     var tourOverviewRequest by rememberSaveable { mutableStateOf(0) }
     var isFollowingLocation by rememberSaveable { mutableStateOf(false) }
@@ -256,7 +292,8 @@ internal fun MapPage(
     }
     var mapInitializationStarted by remember { mutableStateOf(false) }
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
-    val areMapControlsVisible = shouldShowTourChrome(isMapGestureActive) &&
+    val areMapControlsVisible = worldMode == WorldMode.MAP &&
+        shouldShowTourChrome(isMapGestureActive) &&
         isMapReady &&
         !isHomeSelectionMode
     val hasTourModeHeader = tour != null &&
@@ -275,10 +312,27 @@ internal fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val aboutBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val publicItemSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val tourDeleteSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val tourEndSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    LaunchedEffect(itemRepository) {
+        runCatching { itemRepository?.resumeTransfers() }
+    }
+    LaunchedEffect(itemMapBounds, mapViewport?.zoom) {
+        val bounds = itemMapBounds ?: return@LaunchedEffect
+        delay(300)
+        runCatching { itemsApi.list(bounds, mapViewport?.zoom ?: defaultMapZoom) }
+            .onSuccess { publicItemsPage = it }
+    }
+    LaunchedEffect(worldMode, latestItemLocation?.latitude, latestItemLocation?.longitude) {
+        if (worldMode != WorldMode.AR) return@LaunchedEffect
+        val location = latestItemLocation ?: return@LaunchedEffect
+        runCatching { itemsApi.nearby(location.toItemLocation()) }
+            .onSuccess { nearbyItems = it.items }
+    }
     LaunchedEffect(isDisplayedActiveTour) {
         if (!isDisplayedActiveTour) showTourEndConfirmation = false
     }
@@ -323,6 +377,9 @@ internal fun MapPage(
         } else {
             closeHomeSelection()
         }
+    }
+    BackHandler(enabled = worldMode == WorldMode.AR && !showInventoryPage) {
+        closeAr()
     }
     LaunchedEffect(tour?.id, editorLocations.size) {
         editorFocusRequest = 0L
@@ -497,6 +554,7 @@ internal fun MapPage(
         Box(modifier = Modifier.fillMaxSize()) {
             if (mapInitializationStarted) {
             MapSurface(
+                isWorldVisible = worldMode == WorldMode.MAP,
                 tourId = tour?.id,
                 activeTourId = activeTour?.id,
                 isTourActive = isTourActive,
@@ -523,6 +581,8 @@ internal fun MapPage(
                 defaultMapRotation = defaultMapRotation,
                 mapSettingsVisible = showDirectionBottomSheet,
                 mapMoments = renderedMapMoments,
+                publicItemsPage = publicItemsPage,
+                selectedPublicItemId = itemTarget?.id,
                 momentImageRevision = photoRevision,
                 routePoints = mapRoutePoints,
                 preparedTourRoute = preparedTourRoute,
@@ -589,6 +649,12 @@ internal fun MapPage(
                         MomentType.EMOJI -> Unit
                     }
                 },
+                onPublicItemClick = { item ->
+                    itemTarget = item
+                    selectedPublicItem = item
+                },
+                onItemBoundsChanged = { itemMapBounds = it },
+                onItemLocationChanged = { latestItemLocation = it },
                 onLocationClick = followOwnLocation,
                 onBuildingClick = {
                     if (
@@ -622,6 +688,83 @@ internal fun MapPage(
                 onMapGestureActiveChanged = { isMapGestureActive = it },
                 onTourEntryPrepared = onTourEntryPrepared,
             )
+            }
+
+            if (worldMode == WorldMode.AR) {
+                ItemArView(
+                    inventory = inventory,
+                    inventoryAvailable = itemRepository != null,
+                    deviceLocation = latestItemLocation,
+                    nearbyItems = nearbyItems,
+                    selectedTarget = itemTarget,
+                    onDrop = { item, location ->
+                        val repository = itemRepository
+                            ?: return@ItemArView DropOutcome.FAILED
+                        val result = runCatching { repository.drop(item, location) }
+                            .onSuccess { dropped ->
+                                publicItemsPage = publicItemsPage.copy(
+                                    items = publicItemsPage.items.filterNot { it.id == dropped.id } + dropped,
+                                )
+                                itemTarget = dropped
+                                showFeedbackNotice(
+                                    FeedbackNoticeKind.PLACEHOLDER,
+                                    "${item.kind.displayName} abgelegt",
+                                )
+                            }
+                            .onFailure {
+                                showFeedbackNotice(
+                                    FeedbackNoticeKind.ERROR,
+                                    if (repository.inventory.value.pendingDrops.any { pending -> pending.itemId == item.id }) {
+                                        "Offline – Ablage wird später fortgesetzt."
+                                    } else {
+                                        "Item konnte nicht abgelegt werden."
+                                    },
+                                )
+                            }
+                        when {
+                            result.isSuccess -> DropOutcome.DROPPED
+                            repository.inventory.value.pendingDrops.any { it.itemId == item.id } ->
+                                DropOutcome.PENDING
+                            else -> DropOutcome.FAILED
+                        }
+                    },
+                    onClaim = { item, location ->
+                        val currentLocation = latestItemLocation
+                        val repository = itemRepository
+                        if (
+                            currentLocation == null ||
+                            !currentLocation.isPublishableItemLocation(System.currentTimeMillis()) ||
+                            repository == null
+                        ) {
+                            ClaimOutcome.FAILED
+                        } else {
+                            try {
+                                repository.claim(item, location)
+                                publicItemsPage = publicItemsPage.copy(
+                                    items = publicItemsPage.items.filterNot { it.id == item.id },
+                                )
+                                nearbyItems = nearbyItems.filterNot { it.id == item.id }
+                                if (itemTarget?.id == item.id) itemTarget = null
+                                ClaimOutcome.CLAIMED
+                            } catch (failure: ItemsApiException) {
+                                if (failure.code == "already_claimed") {
+                                    publicItemsPage = publicItemsPage.copy(
+                                        items = publicItemsPage.items.filterNot { it.id == item.id },
+                                    )
+                                    nearbyItems = nearbyItems.filterNot { it.id == item.id }
+                                    ClaimOutcome.ALREADY_CLAIMED
+                                } else {
+                                    ClaimOutcome.FAILED
+                                }
+                            } catch (_: Exception) {
+                                ClaimOutcome.FAILED
+                            }
+                        }
+                    },
+                    onNotice = showFeedbackNotice,
+                    onExitAr = closeAr,
+                    modifier = Modifier.zIndex(0.5f),
+                )
             }
 
             TourModeHeader(
@@ -919,6 +1062,11 @@ internal fun MapPage(
                             verticalArrangement = Arrangement.spacedBy(MapControlGap),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
+                            WorldModeToggle(
+                                mode = WorldMode.MAP,
+                                enabled = !arClosing,
+                                onClick = openAr,
+                            )
                             if (manualLocation != null) {
                                 MapIconButton(
                                     contentDescription =
@@ -953,6 +1101,25 @@ internal fun MapPage(
                             Spacer(modifier = Modifier.size(MapControlSize))
                         }
                     }
+                }
+            }
+
+            if (worldMode == WorldMode.AR) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .navigationBarsPadding()
+                        .padding(
+                            start = MapControlHorizontalPadding,
+                            bottom = MapControlVerticalPadding,
+                        )
+                        .zIndex(2f),
+                    verticalArrangement = Arrangement.spacedBy(MapControlGap),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    WorldModeToggle(mode = WorldMode.AR, onClick = closeAr)
+                    if (manualLocation != null) Spacer(modifier = Modifier.size(MapControlSize))
+                    Spacer(modifier = Modifier.size(MapControlSize))
                 }
             }
 
@@ -1108,6 +1275,14 @@ internal fun MapPage(
                         .zIndex(3f),
                 )
             }
+            if (showInventoryPage) {
+                InventoryPage(
+                    inventory = inventory,
+                    onBack = { showInventoryPage = false },
+                    modifier = Modifier.zIndex(10f),
+                    available = itemRepository != null,
+                )
+            }
         }
     }
 
@@ -1138,6 +1313,13 @@ internal fun MapPage(
             sheetState = mainMenuState,
         ) {
             MainMenu(
+                onOpenInventory = {
+                    scope.launch {
+                        mainMenuState.hide()
+                        showMainMenu = false
+                        showInventoryPage = true
+                    }
+                },
                 onOpenSettings = {
                     scope.swapBottomSheets(
                         currentState = mainMenuState,
@@ -1216,6 +1398,24 @@ internal fun MapPage(
                             showNext = { tourToDelete = visibleTour },
                             hideCurrent = { showMainMenu = false },
                         )
+                    }
+                },
+            )
+        }
+    }
+
+    selectedPublicItem?.let { item ->
+        SpurModalBottomSheet(
+            onDismissRequest = { selectedPublicItem = null },
+            sheetState = publicItemSheetState,
+        ) {
+            PublicItemDetails(
+                item = item,
+                onOpenInAr = {
+                    scope.launch {
+                        publicItemSheetState.hide()
+                        selectedPublicItem = null
+                        openAr()
                     }
                 },
             )
