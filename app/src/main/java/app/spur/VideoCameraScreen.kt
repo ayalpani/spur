@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.Recorder
@@ -14,7 +15,9 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -33,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -40,12 +44,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 @Composable
 internal fun VideoCameraScreen(
+    roundSelfie: Boolean = false,
     showFeedbackNotice: ShowFeedbackNotice,
     onClose: () -> Unit,
     onVideoAccepted: (File) -> Unit,
@@ -53,6 +59,7 @@ internal fun VideoCameraScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val landscape = CameraOrientation()
+    val targetRotation = rememberCameraTargetRotation()
     val previewView = remember {
         PreviewView(context).apply {
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
@@ -64,7 +71,15 @@ internal fun VideoCameraScreen(
     val closeAfterDiscard = remember { AtomicBoolean(false) }
     val accepted = remember { AtomicBoolean(false) }
     val disposed = remember { AtomicBoolean(false) }
-    var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
+    var lensFacing by remember(roundSelfie) {
+        mutableStateOf(
+            if (roundSelfie) {
+                CameraSelector.LENS_FACING_FRONT
+            } else {
+                CameraSelector.LENS_FACING_BACK
+            },
+        )
+    }
     var cameraPreview by remember { mutableStateOf<Preview?>(null) }
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     var recording by remember { mutableStateOf<Recording?>(null) }
@@ -101,7 +116,7 @@ internal fun VideoCameraScreen(
 
     BackHandler(onBack = ::discardAndClose)
 
-    DisposableEffect(lifecycleOwner, lensFacing, previewView, capturedVideo) {
+    DisposableEffect(lifecycleOwner, lensFacing, previewView, landscape, capturedVideo) {
         if (capturedVideo != null) {
             onDispose { }
         } else {
@@ -111,34 +126,36 @@ internal fun VideoCameraScreen(
             providerFuture.addListener(
                 {
                     if (bindingDisposed) return@addListener
-                    runCatching {
-                        val provider = providerFuture.get()
-                        val targetRotation = cameraTargetRotation(previewView.display?.rotation)
-                        val preview = Preview.Builder()
-                            .setTargetRotation(targetRotation)
-                            .build()
-                            .also { it.surfaceProvider = previewView.surfaceProvider }
-                        val capture = VideoCapture.withOutput(Recorder.Builder().build()).also {
-                            it.targetRotation = targetRotation
-                        }
-                        val selector = CameraSelector.Builder()
-                            .requireLensFacing(lensFacing)
-                            .build()
+                    previewView.doOnLayout {
+                        if (bindingDisposed) return@doOnLayout
+                        runCatching {
+                            val provider = providerFuture.get()
+                            val preview = Preview.Builder()
+                                .setTargetRotation(targetRotation)
+                                .build()
+                                .also { it.surfaceProvider = previewView.surfaceProvider }
+                            val capture = VideoCapture.withOutput(Recorder.Builder().build()).also {
+                                it.targetRotation = targetRotation
+                            }
+                            val selector = CameraSelector.Builder()
+                                .requireLensFacing(lensFacing)
+                                .build()
+                            val useCases = UseCaseGroup.Builder()
+                                .addUseCase(preview)
+                                .addUseCase(capture)
+                                .setViewPort(requireNotNull(previewView.viewPort))
+                                .build()
 
-                        provider.unbindAll()
-                        provider.bindToLifecycle(
-                            lifecycleOwner,
-                            selector,
-                            preview,
-                            capture,
-                        )
-                        cameraPreview = preview
-                        videoCapture = capture
-                    }.onFailure {
-                        showFeedbackNotice(
-                            FeedbackNoticeKind.ERROR,
-                            "Die Videokamera konnte nicht geöffnet werden.",
-                        )
+                            provider.unbindAll()
+                            provider.bindToLifecycle(lifecycleOwner, selector, useCases)
+                            cameraPreview = preview
+                            videoCapture = capture
+                        }.onFailure {
+                            showFeedbackNotice(
+                                FeedbackNoticeKind.ERROR,
+                                "Die Videokamera konnte nicht geöffnet werden.",
+                            )
+                        }
                     }
                 },
                 mainExecutor,
@@ -155,8 +172,7 @@ internal fun VideoCameraScreen(
         }
     }
 
-    LaunchedEffect(landscape, cameraPreview, videoCapture, recording) {
-        val targetRotation = cameraTargetRotation(previewView.display?.rotation)
+    LaunchedEffect(targetRotation, cameraPreview, videoCapture, recording) {
         cameraPreview?.targetRotation = targetRotation
         if (recording == null) videoCapture?.targetRotation = targetRotation
     }
@@ -185,10 +201,13 @@ internal fun VideoCameraScreen(
             return
         }
         val capture = videoCapture ?: return
-        val targetRotation = cameraTargetRotation(previewView.display?.rotation)
         cameraPreview?.targetRotation = targetRotation
         capture.targetRotation = targetRotation
-        val video = context.createMomentFile(MomentType.VIDEO)
+        val video = if (roundSelfie) {
+            context.createRoundVideoMomentFile()
+        } else {
+            context.createMomentFile(MomentType.VIDEO)
+        }
         val output = FileOutputOptions.Builder(video).build()
         discardRequested.set(false)
         closeAfterDiscard.set(false)
@@ -246,13 +265,18 @@ internal fun VideoCameraScreen(
             isFinalizing = isFinalizing,
             recordedDurationMillis = recordedDurationMillis,
             canRecord = videoCapture != null,
+            roundSelfie = roundSelfie,
             landscape = landscape,
             onClose = ::discardAndClose,
-            onSwitchCamera = {
-                lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-                    CameraSelector.LENS_FACING_FRONT
-                } else {
-                    CameraSelector.LENS_FACING_BACK
+            onSwitchCamera = if (roundSelfie) {
+                null
+            } else {
+                {
+                    lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                        CameraSelector.LENS_FACING_FRONT
+                    } else {
+                        CameraSelector.LENS_FACING_BACK
+                    }
                 }
             },
             onRecord = {
@@ -267,6 +291,7 @@ internal fun VideoCameraScreen(
     } else {
         VideoConfirmationSurface(
             video = video,
+            roundSelfie = roundSelfie,
             landscape = landscape,
             onDiscard = {
                 video.delete()
@@ -287,9 +312,10 @@ private fun VideoRecordingSurface(
     isFinalizing: Boolean,
     recordedDurationMillis: Long,
     canRecord: Boolean,
+    roundSelfie: Boolean,
     landscape: Boolean,
     onClose: () -> Unit,
-    onSwitchCamera: () -> Unit,
+    onSwitchCamera: (() -> Unit)?,
     onRecord: () -> Unit,
 ) {
     Box(
@@ -297,12 +323,30 @@ private fun VideoRecordingSurface(
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        AndroidView(
-            factory = { previewView },
-            modifier = Modifier
-                .fillMaxSize()
-                .semantics { contentDescription = "Videokameravorschau" },
-        )
+        Box(
+            modifier = if (roundSelfie) {
+                Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(0.86f)
+                    .aspectRatio(1f)
+            } else {
+                Modifier.fillMaxSize()
+            },
+        ) {
+            AndroidView(
+                factory = { previewView },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(if (roundSelfie) Modifier.padding(5.dp).clip(CircleShape) else Modifier)
+                    .semantics {
+                        contentDescription = if (roundSelfie) {
+                            "Runde Selfie-Videovorschau"
+                        } else {
+                            "Videokameravorschau"
+                        }
+                    },
+            )
+        }
         CameraCloseButton(
             contentDescription = "Videokamera schließen",
             onClick = onClose,
@@ -325,7 +369,7 @@ private fun VideoRecordingSurface(
                 fontWeight = FontWeight.SemiBold,
             )
         }
-        if (!isRecording && !isFinalizing) {
+        if (!isRecording && !isFinalizing && onSwitchCamera != null) {
             CameraSwitchButton(
                 contentDescription = "Videokamera wechseln",
                 landscape = landscape,
@@ -342,6 +386,7 @@ private fun VideoRecordingSurface(
             color = if (isFinalizing) CameraChrome else StopRed,
             landscape = landscape,
             shape = if (isRecording) RoundedCornerShape(8.dp) else CircleShape,
+            innerSize = if (isRecording) 34.dp else 64.dp,
             onClick = onRecord,
         )
     }

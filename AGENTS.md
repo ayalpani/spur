@@ -21,6 +21,11 @@ instrumentation tests must run on a disposable emulator or a dedicated test
 profile. Use only `adb install -r`/`scripts/spurctl start` for the personal device after
 confirming that the command preserves app data.
 
+Spur must never use `LoveDoves_API_36` or select an emulator by a volatile serial
+such as `emulator-5554` alone. If an emulator is required, use a dedicated
+`Spur_API_36` AVD, verify `ro.boot.qemu.avd_name` before every mutating command,
+and set `ANDROID_SERIAL` for Gradle device tests.
+
 ## Design system
 
 - Use `SpurPrimaryButton` for the promoted action in sheets and forms.
@@ -32,6 +37,8 @@ confirming that the command preserves app data.
   1 dp black outline at 50% opacity.
 - Use the compact regular-weight content style for the paired moment-picker
   buttons so all four labels stay on one line with their smaller icons.
+- When a prefilled form field receives focus programmatically, place the cursor
+  at the end of its existing value by default, never at the beginning.
 - In vertically stacked dialog and confirmation actions, place the primary or
   confirming action above the secondary cancel/discard action.
 - In bottom-sheet menus, use `SheetMenuNavigationItem` for destinations: no
@@ -42,9 +49,10 @@ confirming that the command preserves app data.
   synchronized transition. The incoming and outgoing sheets must start in the
   same frame and use the same Material sheet motion spec; never await one sheet's
   closing animation before showing the next sheet.
-- When an icon and text jointly label one action, render the icon at the full
-  semantic foreground color and the label at `IconTextLabelAlpha`. Apply this
-  through shared buttons and action-menu rows; do not dim standalone labels,
+- In primary buttons, render both icon and label at the full semantic foreground
+  color so the action always reads as enabled. In secondary buttons and
+  action-menu rows, render the icon at the full semantic foreground color and
+  the paired label at `IconTextLabelAlpha`. Do not dim standalone labels,
   headers, navigation chevrons, or decorative icons.
 - Use `MapIconButton(secondary = true)` for secondary controls drawn over a
   map. All secondary map controls use `secondaryMapControlStyle`: it inverts

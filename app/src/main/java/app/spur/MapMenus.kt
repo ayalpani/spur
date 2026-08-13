@@ -145,6 +145,7 @@ internal fun MainMenu(
 @Composable
 internal fun SettingsMenu(
     onOpenHome: () -> Unit,
+    onOpenLandmarks: () -> Unit,
     onOpenHomeAutoStart: () -> Unit,
     onOpenBackup: () -> Unit,
     onOpenTheme: () -> Unit,
@@ -162,6 +163,10 @@ internal fun SettingsMenu(
         SheetMenuNavigationItem(
             label = "Zuhause",
             onClick = onOpenHome,
+        )
+        SheetMenuNavigationItem(
+            label = "Orte",
+            onClick = onOpenLandmarks,
         )
         SheetMenuNavigationItem(
             label = "Startautomatik",

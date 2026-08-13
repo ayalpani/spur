@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -54,6 +56,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.location.modes.CameraMode
@@ -71,6 +74,8 @@ import kotlin.math.floor
 import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+
+private const val TourEntryPreparationTimeoutMillis = 1_500L
 
 @Composable
 @SuppressLint("MissingPermission")
@@ -98,6 +103,7 @@ internal fun MapSurface(
     zoomRequest: MapZoomRequest?,
     defaultMapRotation: MapRotation,
     mapSettingsVisible: Boolean,
+    landmarks: List<Landmark>,
     mapMoments: List<MapMoment>,
     publicItemsPage: PublicItemsPage,
     selectedPublicItemId: String?,
@@ -165,6 +171,7 @@ internal fun MapSurface(
         onAlternateMapPreviewChanged,
     )
     val currentOnViewportChanged by rememberUpdatedState(onViewportChanged)
+    val currentLandmarks by rememberUpdatedState(landmarks)
     val currentMapMoments by rememberUpdatedState(mapMoments)
     val currentPublicItemsPage by rememberUpdatedState(publicItemsPage)
     val currentRoutePoints by rememberUpdatedState(routePoints)
@@ -223,6 +230,13 @@ internal fun MapSurface(
         mutableStateOf<RoadHistoryFingerprint?>(null)
     }
     var manualLocationPosition by remember { mutableStateOf<android.graphics.PointF?>(null) }
+    val landmarkIndicators = remember {
+        mutableStateOf(emptyList<LandmarkEdgeIndicator>())
+    }
+    val locationEdgeIndicator = remember {
+        mutableStateOf<LocationEdgeIndicator?>(null)
+    }
+    var landmarkIndicatorsVisible by remember { mutableStateOf(false) }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
     }
@@ -235,6 +249,7 @@ internal fun MapSurface(
     var preparedMapMoments by remember { mutableStateOf<PreparedMapMoments?>(null) }
     var mapMomentImagePreparationGeneration by remember { mutableLongStateOf(0L) }
     var currentLocation by remember { mutableStateOf<SpurCoordinate?>(null) }
+    val currentGpsLocation by rememberUpdatedState(currentLocation)
     var stableTravelBearing by remember { mutableStateOf<Float?>(null) }
     var isAtHome by remember { mutableStateOf(false) }
     var renderedVoicePlaybackId by remember { mutableStateOf<String?>(null) }
@@ -628,6 +643,11 @@ internal fun MapSurface(
         var roadSourceChanged = false
         var isMapTouchActive = false
         var isCameraMoving = false
+        var showLandmarkIndicators = false
+        var landmarkFramePosted = false
+        var landmarkHide: Runnable? = null
+        var landmarkClear: Runnable? = null
+        var retainedLandmarkIds: Set<String>? = null
         val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
         var holdStart = PointF()
         var isTapCandidate = false
@@ -653,6 +673,139 @@ internal fun MapSurface(
                 readyMap.projection.toScreenLocation(
                     LatLng(moment.latitude, moment.longitude),
                 )
+            }
+        }
+
+        val publishLandmarks = Runnable {
+            landmarkFramePosted = false
+            val readyMap = map
+            if (
+                readyMap == null ||
+                mapView.width <= 0 ||
+                mapView.height <= 0
+            ) {
+                landmarkIndicators.value = emptyList()
+                return@Runnable
+            }
+            if (!showLandmarkIndicators) return@Runnable
+            val density = context.resources.displayMetrics.density
+            val edgeInset = LandmarkEdgeInsetDp * density
+            val locationEdgeInset = LocationEdgeInsetDp * density
+            val systemInsets = ViewCompat.getRootWindowInsets(mapView)
+                ?.getInsets(WindowInsetsCompat.Type.systemBars())
+            val bounds = LandmarkIndicatorBounds(
+                left = (systemInsets?.left ?: 0) + edgeInset,
+                top = (systemInsets?.top ?: 0) + edgeInset,
+                right = mapView.width -
+                    (systemInsets?.right ?: 0) -
+                    edgeInset,
+                bottom = mapView.height -
+                    (systemInsets?.bottom ?: 0) -
+                    edgeInset,
+            )
+            val viewportBounds = LandmarkIndicatorBounds(
+                left = (systemInsets?.left ?: 0).toFloat(),
+                top = (systemInsets?.top ?: 0).toFloat(),
+                right = (mapView.width - (systemInsets?.right ?: 0)).toFloat(),
+                bottom = (mapView.height - (systemInsets?.bottom ?: 0)).toFloat(),
+            )
+            val retainedIds = retainedLandmarkIds
+            locationEdgeIndicator.value = effectiveLocationIndicatorCoordinate(
+                gpsLocation = currentGpsLocation,
+                manualLocation = currentManualLocation,
+                isTrackPointSelected = currentSelectedTrackPoint != null,
+            )
+                ?.let { location ->
+                    val point = readyMap.projection.toScreenLocation(
+                        LatLng(location.latitude, location.longitude),
+                    )
+                    locationEdgeIndicatorFor(
+                        point = LandmarkScreenPoint(point.x, point.y),
+                        bounds = LandmarkIndicatorBounds(
+                            left = bounds.left + locationEdgeInset,
+                            top = bounds.top + locationEdgeInset,
+                            right = bounds.right - locationEdgeInset,
+                            bottom = bounds.bottom - locationEdgeInset,
+                        ),
+                    )
+                }
+            val projected = currentLandmarks
+                .asSequence()
+                .filter { retainedIds == null || it.id in retainedIds }
+                .map { landmark ->
+                    val point = readyMap.projection.toScreenLocation(
+                        LatLng(
+                            landmark.coordinate.latitude,
+                            landmark.coordinate.longitude,
+                        ),
+                    )
+                    ProjectedLandmark(
+                        landmark = landmark,
+                        point = LandmarkScreenPoint(point.x, point.y),
+                    )
+                }
+                .toList()
+            landmarkIndicators.value = if (retainedIds == null) {
+                landmarkEdgeIndicators(
+                    projected = projected,
+                    bounds = bounds,
+                    minimumSeparation = LandmarkMinimumSeparationDp * density,
+                    maximumCount = LandmarkMaximumVisibleCount,
+                ).also { selected ->
+                    val selectedIds = selected.mapTo(linkedSetOf()) { it.landmark.id }
+                    retainedLandmarkIds = selectedIds
+                    readyMap.style?.setMapLandmarkSelection(selectedIds)
+                    outsideLandmarkIndicators(selected, projected, viewportBounds)
+                }
+            } else {
+                retainedLandmarkEdgeIndicators(
+                    projected = projected,
+                    bounds = bounds,
+                    landmarkIds = retainedIds,
+                ).let { selected ->
+                    outsideLandmarkIndicators(selected, projected, viewportBounds)
+                }
+            }
+        }
+
+        fun scheduleLandmarkPublish() {
+            if (landmarkFramePosted) return
+            landmarkFramePosted = true
+            mapView.postOnAnimation(publishLandmarks)
+        }
+
+        fun cancelLandmarkHide() {
+            landmarkHide?.let(mapView::removeCallbacks)
+            landmarkHide = null
+            landmarkClear?.let(mapView::removeCallbacks)
+            landmarkClear = null
+        }
+
+        fun revealLandmarks() {
+            cancelLandmarkHide()
+            showLandmarkIndicators = true
+            landmarkIndicatorsVisible = true
+            scheduleLandmarkPublish()
+        }
+
+        fun scheduleLandmarkHide() {
+            cancelLandmarkHide()
+            landmarkHide = Runnable {
+                landmarkHide = null
+                if (isMapTouchActive || isCameraMoving) return@Runnable
+                showLandmarkIndicators = false
+                landmarkIndicatorsVisible = false
+                landmarkClear = Runnable {
+                    landmarkClear = null
+                    if (showLandmarkIndicators) return@Runnable
+                    retainedLandmarkIds = null
+                    landmarkIndicators.value = emptyList()
+                    map?.style?.hideMapLandmarkLayers()
+                }.also { clear ->
+                    mapView.postDelayed(clear, MotionDurationDefaultMillis.toLong())
+                }
+            }.also { hide ->
+                mapView.postDelayed(hide, LandmarkIndicatorHideDelayMillis)
             }
         }
 
@@ -699,9 +852,32 @@ internal fun MapSurface(
             return currentPublicItemsPage.items.firstOrNull { it.id == itemId }
         }
 
+        fun centerLandmark(landmark: Landmark) {
+            val readyMap = map ?: return
+            readyMap.animateCamera(
+                CameraUpdateFactory.newLatLng(
+                    LatLng(
+                        landmark.coordinate.latitude,
+                        landmark.coordinate.longitude,
+                    ),
+                ),
+                MapRotationAnimationMillis.toInt(),
+            )
+        }
+
+        fun landmarkAt(readyMap: MapLibreMap, screenPoint: PointF): Landmark? {
+            val landmarkId = readyMap.queryRenderedFeatures(
+                screenPoint,
+                MapLandmarkLabelLayer,
+                MapLandmarkPointLayer,
+            ).firstOrNull()?.getStringProperty(MapLandmarkIdProperty)
+            return currentLandmarks.firstOrNull { it.id == landmarkId }
+        }
+
         val moveListener = MapLibreMap.OnCameraMoveListener {
             if (currentManualLocation != null) publishManualLocationPosition()
             if (pendingMapMoment != null) publishPendingMomentPosition()
+            if (showLandmarkIndicators) scheduleLandmarkPublish()
         }
         val moveStartedListener = MapLibreMap.OnCameraMoveStartedListener { reason ->
             isCameraMoving = true
@@ -710,6 +886,7 @@ internal fun MapSurface(
             roadNetworkReadyViewportKey = null
             if (shouldStopFollowing(reason)) {
                 isSelectedTrackPointVisible = false
+                revealLandmarks()
                 currentOnMapGestureActiveChanged(true)
             }
             if (currentIsFollowingLocation && shouldStopFollowing(reason)) {
@@ -719,7 +896,10 @@ internal fun MapSurface(
         }
         val idleListener = MapLibreMap.OnCameraIdleListener {
             isCameraMoving = false
-            if (!isMapTouchActive) currentOnMapGestureActiveChanged(false)
+            if (!isMapTouchActive) {
+                if (showLandmarkIndicators) scheduleLandmarkHide()
+                currentOnMapGestureActiveChanged(false)
+            }
             publishManualLocationPosition()
             publishPendingMomentPosition()
             publishHomeStartPoint()
@@ -781,6 +961,10 @@ internal fun MapSurface(
                     ?.let { LatLng(it.latitude(), it.longitude()) }
                     ?: point
                 readyMap.zoomIntoPublicItemCluster(clusterPoint)
+                return@OnMapClickListener true
+            }
+            landmarkAt(readyMap, screenPoint)?.let { landmark ->
+                centerLandmark(landmark)
                 return@OnMapClickListener true
             }
             val cluster = readyMap.queryRenderedFeatures(
@@ -893,6 +1077,7 @@ internal fun MapSurface(
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     isMapTouchActive = true
+                    revealLandmarks()
                     isTapCandidate = true
                     cancelManualLocationHold()
                     holdStart = PointF(event.x, event.y)
@@ -950,13 +1135,19 @@ internal fun MapSurface(
                     }
                     isTapCandidate = false
                     isMapTouchActive = false
-                    if (!isCameraMoving) currentOnMapGestureActiveChanged(false)
+                    if (!isCameraMoving) {
+                        scheduleLandmarkHide()
+                        currentOnMapGestureActiveChanged(false)
+                    }
                 }
                 MotionEvent.ACTION_CANCEL -> {
                     isTapCandidate = false
                     cancelManualLocationHold()
                     isMapTouchActive = false
-                    if (!isCameraMoving) currentOnMapGestureActiveChanged(false)
+                    if (!isCameraMoving) {
+                        scheduleLandmarkHide()
+                        currentOnMapGestureActiveChanged(false)
+                    }
                 }
             }
             false
@@ -974,6 +1165,12 @@ internal fun MapSurface(
         }
         onDispose {
             cancelManualLocationHold()
+            cancelLandmarkHide()
+            mapView.removeCallbacks(publishLandmarks)
+            retainedLandmarkIds = null
+            landmarkIndicators.value = emptyList()
+            locationEdgeIndicator.value = null
+            landmarkIndicatorsVisible = false
             currentOnMapGestureActiveChanged(false)
             mapView.setOnTouchListener(null)
             mapView.removeOnSourceChangedListener(sourceChangedListener)
@@ -1245,6 +1442,29 @@ internal fun MapSurface(
         }
     }
 
+    LaunchedEffect(landmarks, mapStyleRevision) {
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.style?.showMapLandmarks(landmarks)
+            if (landmarkIndicatorsVisible) {
+                map.style?.setMapLandmarkSelection(
+                    landmarks
+                        .sortedWith(LandmarkDisplayOrder)
+                        .take(LandmarkMaximumVisibleCount)
+                        .mapTo(linkedSetOf(), Landmark::id),
+                )
+            }
+            map.style?.setMapLandmarksVisible(landmarkIndicatorsVisible)
+        }
+    }
+
+    LaunchedEffect(landmarkIndicatorsVisible, mapStyleRevision) {
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.style?.setMapLandmarksVisible(landmarkIndicatorsVisible)
+        }
+    }
+
     val voiceProgressFrame =
         (voicePlaybackProgress.coerceIn(0f, 1f) * 100f).roundToInt() / 100f
     LaunchedEffect(
@@ -1335,33 +1555,35 @@ internal fun MapSurface(
             map.locationComponent.cameraMode = CameraMode.NONE
         }
         try {
-            mapView.awaitFullyRenderedAfter {
-                style.showMapMomentImages(preparedImages)
-                style.showMapMoments(preparedMoments, momentsAtUserSpot)
-                style.showTourRoute(preparedRoute.routeFeatures, currentTrailColors)
-                style.showTourPauses(preparedRoute.pauseFeatures, tourPauseMarker)
-                style.showTourEndpoints(
-                    points.takeIf { showTourEndpoints }.orEmpty(),
-                    currentTrailColors,
-                )
-                map.fitMapScreenTourRoute(
-                    points = points,
-                    density = context.resources.displayMetrics.density,
-                    pointZoom = defaultMapZoom,
-                    animated = false,
-                )
-            }
-            val targetCamera = map.cameraPosition
-            val startZoom = tourEntryStartZoom(targetCamera.zoom)
-            if (startZoom != targetCamera.zoom) {
+            withTimeoutOrNull(TourEntryPreparationTimeoutMillis) {
                 mapView.awaitFullyRenderedAfter {
-                    map.moveCamera(
-                        CameraUpdateFactory.newCameraPosition(
-                            org.maplibre.android.camera.CameraPosition.Builder(targetCamera)
-                                .zoom(startZoom)
-                                .build(),
-                        ),
+                    style.showMapMomentImages(preparedImages)
+                    style.showMapMoments(preparedMoments, momentsAtUserSpot)
+                    style.showTourRoute(preparedRoute.routeFeatures, currentTrailColors)
+                    style.showTourPauses(preparedRoute.pauseFeatures, tourPauseMarker)
+                    style.showTourEndpoints(
+                        points.takeIf { showTourEndpoints }.orEmpty(),
+                        currentTrailColors,
                     )
+                    map.fitMapScreenTourRoute(
+                        points = points,
+                        density = context.resources.displayMetrics.density,
+                        pointZoom = defaultMapZoom,
+                        animated = false,
+                    )
+                }
+                val targetCamera = map.cameraPosition
+                val startZoom = tourEntryStartZoom(targetCamera.zoom)
+                if (startZoom != targetCamera.zoom) {
+                    mapView.awaitFullyRenderedAfter {
+                        map.moveCamera(
+                            CameraUpdateFactory.newCameraPosition(
+                                org.maplibre.android.camera.CameraPosition.Builder(targetCamera)
+                                    .zoom(startZoom)
+                                    .build(),
+                            ),
+                        )
+                    }
                 }
             }
             if (
@@ -1840,6 +2062,48 @@ internal fun MapSurface(
                         else -> "Interaktive Kartenansicht"
                     }
                 },
+        )
+
+        LandmarkEdgeOverlay(
+            indicators = landmarkIndicators,
+            visible = landmarkIndicatorsVisible,
+            onForwardMapTouch = { event, cancelClick ->
+                val mapLocation = IntArray(2)
+                mapView.getLocationOnScreen(mapLocation)
+                MotionEvent.obtain(event).also { forwarded ->
+                    forwarded.setLocation(
+                        event.rawX - mapLocation[0],
+                        event.rawY - mapLocation[1],
+                    )
+                    if (cancelClick && forwarded.actionMasked == MotionEvent.ACTION_UP) {
+                        forwarded.action = MotionEvent.ACTION_CANCEL
+                    }
+                    mapView.dispatchTouchEvent(forwarded)
+                    forwarded.recycle()
+                }
+            },
+            onLandmarkTap = { landmark ->
+                mapView.getMapAsync { map ->
+                    map.animateCamera(
+                        CameraUpdateFactory.newLatLng(
+                            LatLng(
+                                landmark.coordinate.latitude,
+                                landmark.coordinate.longitude,
+                            ),
+                        ),
+                        MapRotationAnimationMillis.toInt(),
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        LocationEdgeOverlay(
+            indicator = locationEdgeIndicator,
+            visible = landmarkIndicatorsVisible,
+            colors = locationMarkerColors,
+            pulseColor = trailColors.stroke,
+            modifier = Modifier.fillMaxSize(),
         )
 
         val density = LocalDensity.current

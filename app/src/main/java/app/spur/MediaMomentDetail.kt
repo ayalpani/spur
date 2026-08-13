@@ -5,6 +5,7 @@ import android.widget.VideoView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
@@ -19,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.viewinterop.AndroidView
@@ -67,9 +70,18 @@ internal fun MediaMomentDetailPage(
                                 videoView = this
                             }
                         },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .semantics { contentDescription = "Video" },
+                        modifier = if (moment.isRoundVideo) {
+                            Modifier
+                                .align(Alignment.Center)
+                                .fillMaxWidth(0.86f)
+                                .aspectRatio(1f)
+                                .clip(CircleShape)
+                                .semantics { contentDescription = "Rundes Selfie-Video" }
+                        } else {
+                            Modifier
+                                .fillMaxSize()
+                                .semantics { contentDescription = "Video" }
+                        },
                     )
                     DisposableEffect(Unit) {
                         onDispose {

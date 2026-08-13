@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -342,6 +343,7 @@ internal fun LucideIcon(
     color: Color = LocalContentColor.current,
     modifier: Modifier = Modifier.size(MapControlIconSize),
     strokeWidth: Float = LocalLucideStrokeWidth.current,
+    filled: Boolean = false,
 ) {
     val parsedPaths = paths.map { path ->
         remember(path) { ComposePathParser().parsePathString(path).toPath() }
@@ -355,11 +357,15 @@ internal fun LucideIcon(
                 drawPath(
                     path = path,
                     color = color,
-                    style = Stroke(
-                        width = strokeWidth,
-                        cap = StrokeCap.Round,
-                        join = androidx.compose.ui.graphics.StrokeJoin.Round,
-                    ),
+                    style = if (filled) {
+                        Fill
+                    } else {
+                        Stroke(
+                            width = strokeWidth,
+                            cap = StrokeCap.Round,
+                            join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                        )
+                    },
                 )
             }
         }

@@ -168,6 +168,14 @@ internal fun MapPage(
     val openAr: () -> Unit = {
         worldMode = openArMode(worldMode, arClosing)
     }
+    val landmarkStore = remember(context) { LandmarkStore(context) }
+    var landmarks by remember { mutableStateOf(emptyList<Landmark>()) }
+    LaunchedEffect(landmarkStore) {
+        landmarks = withContext(Dispatchers.IO) { landmarkStore.landmarks() }
+    }
+    DisposableEffect(landmarkStore) {
+        onDispose { landmarkStore.close() }
+    }
     var followRequest by rememberSaveable { mutableStateOf(0) }
     var tourOverviewRequest by rememberSaveable { mutableStateOf(0) }
     var isFollowingLocation by rememberSaveable { mutableStateOf(false) }
@@ -189,6 +197,7 @@ internal fun MapPage(
     ActiveTourNavigationBar(active = isDisplayedActiveTour)
     var showMainMenu by rememberSaveable { mutableStateOf(false) }
     var showSettingsMenu by rememberSaveable { mutableStateOf(false) }
+    var showLandmarkSettingsBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showHomeAutoStartBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showBackupBottomSheet by rememberSaveable { mutableStateOf(false) }
     var showThemePicker by rememberSaveable { mutableStateOf(false) }
@@ -201,6 +210,7 @@ internal fun MapPage(
     var isSavingTourTitle by remember(tour?.id) { mutableStateOf(false) }
     var tourToDelete by remember { mutableStateOf<Tour?>(null) }
     var waypointToDelete by remember { mutableStateOf<TrackPoint?>(null) }
+    var landmarkToDelete by remember { mutableStateOf<Landmark?>(null) }
     var selectedEditorPointId by rememberSaveable(tour?.id) {
         mutableStateOf<Long?>(null)
     }
@@ -304,6 +314,10 @@ internal fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val mainMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val settingsMenuState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val landmarkSettingsSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val landmarkDeleteSheetState =
+        rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val homeAutoStartBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val backupBottomSheetState =
@@ -580,6 +594,7 @@ internal fun MapPage(
                 zoomRequest = mapZoomRequest,
                 defaultMapRotation = defaultMapRotation,
                 mapSettingsVisible = showDirectionBottomSheet,
+                landmarks = landmarks,
                 mapMoments = renderedMapMoments,
                 publicItemsPage = publicItemsPage,
                 selectedPublicItemId = itemTarget?.id,
@@ -1449,6 +1464,14 @@ internal fun MapPage(
                         openHomeSelection()
                     }
                 },
+                onOpenLandmarks = {
+                    scope.swapBottomSheets(
+                        currentState = settingsMenuState,
+                        nextState = landmarkSettingsSheetState,
+                        showNext = { showLandmarkSettingsBottomSheet = true },
+                        hideCurrent = { showSettingsMenu = false },
+                    )
+                },
                 onOpenHomeAutoStart = {
                     scope.swapBottomSheets(
                         currentState = settingsMenuState,
@@ -1482,6 +1505,84 @@ internal fun MapPage(
                 },
             )
         }
+    }
+
+    if (showLandmarkSettingsBottomSheet) {
+        val closeLandmarkSettings: () -> Unit = {
+            scope.swapBottomSheets(
+                currentState = landmarkSettingsSheetState,
+                nextState = settingsMenuState,
+                showNext = { showSettingsMenu = true },
+                hideCurrent = { showLandmarkSettingsBottomSheet = false },
+            )
+        }
+        SpurModalBottomSheet(
+            onDismissRequest = { showLandmarkSettingsBottomSheet = false },
+            sheetState = landmarkSettingsSheetState,
+        ) {
+            BackHandler(onBack = closeLandmarkSettings)
+            LandmarkSettingsBottomSheet(
+                landmarks = landmarks,
+                onRename = { landmark, title ->
+                    scope.launch {
+                        val renamed = withContext(Dispatchers.IO) {
+                            landmarkStore.rename(landmark.id, title)
+                        }
+                        if (renamed) {
+                            landmarks = landmarks.map {
+                                if (it.id == landmark.id) it.copy(title = title) else it
+                            }
+                        } else {
+                            showFeedbackNotice(
+                                FeedbackNoticeKind.ERROR,
+                                "Der Ort konnte nicht umbenannt werden.",
+                            )
+                        }
+                    }
+                },
+                onDelete = { landmark ->
+                    scope.swapBottomSheets(
+                        currentState = landmarkSettingsSheetState,
+                        nextState = landmarkDeleteSheetState,
+                        showNext = { landmarkToDelete = landmark },
+                        hideCurrent = { showLandmarkSettingsBottomSheet = false },
+                    )
+                },
+            )
+        }
+    }
+
+    landmarkToDelete?.let { landmark ->
+        val closeLandmarkDelete: () -> Unit = {
+            scope.swapBottomSheets(
+                currentState = landmarkDeleteSheetState,
+                nextState = landmarkSettingsSheetState,
+                showNext = { showLandmarkSettingsBottomSheet = true },
+                hideCurrent = { landmarkToDelete = null },
+            )
+        }
+        EditorDeleteSheet(
+            title = "${landmark.title} löschen?",
+            primaryLabel = "Ort löschen",
+            sheetState = landmarkDeleteSheetState,
+            onDismiss = closeLandmarkDelete,
+            onConfirm = {
+                scope.launch {
+                    val deleted = withContext(Dispatchers.IO) {
+                        landmarkStore.delete(landmark.id)
+                    }
+                    if (deleted) {
+                        landmarks = landmarks.filterNot { it.id == landmark.id }
+                    } else {
+                        showFeedbackNotice(
+                            FeedbackNoticeKind.ERROR,
+                            "Der Ort konnte nicht gelöscht werden.",
+                        )
+                    }
+                    closeLandmarkDelete()
+                }
+            },
+        )
     }
 
     if (showTourEndConfirmation) {
@@ -1722,6 +1823,39 @@ internal fun MapPage(
             target = momentTarget,
             showFeedbackNotice = showFeedbackNotice,
             onDismiss = { momentTarget = null },
+            loadLandmarkTitleSuggestion = { target ->
+                val coordinate = when (target) {
+                    MomentPlacementTarget.CurrentLocation -> mapViewport?.center
+                    is MomentPlacementTarget.RecordedLocation -> target.coordinate
+                }
+                coordinate?.let { context.fetchNearbyLandmarkTitle(it) }
+            },
+            onLandmarkAccepted = { target, title ->
+                val coordinate = when (target) {
+                    MomentPlacementTarget.CurrentLocation -> mapViewport?.center
+                    is MomentPlacementTarget.RecordedLocation -> target.coordinate
+                }
+                if (coordinate == null) {
+                    showFeedbackNotice(
+                        FeedbackNoticeKind.ERROR,
+                        "Der Standort ist noch nicht verfügbar.",
+                    )
+                } else {
+                    scope.launch {
+                        val landmark = withContext(Dispatchers.IO) {
+                            landmarkStore.add(title, coordinate)
+                        }
+                        if (landmark == null) {
+                            showFeedbackNotice(
+                                FeedbackNoticeKind.ERROR,
+                                "Die Landmark konnte nicht gespeichert werden.",
+                            )
+                        } else {
+                            landmarks = landmarks + landmark
+                        }
+                    }
+                }
+            },
             onMomentAccepted = { target, moment ->
                 when (target) {
                     MomentPlacementTarget.CurrentLocation -> pendingMoment = moment

@@ -54,6 +54,7 @@ internal fun CameraScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val landscape = CameraOrientation()
+    val targetRotation = rememberCameraTargetRotation()
     val previewView = remember {
         PreviewView(context).apply {
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
@@ -90,7 +91,6 @@ internal fun CameraScreen(
                 if (disposed) return
                 runCatching {
                     val provider = providerFuture.get()
-                    val targetRotation = cameraTargetRotation(previewView.display?.rotation)
                     val preview = Preview.Builder()
                         .setTargetRotation(targetRotation)
                         .build()
@@ -135,6 +135,11 @@ internal fun CameraScreen(
         }
     }
 
+    LaunchedEffect(targetRotation, cameraPreview, imageCapture) {
+        cameraPreview?.targetRotation = targetRotation
+        imageCapture?.targetRotation = targetRotation
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -174,7 +179,6 @@ internal fun CameraScreen(
                 onClick = cameraCapture@{
                     val capture = imageCapture ?: return@cameraCapture
                     val output = context.createMomentFile(MomentType.PHOTO)
-                    val targetRotation = cameraTargetRotation(previewView.display?.rotation)
                     cameraPreview?.targetRotation = targetRotation
                     capture.targetRotation = targetRotation
                     isCapturing = true
@@ -264,7 +268,7 @@ private fun PhotoConfirmationPreview(
 ) {
     BoxWithConstraints(
         modifier = modifier,
-        contentAlignment = Alignment.TopCenter,
+        contentAlignment = Alignment.Center,
     ) {
         val renderedBitmap = bitmap ?: return@BoxWithConstraints
         val photoAspectRatio =
@@ -282,7 +286,7 @@ private fun PhotoConfirmationPreview(
             bitmap = renderedBitmap.asImageBitmap(),
             contentDescription = "Aufgenommenes Foto",
             modifier = mediaModifier,
-            alignment = Alignment.TopCenter,
+            alignment = Alignment.Center,
             contentScale = ContentScale.Fit,
         )
     }

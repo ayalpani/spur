@@ -2,6 +2,7 @@ package app.spur
 
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.view.OrientationEventListener
 import android.view.Surface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,14 +18,20 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 internal val CameraChrome = Color.Black.copy(alpha = 0.42f)
@@ -48,6 +55,36 @@ internal fun cameraTargetRotation(displayRotation: Int?): Int = when (displayRot
     Surface.ROTATION_270,
     -> displayRotation
     else -> Surface.ROTATION_0
+}
+
+@Composable
+internal fun rememberCameraTargetRotation(): Int {
+    val context = LocalContext.current
+    val view = LocalView.current
+    var targetRotation by remember(view) {
+        mutableIntStateOf(cameraTargetRotation(view.display?.rotation))
+    }
+    DisposableEffect(context, view) {
+        val listener = object : OrientationEventListener(context) {
+            override fun onOrientationChanged(orientation: Int) {
+                cameraTargetRotationFromOrientation(orientation)?.let {
+                    targetRotation = it
+                }
+            }
+        }
+        if (listener.canDetectOrientation()) listener.enable()
+        onDispose(listener::disable)
+    }
+    return targetRotation
+}
+
+internal fun cameraTargetRotationFromOrientation(orientation: Int): Int? = when (orientation) {
+    OrientationEventListener.ORIENTATION_UNKNOWN -> null
+    in 45 until 135 -> Surface.ROTATION_270
+    in 135 until 225 -> Surface.ROTATION_180
+    in 225 until 315 -> Surface.ROTATION_90
+    in 0..359 -> Surface.ROTATION_0
+    else -> null
 }
 
 @Composable
@@ -105,6 +142,7 @@ internal fun BoxScope.CameraCaptureButton(
     color: Color,
     landscape: Boolean = false,
     shape: Shape = CircleShape,
+    innerSize: Dp = 64.dp,
     onClick: () -> Unit,
 ) {
     Box(
@@ -117,11 +155,12 @@ internal fun BoxScope.CameraCaptureButton(
             )
             .size(78.dp)
             .border(4.dp, Color.White, CircleShape)
-            .padding(7.dp)
-            .background(color, shape)
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(innerSize).background(color, shape))
+    }
 }
 
 @Composable
