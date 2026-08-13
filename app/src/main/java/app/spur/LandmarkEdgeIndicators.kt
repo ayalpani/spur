@@ -1,5 +1,6 @@
 package app.spur
 
+import android.view.MotionEvent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -17,17 +18,27 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.atan2
@@ -147,6 +158,9 @@ internal fun locationEdgeIndicatorFor(
         isOffscreen = clamped.scale < 1f,
     )
 }
+
+internal fun LandmarkScreenPoint.isOutside(bounds: LandmarkIndicatorBounds): Boolean =
+    x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom
 
 private fun ProjectedLandmark.clampedTo(
     bounds: LandmarkIndicatorBounds,
@@ -338,6 +352,8 @@ private fun EdgeIndicatorContent(
 internal fun LandmarkEdgeOverlay(
     indicators: State<List<LandmarkEdgeIndicator>>,
     visible: Boolean,
+    onForwardMapTouch: (MotionEvent, Boolean) -> Unit,
+    onLandmarkTap: (Landmark) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val displayed = indicators.value
@@ -351,7 +367,13 @@ internal fun LandmarkEdgeOverlay(
             .semantics { contentDescription = "Orte in der Umgebung" },
         content = {
             displayed.forEach { indicator ->
-                LandmarkIndicatorContent(indicator, alpha)
+                LandmarkIndicatorContent(
+                    indicator = indicator,
+                    alpha = alpha,
+                    interactive = visible,
+                    onForwardMapTouch = onForwardMapTouch,
+                    onLandmarkTap = onLandmarkTap,
+                )
             }
         },
     ) { measurables, constraints ->
@@ -395,13 +417,66 @@ private fun LandmarkLabelPlacement.anchorY(height: Int, markerRadius: Int): Int 
 }
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 private fun LandmarkIndicatorContent(
     indicator: LandmarkEdgeIndicator,
     alpha: State<Float>,
+    interactive: Boolean,
+    onForwardMapTouch: (MotionEvent, Boolean) -> Unit,
+    onLandmarkTap: (Landmark) -> Unit,
 ) {
+    val touchSlop = LocalViewConfiguration.current.touchSlop
+    var downX by remember(indicator.landmark.id) { mutableFloatStateOf(0f) }
+    var downY by remember(indicator.landmark.id) { mutableFloatStateOf(0f) }
+    var isTap by remember(indicator.landmark.id) { mutableStateOf(false) }
+    val gestureModifier = if (!interactive) {
+        Modifier
+    } else {
+        Modifier
+            .semantics {
+                role = Role.Button
+                onClick(label = "Auf Karte zentrieren") {
+                    onLandmarkTap(indicator.landmark)
+                    true
+                }
+            }
+            .pointerInteropFilter { event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        downX = event.x
+                        downY = event.y
+                        isTap = true
+                        onForwardMapTouch(event, false)
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val deltaX = event.x - downX
+                        val deltaY = event.y - downY
+                        if (deltaX * deltaX + deltaY * deltaY > touchSlop * touchSlop) {
+                            isTap = false
+                        }
+                        onForwardMapTouch(event, false)
+                    }
+                    MotionEvent.ACTION_POINTER_DOWN -> {
+                        isTap = false
+                        onForwardMapTouch(event, false)
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        val tapped = isTap
+                        onForwardMapTouch(event, tapped)
+                        if (tapped) onLandmarkTap(indicator.landmark)
+                        isTap = false
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        isTap = false
+                        onForwardMapTouch(event, false)
+                    }
+                }
+                true
+            }
+    }
     EdgeIndicatorContent(
         labelPlacement = indicator.labelPlacement,
-        modifier = Modifier.graphicsLayer { this.alpha = alpha.value },
+        modifier = gestureModifier.graphicsLayer { this.alpha = alpha.value },
         marker = { LandmarkMarker(indicator) },
         label = { LandmarkLabel(indicator.landmark) },
     )
@@ -506,7 +581,6 @@ private fun IndicatorLabel(
                 text = text,
                 color = textColor,
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -515,16 +589,19 @@ private fun IndicatorLabel(
 }
 
 private val LandmarkNavigationIconPaths = listOf("M3 11 22 2l-9 19-2-8-8-2z")
-private val LandmarkSelectionOrder = compareBy<ProjectedLandmark>(
-    { !it.landmark.id.startsWith(CustomLandmarkIdPrefix) },
+internal val LandmarkDisplayOrder = compareBy<Landmark>(
+    { !it.id.startsWith(CustomLandmarkIdPrefix) },
     {
-        if (it.landmark.id.startsWith(CustomLandmarkIdPrefix)) {
-            -it.landmark.priority
+        if (it.id.startsWith(CustomLandmarkIdPrefix)) {
+            -it.priority
         } else {
-            it.landmark.priority
+            it.priority
         }
     },
 )
+private val LandmarkSelectionOrder = Comparator<ProjectedLandmark> { left, right ->
+    LandmarkDisplayOrder.compare(left.landmark, right.landmark)
+}
 private const val LandmarkNavigationDefaultAngleCorrection = 45f
 private const val LandmarkNavigationOutlineWidth = 6f
 private const val LocationNavigationOuterOutlineWidth = 10f

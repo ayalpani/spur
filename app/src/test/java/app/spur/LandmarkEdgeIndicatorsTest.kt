@@ -65,6 +65,16 @@ class LandmarkEdgeIndicatorsTest {
     }
 
     @Test
+    fun onlyPointsBeyondTheViewportNeedTheComposeEdgeOverlay() {
+        val viewport = LandmarkIndicatorBounds(0f, 0f, 100f, 100f)
+
+        assertFalse(LandmarkScreenPoint(0f, 50f).isOutside(viewport))
+        assertFalse(LandmarkScreenPoint(100f, 100f).isOutside(viewport))
+        assertTrue(LandmarkScreenPoint(-0.1f, 50f).isOutside(viewport))
+        assertTrue(LandmarkScreenPoint(50f, 100.1f).isOutside(viewport))
+    }
+
+    @Test
     fun closeIndicatorsKeepOnlyTheHigherPriorityLandmark() {
         val result = landmarkEdgeIndicators(
             projected = listOf(

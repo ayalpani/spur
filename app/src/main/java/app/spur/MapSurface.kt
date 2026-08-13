@@ -671,6 +671,12 @@ internal fun MapSurface(
                     (systemInsets?.bottom ?: 0) -
                     edgeInset,
             )
+            val viewportBounds = LandmarkIndicatorBounds(
+                left = (systemInsets?.left ?: 0).toFloat(),
+                top = (systemInsets?.top ?: 0).toFloat(),
+                right = (mapView.width - (systemInsets?.right ?: 0)).toFloat(),
+                bottom = (mapView.height - (systemInsets?.bottom ?: 0)).toFloat(),
+            )
             val retainedIds = retainedLandmarkIds
             locationEdgeIndicator.value = effectiveLocationIndicatorCoordinate(
                 gpsLocation = currentGpsLocation,
@@ -706,6 +712,7 @@ internal fun MapSurface(
                         point = LandmarkScreenPoint(point.x, point.y),
                     )
                 }
+                .filter { it.point.isOutside(viewportBounds) }
                 .toList()
             landmarkIndicators.value = if (retainedIds == null) {
                 landmarkEdgeIndicators(
@@ -714,7 +721,9 @@ internal fun MapSurface(
                     minimumSeparation = LandmarkMinimumSeparationDp * density,
                     maximumCount = LandmarkMaximumVisibleCount,
                 ).also { selected ->
-                    retainedLandmarkIds = selected.mapTo(linkedSetOf()) { it.landmark.id }
+                    val selectedIds = selected.mapTo(linkedSetOf()) { it.landmark.id }
+                    retainedLandmarkIds = selectedIds
+                    readyMap.style?.setMapLandmarkSelection(selectedIds)
                 }
             } else {
                 retainedLandmarkEdgeIndicators(
@@ -757,6 +766,7 @@ internal fun MapSurface(
                     if (showLandmarkIndicators) return@Runnable
                     retainedLandmarkIds = null
                     landmarkIndicators.value = emptyList()
+                    map?.style?.hideMapLandmarkLayers()
                 }.also { clear ->
                     mapView.postDelayed(clear, MotionDurationDefaultMillis.toLong())
                 }
@@ -798,6 +808,28 @@ internal fun MapSurface(
                         )
                     },
             )
+        }
+
+        fun centerLandmark(landmark: Landmark) {
+            val readyMap = map ?: return
+            readyMap.animateCamera(
+                CameraUpdateFactory.newLatLng(
+                    LatLng(
+                        landmark.coordinate.latitude,
+                        landmark.coordinate.longitude,
+                    ),
+                ),
+                MapRotationAnimationMillis.toInt(),
+            )
+        }
+
+        fun landmarkAt(readyMap: MapLibreMap, screenPoint: PointF): Landmark? {
+            val landmarkId = readyMap.queryRenderedFeatures(
+                screenPoint,
+                MapLandmarkLabelLayer,
+                MapLandmarkPointLayer,
+            ).firstOrNull()?.getStringProperty(MapLandmarkIdProperty)
+            return currentLandmarks.firstOrNull { it.id == landmarkId }
         }
 
         val moveListener = MapLibreMap.OnCameraMoveListener {
@@ -872,6 +904,10 @@ internal fun MapSurface(
                 return@OnMapClickListener true
             }
             if (currentIsHomeStartPointSelection) return@OnMapClickListener true
+            landmarkAt(readyMap, screenPoint)?.let { landmark ->
+                centerLandmark(landmark)
+                return@OnMapClickListener true
+            }
             val cluster = readyMap.queryRenderedFeatures(
                 screenPoint,
                 MapMomentClusterLayer,
@@ -1344,6 +1380,29 @@ internal fun MapSurface(
                 ),
                 MapRotationAnimationMillis.toInt(),
             )
+        }
+    }
+
+    LaunchedEffect(landmarks, mapStyleRevision) {
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.style?.showMapLandmarks(landmarks)
+            if (landmarkIndicatorsVisible) {
+                map.style?.setMapLandmarkSelection(
+                    landmarks
+                        .sortedWith(LandmarkDisplayOrder)
+                        .take(LandmarkMaximumVisibleCount)
+                        .mapTo(linkedSetOf(), Landmark::id),
+                )
+            }
+            map.style?.setMapLandmarksVisible(landmarkIndicatorsVisible)
+        }
+    }
+
+    LaunchedEffect(landmarkIndicatorsVisible, mapStyleRevision) {
+        if (mapStyleRevision == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            map.style?.setMapLandmarksVisible(landmarkIndicatorsVisible)
         }
     }
 
@@ -1947,6 +2006,34 @@ internal fun MapSurface(
         LandmarkEdgeOverlay(
             indicators = landmarkIndicators,
             visible = landmarkIndicatorsVisible,
+            onForwardMapTouch = { event, cancelClick ->
+                val mapLocation = IntArray(2)
+                mapView.getLocationOnScreen(mapLocation)
+                MotionEvent.obtain(event).also { forwarded ->
+                    forwarded.setLocation(
+                        event.rawX - mapLocation[0],
+                        event.rawY - mapLocation[1],
+                    )
+                    if (cancelClick && forwarded.actionMasked == MotionEvent.ACTION_UP) {
+                        forwarded.action = MotionEvent.ACTION_CANCEL
+                    }
+                    mapView.dispatchTouchEvent(forwarded)
+                    forwarded.recycle()
+                }
+            },
+            onLandmarkTap = { landmark ->
+                mapView.getMapAsync { map ->
+                    map.animateCamera(
+                        CameraUpdateFactory.newLatLng(
+                            LatLng(
+                                landmark.coordinate.latitude,
+                                landmark.coordinate.longitude,
+                            ),
+                        ),
+                        MapRotationAnimationMillis.toInt(),
+                    )
+                }
+            },
             modifier = Modifier.fillMaxSize(),
         )
 
