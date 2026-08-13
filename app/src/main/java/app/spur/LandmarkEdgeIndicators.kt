@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.atan2
@@ -161,6 +162,17 @@ internal fun locationEdgeIndicatorFor(
 
 internal fun LandmarkScreenPoint.isOutside(bounds: LandmarkIndicatorBounds): Boolean =
     x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom
+
+internal fun outsideLandmarkIndicators(
+    indicators: List<LandmarkEdgeIndicator>,
+    projected: List<ProjectedLandmark>,
+    viewportBounds: LandmarkIndicatorBounds,
+): List<LandmarkEdgeIndicator> {
+    val pointsById = projected.associate { it.landmark.id to it.point }
+    return indicators.filter { indicator ->
+        pointsById[indicator.landmark.id]?.isOutside(viewportBounds) == true
+    }
+}
 
 private fun ProjectedLandmark.clampedTo(
     bounds: LandmarkIndicatorBounds,
@@ -581,6 +593,7 @@ private fun IndicatorLabel(
                 text = text,
                 color = textColor,
                 style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

@@ -712,7 +712,6 @@ internal fun MapSurface(
                         point = LandmarkScreenPoint(point.x, point.y),
                     )
                 }
-                .filter { it.point.isOutside(viewportBounds) }
                 .toList()
             landmarkIndicators.value = if (retainedIds == null) {
                 landmarkEdgeIndicators(
@@ -724,13 +723,16 @@ internal fun MapSurface(
                     val selectedIds = selected.mapTo(linkedSetOf()) { it.landmark.id }
                     retainedLandmarkIds = selectedIds
                     readyMap.style?.setMapLandmarkSelection(selectedIds)
+                    outsideLandmarkIndicators(selected, projected, viewportBounds)
                 }
             } else {
                 retainedLandmarkEdgeIndicators(
                     projected = projected,
                     bounds = bounds,
                     landmarkIds = retainedIds,
-                )
+                ).let { selected ->
+                    outsideLandmarkIndicators(selected, projected, viewportBounds)
+                }
             }
         }
 

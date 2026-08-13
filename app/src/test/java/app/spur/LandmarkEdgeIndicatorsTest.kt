@@ -75,6 +75,26 @@ class LandmarkEdgeIndicatorsTest {
     }
 
     @Test
+    fun edgeSelectionIsStableEvenWhileSelectedPlaceCrossesIntoTheMap() {
+        val viewport = LandmarkIndicatorBounds(0f, 0f, 100f, 100f)
+        val projected = listOf(
+            projected("inside", priority = 0, x = 40f, y = 50f),
+            projected("outside", priority = 1, x = 120f, y = 50f),
+        )
+        val selected = landmarkEdgeIndicators(
+            projected = projected,
+            bounds = LandmarkIndicatorBounds(10f, 10f, 90f, 90f),
+            minimumSeparation = 0f,
+            maximumCount = 2,
+        )
+
+        assertEquals(
+            listOf("outside"),
+            outsideLandmarkIndicators(selected, projected, viewport).map { it.landmark.id },
+        )
+    }
+
+    @Test
     fun closeIndicatorsKeepOnlyTheHigherPriorityLandmark() {
         val result = landmarkEdgeIndicators(
             projected = listOf(
