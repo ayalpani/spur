@@ -1,0 +1,29 @@
+name: spur
+
+services:
+  items:
+    build:
+      context: ..
+    image: spur-items:local
+    container_name: spur-items
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SPUR_DATA_DIR: /data
+      SPUR_LISTEN_ADDR: :8080
+    volumes:
+      - /opt/spur/data:/data
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks:
+      - public-proxy
+
+networks:
+  public-proxy:
+    external: true
+    name: graphula_graphula-network
