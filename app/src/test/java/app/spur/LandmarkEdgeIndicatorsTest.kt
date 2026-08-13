@@ -42,6 +42,27 @@ class LandmarkEdgeIndicatorsTest {
     }
 
     @Test
+    fun ownLocationUsesTheSameInvisibleEdgeFrame() {
+        val bounds = LandmarkIndicatorBounds(10f, 10f, 110f, 110f)
+
+        val outside = locationEdgeIndicatorFor(
+            point = LandmarkScreenPoint(200f, 75f),
+            bounds = bounds,
+        )!!
+        val inside = locationEdgeIndicatorFor(
+            point = LandmarkScreenPoint(35f, 80f),
+            bounds = bounds,
+        )!!
+
+        assertEquals(110f, outside.point.x, 0.001f)
+        assertEquals(65.357f, outside.point.y, 0.001f)
+        assertTrue(outside.isOffscreen)
+        assertEquals(35f, inside.point.x, 0.001f)
+        assertEquals(80f, inside.point.y, 0.001f)
+        assertFalse(inside.isOffscreen)
+    }
+
+    @Test
     fun closeIndicatorsKeepOnlyTheHigherPriorityLandmark() {
         val result = landmarkEdgeIndicators(
             projected = listOf(

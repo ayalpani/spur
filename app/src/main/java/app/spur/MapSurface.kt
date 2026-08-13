@@ -220,6 +220,9 @@ internal fun MapSurface(
     val landmarkIndicators = remember {
         mutableStateOf(emptyList<LandmarkEdgeIndicator>())
     }
+    val locationEdgeIndicator = remember {
+        mutableStateOf<LocationEdgeIndicator?>(null)
+    }
     var landmarkIndicatorsVisible by remember { mutableStateOf(false) }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
@@ -233,6 +236,7 @@ internal fun MapSurface(
     var preparedMapMoments by remember { mutableStateOf<PreparedMapMoments?>(null) }
     var mapMomentImagePreparationGeneration by remember { mutableLongStateOf(0L) }
     var currentLocation by remember { mutableStateOf<SpurCoordinate?>(null) }
+    val currentGpsLocation by rememberUpdatedState(currentLocation)
     var stableTravelBearing by remember { mutableStateOf<Float?>(null) }
     var isAtHome by remember { mutableStateOf(false) }
     var renderedVoicePlaybackId by remember { mutableStateOf<String?>(null) }
@@ -654,6 +658,7 @@ internal fun MapSurface(
             if (!showLandmarkIndicators) return@Runnable
             val density = context.resources.displayMetrics.density
             val edgeInset = LandmarkEdgeInsetDp * density
+            val locationEdgeInset = LocationEdgeInsetDp * density
             val systemInsets = ViewCompat.getRootWindowInsets(mapView)
                 ?.getInsets(WindowInsetsCompat.Type.systemBars())
             val bounds = LandmarkIndicatorBounds(
@@ -667,6 +672,24 @@ internal fun MapSurface(
                     edgeInset,
             )
             val retainedIds = retainedLandmarkIds
+            locationEdgeIndicator.value = currentGpsLocation
+                ?.takeIf {
+                    currentManualLocation == null && currentSelectedTrackPoint == null
+                }
+                ?.let { location ->
+                    val point = readyMap.projection.toScreenLocation(
+                        LatLng(location.latitude, location.longitude),
+                    )
+                    locationEdgeIndicatorFor(
+                        point = LandmarkScreenPoint(point.x, point.y),
+                        bounds = LandmarkIndicatorBounds(
+                            left = bounds.left + locationEdgeInset,
+                            top = bounds.top + locationEdgeInset,
+                            right = bounds.right - locationEdgeInset,
+                            bottom = bounds.bottom - locationEdgeInset,
+                        ),
+                    )
+                }
             val projected = currentLandmarks
                 .asSequence()
                 .filter { retainedIds == null || it.id in retainedIds }
@@ -1050,6 +1073,7 @@ internal fun MapSurface(
             mapView.removeCallbacks(publishLandmarks)
             retainedLandmarkIds = null
             landmarkIndicators.value = emptyList()
+            locationEdgeIndicator.value = null
             landmarkIndicatorsVisible = false
             currentOnMapGestureActiveChanged(false)
             mapView.setOnTouchListener(null)
@@ -1922,6 +1946,13 @@ internal fun MapSurface(
         LandmarkEdgeOverlay(
             indicators = landmarkIndicators,
             visible = landmarkIndicatorsVisible,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        LocationEdgeOverlay(
+            indicator = locationEdgeIndicator,
+            visible = landmarkIndicatorsVisible,
+            colors = locationMarkerColors,
             modifier = Modifier.fillMaxSize(),
         )
 

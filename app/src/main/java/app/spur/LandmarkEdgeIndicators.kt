@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -28,6 +30,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.atan2
 import kotlin.math.min
@@ -60,6 +63,22 @@ internal data class LandmarkEdgeIndicator(
     val labelPlacement: LandmarkLabelPlacement,
     val angleDegrees: Float,
     val isEdgeArrow: Boolean,
+)
+
+internal data class LocationEdgeIndicator(
+    val point: LandmarkScreenPoint,
+    val angleDegrees: Float,
+    val isOffscreen: Boolean,
+)
+
+private data class ClampedMapPoint(
+    val point: LandmarkScreenPoint,
+    val angleDegrees: Float,
+    val scale: Float,
+    val horizontalScale: Float,
+    val verticalScale: Float,
+    val deltaX: Float,
+    val deltaY: Float,
 )
 
 internal fun landmarkEdgeIndicators(
@@ -107,20 +126,65 @@ internal fun retainedLandmarkEdgeIndicators(
         .toList()
 }
 
+internal fun locationEdgeIndicatorFor(
+    point: LandmarkScreenPoint,
+    bounds: LandmarkIndicatorBounds,
+): LocationEdgeIndicator? {
+    val center = LandmarkScreenPoint(
+        x = (bounds.left + bounds.right) / 2f,
+        y = (bounds.top + bounds.bottom) / 2f,
+    )
+    val clamped = point.clampedTo(bounds, center) ?: return null
+    return LocationEdgeIndicator(
+        point = clamped.point,
+        angleDegrees = clamped.angleDegrees,
+        isOffscreen = clamped.scale < 1f,
+    )
+}
+
 private fun ProjectedLandmark.clampedTo(
     bounds: LandmarkIndicatorBounds,
     center: LandmarkScreenPoint,
 ): LandmarkEdgeIndicator? {
-    if (!point.x.isFinite() || !point.y.isFinite()) return null
-    val deltaX = point.x - center.x
-    val deltaY = point.y - center.y
+    val clamped = point.clampedTo(bounds, center) ?: return null
+    val deltaX = clamped.deltaX
+    val deltaY = clamped.deltaY
+    val scale = clamped.scale
+    val horizontalScale = clamped.horizontalScale
+    val verticalScale = clamped.verticalScale
+    val placement = when {
+        scale == 1f && clamped.point.x <= center.x -> LandmarkLabelPlacement.RIGHT
+        scale == 1f -> LandmarkLabelPlacement.LEFT
+        horizontalScale < verticalScale && deltaX < 0f -> LandmarkLabelPlacement.RIGHT
+        horizontalScale < verticalScale -> LandmarkLabelPlacement.LEFT
+        deltaY < 0f -> LandmarkLabelPlacement.BELOW
+        else -> LandmarkLabelPlacement.ABOVE
+    }
+    return LandmarkEdgeIndicator(
+        landmark = landmark,
+        point = clamped.point,
+        labelPlacement = placement,
+        angleDegrees = clamped.angleDegrees,
+        isEdgeArrow = scale < 1f,
+    )
+}
+
+private fun LandmarkScreenPoint.clampedTo(
+    bounds: LandmarkIndicatorBounds,
+    center: LandmarkScreenPoint,
+): ClampedMapPoint? {
+    if (!x.isFinite() || !y.isFinite()) return null
+    val deltaX = x - center.x
+    val deltaY = y - center.y
     if (deltaX == 0f && deltaY == 0f) {
-        return LandmarkEdgeIndicator(
-            landmark = landmark,
-            point = point,
-            labelPlacement = LandmarkLabelPlacement.RIGHT,
+        return ClampedMapPoint(
+            point = this,
             angleDegrees = 0f,
-            isEdgeArrow = false,
+            scale = 1f,
+            horizontalScale = Float.POSITIVE_INFINITY,
+            verticalScale = Float.POSITIVE_INFINITY,
+            deltaX = 0f,
+            deltaY = 0f,
         )
     }
     val horizontalScale = when {
@@ -138,21 +202,58 @@ private fun ProjectedLandmark.clampedTo(
         x = center.x + deltaX * scale,
         y = center.y + deltaY * scale,
     )
-    val placement = when {
-        scale == 1f && clamped.x <= center.x -> LandmarkLabelPlacement.RIGHT
-        scale == 1f -> LandmarkLabelPlacement.LEFT
-        horizontalScale < verticalScale && deltaX < 0f -> LandmarkLabelPlacement.RIGHT
-        horizontalScale < verticalScale -> LandmarkLabelPlacement.LEFT
-        deltaY < 0f -> LandmarkLabelPlacement.BELOW
-        else -> LandmarkLabelPlacement.ABOVE
-    }
-    return LandmarkEdgeIndicator(
-        landmark = landmark,
+    return ClampedMapPoint(
         point = clamped,
-        labelPlacement = placement,
         angleDegrees = Math.toDegrees(atan2(deltaY, deltaX).toDouble()).toFloat(),
-        isEdgeArrow = scale < 1f,
+        scale = scale,
+        horizontalScale = horizontalScale,
+        verticalScale = verticalScale,
+        deltaX = deltaX,
+        deltaY = deltaY,
     )
+}
+
+@Composable
+internal fun LocationEdgeOverlay(
+    indicator: State<LocationEdgeIndicator?>,
+    visible: Boolean,
+    colors: LocationMarkerColors,
+    modifier: Modifier = Modifier,
+) {
+    val displayed = indicator.value
+    val shown = visible && displayed?.isOffscreen == true
+    val alpha = animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = tween(MotionDurationDefaultMillis),
+        label = "Own location edge indicator",
+    )
+    Box(modifier = modifier.fillMaxSize()) {
+        displayed?.let { location ->
+            OutlinedNavigationArrow(
+                angleDegrees = location.angleDegrees,
+                fill = colors.fill,
+                outline = colors.outline,
+                modifier = Modifier
+                    .offset {
+                        val radius = LandmarkIndicatorArrowSize.roundToPx() / 2
+                        IntOffset(
+                            x = location.point.x.roundToInt() - radius,
+                            y = location.point.y.roundToInt() - radius,
+                        )
+                    }
+                    .graphicsLayer { this.alpha = alpha.value }
+                    .then(
+                        if (shown) {
+                            Modifier.semantics {
+                                contentDescription = "Eigener Standort außerhalb der Karte"
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
+            )
+        }
+    }
 }
 
 @Composable
@@ -266,22 +367,35 @@ private fun LandmarkMarker(indicator: LandmarkEdgeIndicator) {
 
 @Composable
 private fun LandmarkArrow(indicator: LandmarkEdgeIndicator) {
-    val color = Color(indicator.landmark.colorArgb)
+    OutlinedNavigationArrow(
+        angleDegrees = indicator.angleDegrees,
+        fill = Color(indicator.landmark.colorArgb),
+        outline = SheetBackground,
+    )
+}
+
+@Composable
+private fun OutlinedNavigationArrow(
+    angleDegrees: Float,
+    fill: Color,
+    outline: Color,
+    modifier: Modifier = Modifier,
+) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(LandmarkIndicatorArrowSize)
-            .rotate(indicator.angleDegrees + LandmarkNavigationDefaultAngleCorrection),
+            .rotate(angleDegrees + LandmarkNavigationDefaultAngleCorrection),
         contentAlignment = Alignment.Center,
     ) {
         LucideIcon(
             paths = LandmarkNavigationIconPaths,
-            color = SheetBackground,
+            color = outline,
             modifier = Modifier.size(LandmarkIndicatorArrowSize),
             strokeWidth = LandmarkNavigationOutlineWidth,
         )
         LucideIcon(
             paths = LandmarkNavigationIconPaths,
-            color = color,
+            color = fill,
             modifier = Modifier.size(LandmarkIndicatorArrowSize),
             filled = true,
         )
@@ -331,6 +445,7 @@ private val LandmarkIndicatorDotSize = 12.dp
 private val LandmarkMarkerOutlineWidth = 3.dp
 private val LandmarkIndicatorGap = 6.dp
 internal const val LandmarkEdgeInsetDp = 24f
+internal const val LocationEdgeInsetDp = 12f
 internal const val LandmarkMinimumSeparationDp = 112f
 internal const val LandmarkMaximumVisibleCount = 5
 internal const val LandmarkIndicatorHideDelayMillis = 500L
