@@ -1,3 +1,5 @@
+name: spur
+
 services:
   items:
     build:

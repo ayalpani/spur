@@ -80,6 +80,13 @@ func TestClaimRecoverAcknowledgeAndRedropRotatesCapability(t *testing.T) {
 	if err := itemStore.acknowledge(context.Background(), testItemID, "claim-1", newSecret); err != nil {
 		t.Fatalf("idempotent ack: %v", err)
 	}
+	record, err := readItem(context.Background(), itemStore.db, testItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.ClaimID.Valid || record.LastDropID.Valid || len(record.ClaimCapsule) != 0 || len(record.PublicCapsule) != 0 {
+		t.Fatalf("temporary transfer state survived ack: %+v", record)
+	}
 
 	_, err = itemStore.drop(context.Background(), dropInput{
 		ID: testItemID, Kind: kindStrawberry, Generation: 1,

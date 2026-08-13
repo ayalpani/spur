@@ -1,0 +1,9 @@
+[Unit]
+Description=Create an encrypted Spur items SQLite backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+ExecStart=/opt/spur/source/deploy/backup.sh

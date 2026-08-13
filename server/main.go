@@ -11,6 +11,13 @@ import (
 
 func main() {
 	dataDirectory := environment("SPUR_DATA_DIR", "/data")
+	if len(os.Args) == 2 && os.Args[1] == "backup" {
+		if err := runEncryptedBackup(dataDirectory, time.Now()); err != nil {
+			log.Fatal("encrypted backup failed")
+		}
+		log.Print("encrypted backup complete")
+		return
+	}
 	provenanceSigner, err := loadOrCreateSigner(filepath.Join(dataDirectory, "provenance-key.pem"))
 	if err != nil {
 		log.Fatal("provenance key unavailable")

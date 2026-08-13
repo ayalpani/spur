@@ -244,7 +244,8 @@ UPDATE items SET
     generation = generation + 1,
     state = 'CLAIMING', capability_hash = ?,
     latitude = NULL, longitude = NULL, accuracy_m = NULL, dropped_day = NULL,
-    claim_id = ?, claim_capsule = public_capsule, public_capsule = NULL
+    claim_id = ?, claim_capsule = public_capsule, public_capsule = NULL,
+    last_drop_id = NULL
 WHERE id = ? AND state = 'PUBLIC'
 `, input.NewCapabilityHash, input.IdempotencyID, input.ID)
 	if err != nil {
@@ -294,6 +295,7 @@ func (value *store) acknowledge(ctx context.Context, id, claimID, capabilitySecr
 	}
 	result, err := value.db.ExecContext(ctx, `
 UPDATE items SET state = 'OWNED', claim_capsule = NULL
+    , claim_id = NULL
 WHERE id = ? AND state = 'CLAIMING' AND claim_id = ? AND capability_hash = ?
 `, id, claimID, hash)
 	if err != nil {
@@ -307,7 +309,7 @@ WHERE id = ? AND state = 'CLAIMING' AND claim_id = ? AND capability_hash = ?
 		return nil
 	}
 	record, readErr := readItem(ctx, value.db, id)
-	if readErr == nil && record.State == stateOwned && record.ClaimID.Valid && record.ClaimID.String == claimID && bytes.Equal(record.CapabilityHash, hash) {
+	if readErr == nil && record.State == stateOwned && !record.ClaimID.Valid && bytes.Equal(record.CapabilityHash, hash) {
 		return nil
 	}
 	return errUnauthorized
