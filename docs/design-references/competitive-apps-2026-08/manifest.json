@@ -1,0 +1,325 @@
+[
+  {
+    "slug": "strava",
+    "name": "Strava",
+    "category": "Running & Training",
+    "source": "https://play.google.com/store/apps/details?id=com.strava&hl=en_US&gl=US",
+    "note": "Social feed, recording, route and activity storytelling",
+    "images": [
+      "images/strava/01.webp",
+      "images/strava/02.webp",
+      "images/strava/03.webp",
+      "images/strava/04.webp",
+      "images/strava/05.webp",
+      "images/strava/06.webp"
+    ]
+  },
+  {
+    "slug": "nike-run-club",
+    "name": "Nike Run Club",
+    "category": "Running & Training",
+    "source": "https://play.google.com/store/apps/details?id=com.nike.plusgps&hl=en_US&gl=US",
+    "note": "Guided runs, coaching and achievement language",
+    "images": [
+      "images/nike-run-club/01.webp",
+      "images/nike-run-club/02.webp",
+      "images/nike-run-club/03.webp",
+      "images/nike-run-club/04.webp",
+      "images/nike-run-club/05.webp",
+      "images/nike-run-club/06.webp"
+    ]
+  },
+  {
+    "slug": "adidas-running",
+    "name": "adidas Running",
+    "category": "Running & Training",
+    "source": "https://play.google.com/store/apps/details?id=com.runtastic.android&hl=en_US&gl=US",
+    "note": "Tracking, goals, challenges and community",
+    "images": [
+      "images/adidas-running/01.webp",
+      "images/adidas-running/02.webp",
+      "images/adidas-running/03.webp",
+      "images/adidas-running/04.webp",
+      "images/adidas-running/05.webp",
+      "images/adidas-running/06.webp"
+    ]
+  },
+  {
+    "slug": "runkeeper",
+    "name": "ASICS Runkeeper",
+    "category": "Running & Training",
+    "source": "https://play.google.com/store/apps/details?id=com.fitnesskeeper.runkeeper.pro&hl=en_US&gl=US",
+    "note": "Approachable tracking, plans and progress",
+    "images": [
+      "images/runkeeper/01.webp",
+      "images/runkeeper/02.webp",
+      "images/runkeeper/03.webp",
+      "images/runkeeper/04.webp",
+      "images/runkeeper/05.webp",
+      "images/runkeeper/06.webp"
+    ]
+  },
+  {
+    "slug": "mapmyrun",
+    "name": "MapMyRun",
+    "category": "Running & Training",
+    "source": "https://play.google.com/store/apps/details?id=com.mapmyrun.android2&hl=en_US&gl=US",
+    "note": "Classic route recording and workout analytics",
+    "images": [
+      "images/mapmyrun/01.webp",
+      "images/mapmyrun/02.webp",
+      "images/mapmyrun/03.webp",
+      "images/mapmyrun/04.webp",
+      "images/mapmyrun/05.webp",
+      "images/mapmyrun/06.webp"
+    ]
+  },
+  {
+    "slug": "runna",
+    "name": "Runna",
+    "category": "Running & Training",
+    "source": "https://play.google.com/store/apps/details?id=com.runbuddy.prod&hl=en_US&gl=US",
+    "note": "Plan-led coaching and workout guidance",
+    "images": [
+      "images/runna/01.webp",
+      "images/runna/02.webp",
+      "images/runna/03.webp",
+      "images/runna/04.webp",
+      "images/runna/05.webp",
+      "images/runna/06.webp"
+    ]
+  },
+  {
+    "slug": "garmin-connect",
+    "name": "Garmin Connect",
+    "category": "Running & Training",
+    "source": "https://play.google.com/store/apps/details?id=com.garmin.android.apps.connectmobile&hl=en_US&gl=US",
+    "note": "Dense history, health metrics and device ecosystem",
+    "images": [
+      "images/garmin-connect/01.webp",
+      "images/garmin-connect/02.webp",
+      "images/garmin-connect/03.webp",
+      "images/garmin-connect/04.webp",
+      "images/garmin-connect/05.webp",
+      "images/garmin-connect/06.webp"
+    ]
+  },
+  {
+    "slug": "suunto",
+    "name": "Suunto",
+    "category": "Running & Training",
+    "source": "https://play.google.com/store/apps/details?id=com.stt.android.suunto&hl=en_US&gl=US",
+    "note": "Map-first sports tracking and route planning",
+    "images": [
+      "images/suunto/01.webp",
+      "images/suunto/02.webp",
+      "images/suunto/03.webp",
+      "images/suunto/04.webp",
+      "images/suunto/05.webp",
+      "images/suunto/06.webp"
+    ]
+  },
+  {
+    "slug": "komoot",
+    "name": "Komoot",
+    "category": "Outdoor & Navigation",
+    "source": "https://play.google.com/store/apps/details?id=de.komoot.android&hl=en_US&gl=US",
+    "note": "Route discovery, planning and turn-by-turn navigation",
+    "images": [
+      "images/komoot/01.webp",
+      "images/komoot/02.webp",
+      "images/komoot/03.webp",
+      "images/komoot/04.webp",
+      "images/komoot/05.webp",
+      "images/komoot/06.webp"
+    ]
+  },
+  {
+    "slug": "alltrails",
+    "name": "AllTrails",
+    "category": "Outdoor & Navigation",
+    "source": "https://play.google.com/store/apps/details?id=com.alltrails.alltrails&hl=en_US&gl=US",
+    "note": "Trail discovery, trust signals and navigation",
+    "images": [
+      "images/alltrails/01.webp",
+      "images/alltrails/02.webp",
+      "images/alltrails/03.webp",
+      "images/alltrails/04.webp",
+      "images/alltrails/05.webp",
+      "images/alltrails/06.webp"
+    ]
+  },
+  {
+    "slug": "outdooractive",
+    "name": "Outdooractive",
+    "category": "Outdoor & Navigation",
+    "source": "https://play.google.com/store/apps/details?id=com.outdooractive.Outdooractive&hl=en_US&gl=US",
+    "note": "Professional maps, route planning and offline use",
+    "images": [
+      "images/outdooractive/01.webp",
+      "images/outdooractive/02.webp",
+      "images/outdooractive/03.webp",
+      "images/outdooractive/04.webp",
+      "images/outdooractive/05.webp",
+      "images/outdooractive/06.webp"
+    ]
+  },
+  {
+    "slug": "wikiloc",
+    "name": "Wikiloc",
+    "category": "Outdoor & Navigation",
+    "source": "https://play.google.com/store/apps/details?id=com.wikiloc.wikilocandroid&hl=en_US&gl=US",
+    "note": "Community routes, recording, waypoints and photos",
+    "images": [
+      "images/wikiloc/01.webp",
+      "images/wikiloc/02.webp",
+      "images/wikiloc/03.webp",
+      "images/wikiloc/04.webp",
+      "images/wikiloc/05.webp",
+      "images/wikiloc/06.webp"
+    ]
+  },
+  {
+    "slug": "relive",
+    "name": "Relive",
+    "category": "Outdoor & Navigation",
+    "source": "https://play.google.com/store/apps/details?id=cc.relive.reliveapp&hl=en_US&gl=US",
+    "note": "Turns tracked movement and photos into a shareable story",
+    "images": [
+      "images/relive/01.webp",
+      "images/relive/02.webp",
+      "images/relive/03.webp",
+      "images/relive/04.webp",
+      "images/relive/05.webp"
+    ]
+  },
+  {
+    "slug": "mapy",
+    "name": "Mapy.com",
+    "category": "Outdoor & Navigation",
+    "source": "https://play.google.com/store/apps/details?id=cz.seznam.mapy&hl=en_US&gl=US",
+    "note": "Strong cartography, outdoor layers and offline maps",
+    "images": [
+      "images/mapy/01.webp",
+      "images/mapy/02.webp",
+      "images/mapy/03.webp",
+      "images/mapy/04.webp",
+      "images/mapy/05.webp",
+      "images/mapy/06.webp"
+    ]
+  },
+  {
+    "slug": "osmand",
+    "name": "OsmAnd",
+    "category": "Outdoor & Navigation",
+    "source": "https://play.google.com/store/apps/details?id=net.osmand&hl=en_US&gl=US",
+    "note": "Power-user map controls, layers and offline navigation",
+    "images": [
+      "images/osmand/01.webp",
+      "images/osmand/02.webp",
+      "images/osmand/03.webp",
+      "images/osmand/04.webp",
+      "images/osmand/05.webp",
+      "images/osmand/06.webp"
+    ]
+  },
+  {
+    "slug": "fog-of-world",
+    "name": "Fog of World",
+    "category": "Exploration & Game",
+    "source": "https://play.google.com/store/apps/details?id=com.ollix.fogofworld&hl=en_US&gl=US",
+    "note": "Persistent fog-of-war exploration map",
+    "images": [
+      "images/fog-of-world/01.webp",
+      "images/fog-of-world/02.webp",
+      "images/fog-of-world/03.webp",
+      "images/fog-of-world/04.webp",
+      "images/fog-of-world/05.webp",
+      "images/fog-of-world/06.webp"
+    ]
+  },
+  {
+    "slug": "zombies-run",
+    "name": "Zombies, Run!",
+    "category": "Exploration & Game",
+    "source": "https://play.google.com/store/apps/details?id=com.sixtostart.zombiesrunclient&hl=en_US&gl=US",
+    "note": "Narrative motivation layered onto running",
+    "images": [
+      "images/zombies-run/01.webp",
+      "images/zombies-run/02.webp",
+      "images/zombies-run/03.webp",
+      "images/zombies-run/04.webp",
+      "images/zombies-run/05.webp"
+    ]
+  },
+  {
+    "slug": "runiverse",
+    "name": "Runiverse",
+    "category": "Exploration & Game",
+    "source": "https://play.google.com/store/apps/details?id=com.imagine_x.Runiverse&hl=en_US&gl=US",
+    "note": "Territory capture on a living 3D map",
+    "images": [
+      "images/runiverse/01.webp",
+      "images/runiverse/02.webp",
+      "images/runiverse/03.webp",
+      "images/runiverse/04.webp",
+      "images/runiverse/05.webp",
+      "images/runiverse/06.webp"
+    ]
+  },
+  {
+    "slug": "city-wanderer",
+    "name": "City Wanderer",
+    "category": "Exploration & Game",
+    "source": "https://play.google.com/store/apps/details?id=com.funspiritgames.rpgcityexplorer&hl=en_US&gl=US",
+    "note": "City walking with persistent fog-of-war",
+    "images": [
+      "images/city-wanderer/01.webp",
+      "images/city-wanderer/02.webp",
+      "images/city-wanderer/03.webp",
+      "images/city-wanderer/04.webp",
+      "images/city-wanderer/05.webp",
+      "images/city-wanderer/06.webp"
+    ]
+  },
+  {
+    "slug": "citystrides",
+    "name": "CityStrides",
+    "category": "Street Coverage",
+    "source": "https://citystrides.com/",
+    "note": "Every-street completion, LifeMap and city progress",
+    "images": [
+      "images/web/citystrides.png"
+    ]
+  },
+  {
+    "slug": "wandrer",
+    "name": "Wandrer",
+    "category": "Street Coverage",
+    "source": "https://wandrer.earth/",
+    "note": "Unique-road completion across roads and trails",
+    "images": [
+      "images/web/wandrer.png"
+    ]
+  },
+  {
+    "slug": "citywalker",
+    "name": "CityWalker",
+    "category": "Street Coverage",
+    "source": "https://citywalker.app/",
+    "note": "On-device street coverage with live exploration",
+    "images": [
+      "images/web/citywalker.png"
+    ]
+  },
+  {
+    "slug": "streets",
+    "name": "Streets",
+    "category": "Street Coverage",
+    "source": "https://streets-app.com/",
+    "note": "iPhone walk tracking built around covering every street",
+    "images": [
+      "images/web/streets.png"
+    ]
+  }
+]
