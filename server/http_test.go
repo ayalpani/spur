@@ -17,7 +17,7 @@ func TestHTTPDropListDetailAndClaimValidation(t *testing.T) {
 		"capability_secret":  testSecret(1),
 		"provenance_capsule": map[string]any{"events": []any{}},
 		"location":           map[string]any{"latitude": 52.52, "longitude": 13.405, "accuracy_m": 3},
-		"idempotency_id":     "drop-1",
+		"idempotency_id":     testRequestID(1),
 	}
 	response := performJSON(t, handler, http.MethodPost, "/v1/items/"+testItemID+"/drop", dropBody)
 	if response.Code != http.StatusOK {
@@ -58,6 +58,61 @@ func TestLowZoomReturnsClusters(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte(`"count":1`)) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestHTTPRejectsUnknownDeviceDataWithoutPersistingIt(t *testing.T) {
+	itemStore := newTestStore(t)
+	handler := (&api{store: itemStore}).handler()
+	body := map[string]any{
+		"kind": "STRAWBERRY", "generation": 0,
+		"capability_secret":  testSecret(1),
+		"provenance_capsule": map[string]any{"events": []any{}},
+		"location":           map[string]any{"latitude": 52.52, "longitude": 13.405, "accuracy_m": 3},
+		"idempotency_id":     testRequestID(1),
+		"device_model":       "Galaxy A54",
+	}
+	response := performJSON(t, handler, http.MethodPost, "/v1/items/"+testItemID+"/drop", body)
+	if response.Code != http.StatusBadRequest || !bytes.Contains(response.Body.Bytes(), []byte("invalid_json")) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var count int
+	if err := itemStore.db.QueryRow("SELECT COUNT(*) FROM items").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("unknown device data reached storage: count=%d err=%v", count, err)
+	}
+}
+
+func TestHTTPPrivacyGuardDoesNotEmitUnknownResponseFields(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeJSON(response, http.StatusOK, struct {
+		DeviceID string `json:"device_id"`
+	}{DeviceID: "phone-123"})
+	if response.Code != http.StatusInternalServerError || bytes.Contains(response.Body.Bytes(), []byte("phone-123")) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if !bytes.Contains(response.Body.Bytes(), []byte("privacy_guard")) {
+		t.Fatalf("missing privacy guard response: %s", response.Body.String())
+	}
+}
+
+func TestHTTPPrivacyGuardRequiresExactFieldsForKnownResponse(t *testing.T) {
+	itemStore := newTestStore(t)
+	item := dropTestItem(t, itemStore, testItemID, testSecret(1))
+	payload, err := json.Marshal(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var object map[string]any
+	if err := json.Unmarshal(payload, &object); err != nil {
+		t.Fatal(err)
+	}
+	object["message"] = "phone-123"
+	payload, err = json.Marshal(object)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasExactPublicJSONShape(item, payload) {
+		t.Fatal("known response accepted an extra field")
 	}
 }
 

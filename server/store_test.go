@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -24,7 +25,7 @@ func TestDropRegistersItemAndSignsCoarseProvenance(t *testing.T) {
 		ID: testItemID, Kind: kindStrawberry, Generation: 0,
 		CapabilitySecret: testSecret(1), Capsule: provenanceCapsule{},
 		Location:      location{Latitude: 52.52031, Longitude: 13.40491, AccuracyM: 4.5},
-		IdempotencyID: "drop-1",
+		IdempotencyID: testRequestID(1),
 	})
 	if err != nil {
 		t.Fatalf("drop: %v", err)
@@ -61,7 +62,7 @@ func TestClaimRecoverAcknowledgeAndRedropRotatesCapability(t *testing.T) {
 	claimed, err := itemStore.claim(context.Background(), claimInput{
 		ID: testItemID, NewCapabilityHash: newHash,
 		Location:      location{Latitude: 52.520005, Longitude: 13.405, AccuracyM: 5},
-		IdempotencyID: "claim-1",
+		IdempotencyID: testRequestID(2),
 	})
 	if err != nil {
 		t.Fatalf("claim: %v", err)
@@ -70,14 +71,14 @@ func TestClaimRecoverAcknowledgeAndRedropRotatesCapability(t *testing.T) {
 		t.Fatalf("unexpected claim: %+v", claimed)
 	}
 
-	recovered, err := itemStore.recover(context.Background(), testItemID, "claim-1", newSecret)
+	recovered, err := itemStore.recover(context.Background(), testItemID, testRequestID(2), newSecret)
 	if err != nil || recovered.Generation != claimed.Generation {
 		t.Fatalf("recover: %+v, %v", recovered, err)
 	}
-	if err := itemStore.acknowledge(context.Background(), testItemID, "claim-1", newSecret); err != nil {
+	if err := itemStore.acknowledge(context.Background(), testItemID, testRequestID(2), newSecret); err != nil {
 		t.Fatalf("ack: %v", err)
 	}
-	if err := itemStore.acknowledge(context.Background(), testItemID, "claim-1", newSecret); err != nil {
+	if err := itemStore.acknowledge(context.Background(), testItemID, testRequestID(2), newSecret); err != nil {
 		t.Fatalf("idempotent ack: %v", err)
 	}
 	record, err := readItem(context.Background(), itemStore.db, testItemID)
@@ -92,7 +93,7 @@ func TestClaimRecoverAcknowledgeAndRedropRotatesCapability(t *testing.T) {
 		ID: testItemID, Kind: kindStrawberry, Generation: 1,
 		CapabilitySecret: testSecret(1), Capsule: firstDropCapsule(firstDrop),
 		Location:      location{Latitude: 52.521, Longitude: 13.406, AccuracyM: 4},
-		IdempotencyID: "drop-with-old-secret",
+		IdempotencyID: testRequestID(3),
 	})
 	if !errors.Is(err, errUnauthorized) {
 		t.Fatalf("old capability should fail, got %v", err)
@@ -102,7 +103,7 @@ func TestClaimRecoverAcknowledgeAndRedropRotatesCapability(t *testing.T) {
 		ID: testItemID, Kind: kindStrawberry, Generation: 1,
 		CapabilitySecret: newSecret, Capsule: recovered.Capsule,
 		Location:      location{Latitude: 52.521, Longitude: 13.406, AccuracyM: 4},
-		IdempotencyID: "drop-2",
+		IdempotencyID: testRequestID(4),
 	})
 	if err != nil {
 		t.Fatalf("redrop: %v", err)
@@ -124,7 +125,7 @@ func TestDropAndClaimAreIdempotent(t *testing.T) {
 	request := claimInput{
 		ID: testItemID, NewCapabilityHash: hash,
 		Location:      location{Latitude: 52.52, Longitude: 13.405, AccuracyM: 3},
-		IdempotencyID: "claim-1",
+		IdempotencyID: testRequestID(2),
 	}
 	firstClaim, err := itemStore.claim(context.Background(), request)
 	if err != nil {
@@ -144,7 +145,7 @@ func TestClaimRejectsLocationsBeyondTenMeters(t *testing.T) {
 	_, err := itemStore.claim(context.Background(), claimInput{
 		ID: testItemID, NewCapabilityHash: hash,
 		Location:      location{Latitude: 52.5202, Longitude: 13.405, AccuracyM: 2},
-		IdempotencyID: "too-far",
+		IdempotencyID: testRequestID(5),
 	})
 	if !errors.Is(err, errOutOfRange) {
 		t.Fatalf("expected range rejection, got %v", err)
@@ -168,7 +169,7 @@ func TestTwoParallelClaimsHaveExactlyOneWinner(t *testing.T) {
 			_, err := itemStore.claim(context.Background(), claimInput{
 				ID: testItemID, NewCapabilityHash: hash,
 				Location:      location{Latitude: 52.52, Longitude: 13.405, AccuracyM: 3},
-				IdempotencyID: fmt.Sprintf("claim-%d", index),
+				IdempotencyID: testRequestID(index + 2),
 			})
 			results <- err
 		}(index)
@@ -219,6 +220,72 @@ func TestSchemaContainsNoIdentityOrHistoricalLocationFields(t *testing.T) {
 	}
 }
 
+func TestPrivacyGuardRollsBackMutationWhenSchemaChanges(t *testing.T) {
+	itemStore := newTestStore(t)
+	if _, err := itemStore.db.Exec("ALTER TABLE items ADD COLUMN device_id TEXT"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := itemStore.drop(context.Background(), dropInput{
+		ID: testItemID, Kind: kindStrawberry, Generation: 0,
+		CapabilitySecret: testSecret(1), Capsule: provenanceCapsule{},
+		Location:      location{Latitude: 52.52, Longitude: 13.405, AccuracyM: 3},
+		IdempotencyID: testRequestID(1),
+	})
+	if !errors.Is(err, errPrivacyGuard) {
+		t.Fatalf("expected privacy rejection, got %v", err)
+	}
+	var count int
+	if err := itemStore.db.QueryRow("SELECT COUNT(*) FROM items").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("privacy rejection committed %d rows", count)
+	}
+}
+
+func TestPrivacyGuardRejectsExtraProvenanceJSON(t *testing.T) {
+	itemStore := newTestStore(t)
+	dropTestItem(t, itemStore, testItemID, testSecret(1))
+	record, err := readItem(context.Background(), itemStore.db, testItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var capsule map[string]any
+	if err := json.Unmarshal(record.PublicCapsule, &capsule); err != nil {
+		t.Fatal(err)
+	}
+	capsule["device_id"] = "phone-123"
+	record.PublicCapsule, err = json.Marshal(capsule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := itemStore.validatePersistedItemPrivacy(record); !errors.Is(err, errPrivacyGuard) {
+		t.Fatalf("expected provenance privacy rejection, got %v", err)
+	}
+}
+
+func TestClientRequestIDsAreScopedBeforeStorage(t *testing.T) {
+	itemStore := newTestStore(t)
+	encodedDeviceData := "44455649-4345-4441-9441-313233343536"
+	_, err := itemStore.drop(context.Background(), dropInput{
+		ID: testItemID, Kind: kindStrawberry, Generation: 0,
+		CapabilitySecret: testSecret(1), Capsule: provenanceCapsule{},
+		Location:      location{Latitude: 52.52, Longitude: 13.405, AccuracyM: 3},
+		IdempotencyID: encodedDeviceData,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := readItem(context.Background(), itemStore.db, testItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !record.LastDropID.Valid || record.LastDropID.String == encodedDeviceData || record.LastDropID.String != scopedRequestID("drop", testItemID, encodedDeviceData) {
+		t.Fatalf("raw client request id was stored: %q", record.LastDropID.String)
+	}
+}
+
 func newTestStore(t *testing.T) *store {
 	t.Helper()
 	provenanceSigner, err := newTestSigner()
@@ -239,7 +306,7 @@ func dropTestItem(t *testing.T, itemStore *store, id, secret string) publicItem 
 		ID: id, Kind: kindStrawberry, Generation: 0,
 		CapabilitySecret: secret, Capsule: provenanceCapsule{},
 		Location:      location{Latitude: 52.52, Longitude: 13.405, AccuracyM: 3},
-		IdempotencyID: "drop-1",
+		IdempotencyID: testRequestID(1),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -253,4 +320,8 @@ func firstDropCapsule(item publicItem) provenanceCapsule {
 
 func testSecret(value byte) string {
 	return base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{value}, 32))
+}
+
+func testRequestID(value int) string {
+	return fmt.Sprintf("00000000-0000-4000-8000-%012d", value)
 }

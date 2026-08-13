@@ -29,6 +29,12 @@ Dezimalstellen gerundete Koordinaten, Vorgänger-Hash und eine ECDSA-P-256-
 Signatur. Der aktuelle öffentliche Fundort ist dagegen absichtlich exakt. Nach
 dem Aufheben werden dessen Koordinaten gelöscht. Es gibt keine Nutzer-, Geräte-,
 Besitzer- oder Übergabetabelle und keine Request-, IP- oder User-Agent-Logs.
+Vor jedem schreibenden Commit prüft der Server Tabellen und Spalten gegen eine
+feste Allowlist, validiert den vollständigen geänderten Datensatz sowie die
+Provenance-JSON-Struktur und bricht die Transaktion bei Abweichungen ab.
+Clientseitige Idempotenz-UUIDs werden nur als aktions- und itemgebundener
+SHA-256-Wert gespeichert. Auch API-Antworttypen und JSON-Feldnamen folgen einer
+festen Allowlist; unbekannte Antwortstrukturen werden nicht ausgeliefert.
 
 V1 akzeptiert Standort-Spoofing durch eine veränderte offizielle App als
 bekannte Grenze. Play Integrity, Standortattestierung, Geospatial/VPS und

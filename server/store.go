@@ -18,6 +18,8 @@ var (
 	errOutOfRange     = errors.New("out of range")
 	errUnauthorized   = errors.New("unauthorized")
 	errConflict       = errors.New("conflict")
+	errInvalidInput   = errors.New("invalid input")
+	errPrivacyGuard   = errors.New("privacy guard rejected data")
 )
 
 type itemRecord struct {
@@ -84,7 +86,10 @@ CREATE TABLE IF NOT EXISTS items (
 );
 CREATE INDEX IF NOT EXISTS items_public_location ON items(state, latitude, longitude);
 `)
-	return err
+	if err != nil {
+		return err
+	}
+	return validatePrivacySchema(context.Background(), value.db)
 }
 
 type dropInput struct {
@@ -107,6 +112,10 @@ type publicItem struct {
 }
 
 func (value *store) drop(ctx context.Context, input dropInput) (publicItem, error) {
+	if !opaqueIDPattern.MatchString(input.ID) || !opaqueIDPattern.MatchString(input.IdempotencyID) {
+		return publicItem{}, errInvalidInput
+	}
+	dropID := scopedRequestID("drop", input.ID, input.IdempotencyID)
 	capHash, err := capabilityHash(input.CapabilitySecret)
 	if err != nil {
 		return publicItem{}, err
@@ -138,7 +147,7 @@ func (value *store) drop(ctx context.Context, input dropInput) (publicItem, erro
 	} else if err != nil {
 		return publicItem{}, err
 	} else {
-		if record.LastDropID.Valid && record.LastDropID.String == input.IdempotencyID && record.State == statePublic {
+		if record.LastDropID.Valid && record.LastDropID.String == dropID && record.State == statePublic {
 			result, decodeErr := record.public()
 			return result, decodeErr
 		}
@@ -173,7 +182,7 @@ ON CONFLICT(id) DO UPDATE SET
     accuracy_m = excluded.accuracy_m, dropped_day = excluded.dropped_day, public_capsule = excluded.public_capsule,
     claim_id = NULL, claim_capsule = NULL, last_drop_id = excluded.last_drop_id
 WHERE items.state = 'OWNED' AND items.capability_hash = excluded.capability_hash
-`, input.ID, input.Kind, input.Generation, capHash, head, input.Location.Latitude, input.Location.Longitude, input.Location.AccuracyM, day, encodedCapsule, input.IdempotencyID)
+`, input.ID, input.Kind, input.Generation, capHash, head, input.Location.Latitude, input.Location.Longitude, input.Location.AccuracyM, day, encodedCapsule, dropID)
 		if err == nil {
 			changed, rowsErr := result.RowsAffected()
 			if rowsErr != nil {
@@ -184,6 +193,9 @@ WHERE items.state = 'OWNED' AND items.capability_hash = excluded.capability_hash
 		}
 	}
 	if err != nil {
+		return publicItem{}, err
+	}
+	if err := value.validatePrivacyAfterMutation(ctx, tx, input.ID); err != nil {
 		return publicItem{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -218,11 +230,15 @@ type claimedItem struct {
 }
 
 func (value *store) claim(ctx context.Context, input claimInput) (claimedItem, error) {
+	if !opaqueIDPattern.MatchString(input.ID) || !opaqueIDPattern.MatchString(input.IdempotencyID) {
+		return claimedItem{}, errInvalidInput
+	}
+	claimID := scopedRequestID("claim", input.ID, input.IdempotencyID)
 	record, err := readItem(ctx, value.db, input.ID)
 	if err != nil {
 		return claimedItem{}, err
 	}
-	if record.State == stateClaiming && record.ClaimID.String == input.IdempotencyID && bytes.Equal(record.CapabilityHash, input.NewCapabilityHash) {
+	if record.State == stateClaiming && record.ClaimID.String == claimID && bytes.Equal(record.CapabilityHash, input.NewCapabilityHash) {
 		result, decodeErr := record.claimed()
 		return result, decodeErr
 	}
@@ -247,7 +263,7 @@ UPDATE items SET
     claim_id = ?, claim_capsule = public_capsule, public_capsule = NULL,
     last_drop_id = NULL
 WHERE id = ? AND state = 'PUBLIC'
-`, input.NewCapabilityHash, input.IdempotencyID, input.ID)
+`, input.NewCapabilityHash, claimID, input.ID)
 	if err != nil {
 		return claimedItem{}, err
 	}
@@ -261,10 +277,13 @@ WHERE id = ? AND state = 'PUBLIC'
 	record.Generation++
 	record.State = stateClaiming
 	record.CapabilityHash = input.NewCapabilityHash
-	record.ClaimID = sql.NullString{String: input.IdempotencyID, Valid: true}
+	record.ClaimID = sql.NullString{String: claimID, Valid: true}
 	record.ClaimCapsule = record.PublicCapsule
 	claimed, err := record.claimed()
 	if err != nil {
+		return claimedItem{}, err
+	}
+	if err := value.validatePrivacyAfterMutation(ctx, tx, input.ID); err != nil {
 		return claimedItem{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -274,6 +293,10 @@ WHERE id = ? AND state = 'PUBLIC'
 }
 
 func (value *store) recover(ctx context.Context, id, claimID, capabilitySecret string) (claimedItem, error) {
+	if !opaqueIDPattern.MatchString(id) || !opaqueIDPattern.MatchString(claimID) {
+		return claimedItem{}, errInvalidInput
+	}
+	claimID = scopedRequestID("claim", id, claimID)
 	hash, err := capabilityHash(capabilitySecret)
 	if err != nil {
 		return claimedItem{}, err
@@ -289,11 +312,20 @@ func (value *store) recover(ctx context.Context, id, claimID, capabilitySecret s
 }
 
 func (value *store) acknowledge(ctx context.Context, id, claimID, capabilitySecret string) error {
+	if !opaqueIDPattern.MatchString(id) || !opaqueIDPattern.MatchString(claimID) {
+		return errInvalidInput
+	}
+	claimID = scopedRequestID("claim", id, claimID)
 	hash, err := capabilityHash(capabilitySecret)
 	if err != nil {
 		return err
 	}
-	result, err := value.db.ExecContext(ctx, `
+	tx, err := value.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `
 UPDATE items SET state = 'OWNED', claim_capsule = NULL
     , claim_id = NULL
 WHERE id = ? AND state = 'CLAIMING' AND claim_id = ? AND capability_hash = ?
@@ -306,11 +338,14 @@ WHERE id = ? AND state = 'CLAIMING' AND claim_id = ? AND capability_hash = ?
 		return err
 	}
 	if changed == 1 {
-		return nil
+		if err := value.validatePrivacyAfterMutation(ctx, tx, id); err != nil {
+			return err
+		}
+		return tx.Commit()
 	}
-	record, readErr := readItem(ctx, value.db, id)
+	record, readErr := readItem(ctx, tx, id)
 	if readErr == nil && record.State == stateOwned && !record.ClaimID.Valid && bytes.Equal(record.CapabilityHash, hash) {
-		return nil
+		return tx.Commit()
 	}
 	return errUnauthorized
 }

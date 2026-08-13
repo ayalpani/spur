@@ -25,7 +25,8 @@ const (
 	stateClaiming = "CLAIMING"
 )
 
-var itemIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
+// UUIDv4 excludes timestamp- and MAC-derived UUID variants and bounds client-controlled IDs.
+var opaqueIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 
 type itemKind string
 
@@ -208,6 +209,11 @@ func decodeHash(value string) ([]byte, error) {
 		return nil, errors.New("capability hash must contain 32 bytes")
 	}
 	return decoded, nil
+}
+
+func scopedRequestID(action, itemID, requestID string) string {
+	digest := sha256.Sum256([]byte(action + "\x00" + itemID + "\x00" + requestID))
+	return base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
 func distanceMeters(a, b location) float64 {

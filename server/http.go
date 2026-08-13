@@ -27,7 +27,7 @@ func (value *api) handler() http.Handler {
 }
 
 func (value *api) health(response http.ResponseWriter, _ *http.Request) {
-	writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(response, http.StatusOK, healthResponse{Status: "ok"})
 }
 
 func (value *api) listItems(response http.ResponseWriter, request *http.Request) {
@@ -47,10 +47,10 @@ func (value *api) listItems(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	if zoom >= 12 {
-		writeJSON(response, http.StatusOK, map[string]any{"items": items, "clusters": []any{}})
+		writeJSON(response, http.StatusOK, itemListResponse{Items: items, Clusters: []publicCluster{}})
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"items": []any{}, "clusters": clusterItems(items, zoom)})
+	writeJSON(response, http.StatusOK, itemListResponse{Items: []publicItem{}, Clusters: clusterItems(items, zoom)})
 }
 
 func (value *api) getItem(response http.ResponseWriter, request *http.Request) {
@@ -82,7 +82,7 @@ func (value *api) dropItem(response http.ResponseWriter, request *http.Request) 
 		return
 	}
 	id := request.PathValue("id")
-	if !itemIDPattern.MatchString(id) || !body.Kind.valid() || !body.Location.valid() || body.IdempotencyID == "" {
+	if !opaqueIDPattern.MatchString(id) || !body.Kind.valid() || !body.Location.valid() || !opaqueIDPattern.MatchString(body.IdempotencyID) {
 		writeAPIError(response, http.StatusBadRequest, "invalid_drop", "Ablageangaben sind ungültig")
 		return
 	}
@@ -109,7 +109,7 @@ func (value *api) claimItem(response http.ResponseWriter, request *http.Request)
 		return
 	}
 	hash, err := decodeHash(body.NewCapabilityHash)
-	if err != nil || !body.Location.valid() || body.IdempotencyID == "" {
+	if err != nil || !body.Location.valid() || !opaqueIDPattern.MatchString(body.IdempotencyID) {
 		writeAPIError(response, http.StatusBadRequest, "invalid_claim", "Aufnahmeangaben sind ungültig")
 		return
 	}
@@ -151,7 +151,7 @@ func (value *api) acknowledgeClaim(response http.ResponseWriter, request *http.R
 		writeStoreError(response, err)
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]string{"status": "acknowledged"})
+	writeJSON(response, http.StatusOK, acknowledgementResponse{Status: "acknowledged"})
 }
 
 type publicCluster struct {
@@ -227,19 +227,26 @@ func writeStoreError(response http.ResponseWriter, err error) {
 		writeAPIError(response, http.StatusUnauthorized, "invalid_capability", "Besitznachweis ist ungültig")
 	case errors.Is(err, errConflict):
 		writeAPIError(response, http.StatusConflict, "item_conflict", "Itemzustand hat sich geändert")
+	case errors.Is(err, errInvalidInput):
+		writeAPIError(response, http.StatusBadRequest, "invalid_json", "JSON-Anfrage ist ungültig")
 	default:
 		writeAPIError(response, http.StatusInternalServerError, "internal", "Anfrage konnte nicht verarbeitet werden")
 	}
 }
 
 func writeAPIError(response http.ResponseWriter, status int, code, message string) {
-	writeJSON(response, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+	writeJSON(response, status, apiErrorResponse{Error: apiError{Code: code, Message: message}})
 }
 
 func writeJSON(response http.ResponseWriter, status int, body any) {
+	payload, err := encodePublicJSON(body)
+	if err != nil {
+		status = http.StatusInternalServerError
+		payload = []byte(`{"error":{"code":"privacy_guard","message":"Antwort wurde vom Privacy-Schutz blockiert"}}`)
+	}
 	response.Header().Set("Content-Type", "application/json; charset=utf-8")
 	response.WriteHeader(status)
-	_ = json.NewEncoder(response).Encode(body)
+	_, _ = response.Write(append(payload, '\n'))
 }
 
 func limitBody(next http.Handler) http.Handler {
