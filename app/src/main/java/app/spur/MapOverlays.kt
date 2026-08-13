@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -29,12 +27,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
@@ -111,8 +107,7 @@ internal fun PendingMomentMarker(
                 color = Color.White,
                 style = Stroke(
                     width = MomentMarkerEdgeWidth * 2f * scale,
-                    cap = StrokeCap.Round,
-                    join = StrokeJoin.Round,
+                    join = StrokeJoin.Miter,
                 ),
             )
             drawPath(
@@ -147,14 +142,7 @@ internal fun PendingMomentMarker(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .padding(top = (7f + MomentMarkerVerticalOffset).dp)
-                            .size(40.dp)
-                            .clip(
-                                if (moment.isRoundVideo) {
-                                    CircleShape
-                                } else {
-                                    RoundedCornerShape(5.dp)
-                                },
-                            ),
+                            .size(40.dp),
                     )
                 } else {
                     RotatingAsterisk(
