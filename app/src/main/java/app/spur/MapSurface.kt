@@ -1953,6 +1953,7 @@ internal fun MapSurface(
             indicator = locationEdgeIndicator,
             visible = landmarkIndicatorsVisible,
             colors = locationMarkerColors,
+            pulseColor = trailColors.stroke,
             modifier = Modifier.fillMaxSize(),
         )
 

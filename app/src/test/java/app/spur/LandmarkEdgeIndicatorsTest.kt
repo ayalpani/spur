@@ -56,9 +56,11 @@ class LandmarkEdgeIndicatorsTest {
 
         assertEquals(110f, outside.point.x, 0.001f)
         assertEquals(65.357f, outside.point.y, 0.001f)
+        assertEquals(LandmarkLabelPlacement.LEFT, outside.labelPlacement)
         assertTrue(outside.isOffscreen)
         assertEquals(35f, inside.point.x, 0.001f)
         assertEquals(80f, inside.point.y, 0.001f)
+        assertEquals(LandmarkLabelPlacement.RIGHT, inside.labelPlacement)
         assertFalse(inside.isOffscreen)
     }
 
