@@ -448,4 +448,4 @@ internal const val LandmarkEdgeInsetDp = 24f
 internal const val LocationEdgeInsetDp = 12f
 internal const val LandmarkMinimumSeparationDp = 112f
 internal const val LandmarkMaximumVisibleCount = 5
-internal const val LandmarkIndicatorHideDelayMillis = 500L
+internal const val LandmarkIndicatorHideDelayMillis = 2_000L
