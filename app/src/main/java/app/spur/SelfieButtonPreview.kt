@@ -25,7 +25,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable
-internal fun SelfieButtonPreview() {
+internal fun SelfieButtonPreview(
+    modifier: Modifier = Modifier.size(SelfieButtonPreviewSize),
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraAllowed = context.hasCameraPermission()
@@ -74,8 +76,7 @@ internal fun SelfieButtonPreview() {
     }
 
     Box(
-        modifier = Modifier
-            .size(SelfieButtonPreviewSize)
+        modifier = modifier
             .clip(CircleShape)
             .background(NeutralSurface)
             .clearAndSetSemantics {},

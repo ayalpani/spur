@@ -344,7 +344,7 @@ private fun MomentPickerButton(
 ) {
     SpurSecondaryButton(
         label = when (action) {
-            MomentPickerAction.ROUND_SELFIE_VIDEO -> "Selfie"
+            MomentPickerAction.ROUND_SELFIE_VIDEO -> "Selfie-Cam"
             MomentPickerAction.PHOTO -> "Foto"
             MomentPickerAction.VIDEO -> "Video"
             MomentPickerAction.VOICE -> "Sprache"
@@ -354,7 +354,9 @@ private fun MomentPickerButton(
         modifier = modifier,
         leadingIcon = {
             when (action) {
-                MomentPickerAction.ROUND_SELFIE_VIDEO -> SelfieButtonPreview()
+                MomentPickerAction.ROUND_SELFIE_VIDEO -> SelfieButtonPreview(
+                    modifier = Modifier.size(MomentPickerIconSlotSize),
+                )
                 MomentPickerAction.PHOTO -> MomentPhotoIcon()
                 MomentPickerAction.VIDEO -> MomentVideoIcon()
                 MomentPickerAction.VOICE -> MomentVoiceIcon()
@@ -363,6 +365,9 @@ private fun MomentPickerButton(
             }
         },
         compactContent = true,
+        leadingIconSlotWidth = MomentPickerIconSlotSize,
         onClick = { onSelect(action) },
     )
 }
+
+private val MomentPickerIconSlotSize = 48.dp
