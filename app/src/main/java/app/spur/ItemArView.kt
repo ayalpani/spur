@@ -64,6 +64,8 @@ import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironment
+import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -103,6 +105,8 @@ internal fun ItemArView(
     var pauseObserver by remember { mutableStateOf<LifecycleEventObserver?>(null) }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val environmentLoader = rememberEnvironmentLoader(engine)
+    val environment = rememberEnvironment(environmentLoader, isOpaque = true)
     val northBearing = rememberNorthBearing(deviceLocation)
     var sceneView by remember { mutableStateOf<ARSceneView?>(null) }
     var session by remember { mutableStateOf<Session?>(null) }
@@ -268,11 +272,14 @@ internal fun ItemArView(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
+            environmentLoader = environmentLoader,
+            environment = environment,
             childNodes = publicAnchors.values.map { it.root } + listOfNotNull(placement?.root),
             sessionConfiguration = { _, config ->
                 config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
                 config.depthMode = Config.DepthMode.DISABLED
                 config.instantPlacementMode = Config.InstantPlacementMode.DISABLED
+                config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
             },
             onSessionCreated = {
                 session = it
