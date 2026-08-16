@@ -227,17 +227,33 @@ internal fun ItemArView(
             visibleItems.forEach { item ->
                 if (item.id !in anchorPlan.idsToCreate) return@forEach
                 val offset = localAnchorOffset(location, item.location, bearing)
-                val point = cameraPose.transformPoint(
-                    floatArrayOf(
-                        offset.rightMeters.toFloat(),
-                        0f,
-                        -offset.forwardMeters.toFloat(),
+                val cameraTranslation = cameraPose.translation
+                val cameraXAxis = cameraPose.xAxis
+                val cameraZAxis = cameraPose.zAxis
+                val point = horizontalAnchorPosition(
+                    cameraPosition = ArVector3(
+                        cameraTranslation[0].toDouble(),
+                        cameraTranslation[1].toDouble(),
+                        cameraTranslation[2].toDouble(),
                     ),
+                    cameraForward = ArVector3(
+                        -cameraZAxis[0].toDouble(),
+                        -cameraZAxis[1].toDouble(),
+                        -cameraZAxis[2].toDouble(),
+                    ),
+                    cameraRight = ArVector3(
+                        cameraXAxis[0].toDouble(),
+                        cameraXAxis[1].toDouble(),
+                        cameraXAxis[2].toDouble(),
+                    ),
+                    offset = offset,
                 )
                 val root = createFruitAnchor(
                     engine = engine,
                     modelLoader = modelLoader,
-                    anchor = activeSession.createAnchor(Pose.makeTranslation(point)),
+                    anchor = activeSession.createAnchor(
+                        Pose.makeTranslation(point.x.toFloat(), point.y.toFloat(), point.z.toFloat()),
+                    ),
                     kind = item.kind,
                     heightMeters = 0f,
                     localOffset = offset,

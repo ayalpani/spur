@@ -38,6 +38,20 @@ class ItemSpatialMathTest {
     }
 
     @Test
+    fun `camera pitch cannot pull a public anchor below eye height`() {
+        val point = horizontalAnchorPosition(
+            cameraPosition = ArVector3(1.0, 1.6, 2.0),
+            cameraForward = ArVector3(0.0, -0.8, -0.6),
+            cameraRight = ArVector3(1.0, 0.0, 0.0),
+            offset = LocalArOffset(rightMeters = 2.0, forwardMeters = 5.0),
+        )
+
+        assertEquals(3.0, point.x, 0.001)
+        assertEquals(1.6, point.y, 0.001)
+        assertEquals(-3.0, point.z, 0.001)
+    }
+
+    @Test
     fun `bearing smoothing takes shortest path around north`() {
         assertEquals(1.0, smoothBearingDegrees(359.0, 1.0, 1.0), 0.001)
         assertEquals(359.36, smoothBearingDegrees(359.0, 1.0), 0.001)
