@@ -46,6 +46,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun ArInventoryRail(
     items: List<OwnedItem>,
+    pendingItemIds: Set<String> = emptySet(),
     selectedItemId: String?,
     onSelect: (OwnedItem) -> Unit,
     available: Boolean = true,
@@ -81,6 +82,7 @@ internal fun ArInventoryRail(
             ) {
                 items.forEach { item ->
                     val selected = item.id == selectedItemId
+                    val pending = item.id in pendingItemIds
                     Column(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
@@ -91,10 +93,14 @@ internal fun ArInventoryRail(
                                 ),
                                 RoundedCornerShape(20.dp),
                             )
-                            .clickable { onSelect(item) }
+                            .clickable(enabled = !pending) { onSelect(item) }
                             .padding(horizontal = 18.dp, vertical = 8.dp)
                             .semantics {
-                                contentDescription = "${item.kind.displayName} im Raum ablegen"
+                                contentDescription = if (pending) {
+                                    "${item.kind.displayName} ist noch nicht veröffentlicht"
+                                } else {
+                                    "${item.kind.displayName} im Raum ablegen"
+                                }
                             },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -108,6 +114,13 @@ internal fun ArInventoryRail(
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                         )
+                        if (pending) {
+                            Text(
+                                text = "Noch nicht veröffentlicht",
+                                color = Ink.copy(alpha = 0.62f),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
                     }
                 }
             }
@@ -183,7 +196,7 @@ internal fun InventoryPage(
                 if (inventory.pendingDrops.isNotEmpty() || inventory.pendingClaims.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(20.dp))
                     Text(
-                        text = "${inventory.pendingDrops.size + inventory.pendingClaims.size} Übertragung wird fortgesetzt …",
+                        text = pendingTransferMessage(inventory),
                         color = Ink.copy(alpha = 0.62f),
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -191,6 +204,16 @@ internal fun InventoryPage(
             }
         }
     }
+}
+
+internal fun pendingTransferMessage(inventory: ItemInventory): String = when {
+    inventory.pendingDrops.isNotEmpty() -> {
+        val count = inventory.pendingDrops.size
+        "$count ${if (count == 1) "Item ist" else "Items sind"} noch nicht veröffentlicht. " +
+            "Der Besitz bleibt auf diesem Gerät, bis der Server bestätigt."
+    }
+    inventory.pendingClaims.isNotEmpty() -> "Eine Aufnahme wird sicher fortgesetzt."
+    else -> ""
 }
 
 @Composable

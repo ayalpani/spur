@@ -427,9 +427,8 @@ internal fun ItemArView(
 
         if (selectedOwnedItem == null) {
             ArInventoryRail(
-                items = inventory.items.filterNot { item ->
-                    inventory.pendingDrops.any { it.itemId == item.id }
-                },
+                items = inventory.items,
+                pendingItemIds = inventory.pendingDrops.mapTo(mutableSetOf()) { it.itemId },
                 selectedItemId = null,
                 onSelect = { selectedOwnedItem = it },
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -445,8 +444,15 @@ internal fun ItemArView(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (placement != null) {
+                    val selectedDropPending = inventory.pendingDrops.any {
+                        it.itemId == selectedOwnedItem?.id
+                    }
                     SpurPrimaryButton(
-                        label = if (dropping) "Wird abgelegt …" else "Hier ablegen",
+                        label = when {
+                            dropping -> "Wird veröffentlicht …"
+                            selectedDropPending -> "Erneut veröffentlichen"
+                            else -> "Hier ablegen"
+                        },
                         enabled = !dropping,
                         onClick = {
                             val item = selectedOwnedItem ?: return@SpurPrimaryButton
@@ -470,13 +476,7 @@ internal fun ItemArView(
                                 )
                                 when (onDrop(item, destination)) {
                                     DropOutcome.DROPPED -> cancelPlacement()
-                                    DropOutcome.PENDING -> {
-                                        cancelPlacement()
-                                        onNotice(
-                                            FeedbackNoticeKind.PLACEHOLDER,
-                                            "Ablage wird fortgesetzt",
-                                        )
-                                    }
+                                    DropOutcome.PENDING -> Unit
                                     DropOutcome.FAILED -> Unit
                                 }
                                 dropping = false

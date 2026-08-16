@@ -61,6 +61,10 @@ class ItemInventoryTest {
         val machine = ItemTransferMachine(ItemInventory(items = listOf(item)))
         machine.beginDrop(item.id, "drop-1", ItemLocation(1.0, 2.0, 3.0))
         assertTrue(machine.inventory.items.any { it.id == item.id })
+        assertEquals(
+            "1 Item ist noch nicht veröffentlicht. Der Besitz bleibt auf diesem Gerät, bis der Server bestätigt.",
+            pendingTransferMessage(machine.inventory),
+        )
         machine.cancelDrop(item.id)
         assertTrue(machine.inventory.pendingDrops.isEmpty())
         machine.beginDrop(item.id, "drop-2", ItemLocation(1.0, 2.0, 3.0))
