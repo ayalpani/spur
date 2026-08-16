@@ -49,4 +49,8 @@ nicht zu diesem Schnitt.
   früherer Besitzer und keine zentimetergenaue historische Position.
 - Ein `CLAIMING`-Datensatz hält die Kapsel bis zum bestätigten `ack`, damit ein
   Prozessabbruch kein Item vernichtet.
+- ARCore darf Kamera- und hochfrequente Bewegungssensordaten ausschließlich
+  lokal für die räumliche Darstellung verarbeiten; Spur lädt diese Daten nicht
+  hoch. Die höhere Sensorrate umgeht zugleich einen ARCore-1.54-Fehler auf
+  betroffenen Samsung-Geräten mit Android 16.
 - Die API und Betriebsdiagnostik dürfen keine zusätzliche Identität ableiten.

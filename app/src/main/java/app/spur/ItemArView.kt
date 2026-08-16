@@ -56,6 +56,7 @@ import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
+import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AnchorNode
@@ -105,6 +106,7 @@ internal fun ItemArView(
     val northBearing = rememberNorthBearing(deviceLocation)
     var sceneView by remember { mutableStateOf<ARSceneView?>(null) }
     var session by remember { mutableStateOf<Session?>(null) }
+    var cameraTracking by remember { mutableStateOf(false) }
     val latestFrame = remember { arrayOfNulls<Frame>(1) }
     var validGroundHit by remember { mutableStateOf(false) }
     var selectedOwnedItem by remember { mutableStateOf<OwnedItem?>(null) }
@@ -151,6 +153,13 @@ internal fun ItemArView(
         val selected = selectedOwnedItem ?: return
         val activeSession = session ?: return
         val frame = latestFrame[0] ?: return
+        if (!cameraTracking || frame.camera.trackingState != TrackingState.TRACKING) {
+            onNotice(
+                FeedbackNoticeKind.PLACEHOLDER,
+                "Bewege dein Handy noch einen Moment",
+            )
+            return
+        }
         clearPlacement()
         val pose = frame.camera.pose.compose(Pose.makeTranslation(0f, 0f, -2f))
         placement = createFruitAnchor(
@@ -180,8 +189,9 @@ internal fun ItemArView(
         Pair((it.latitude * 100_000).roundToInt(), (it.longitude * 100_000).roundToInt())
     }
     val bearingKey = northBearing?.div(5f)?.roundToInt()
-    LaunchedEffect(session, nearbyWithTarget, locationKey, bearingKey) {
+    LaunchedEffect(session, nearbyWithTarget, locationKey, bearingKey, cameraTracking) {
         val activeSession = session ?: return@LaunchedEffect
+        if (!cameraTracking) return@LaunchedEffect
         val location = deviceLocation?.toItemLocation() ?: return@LaunchedEffect
         val bearing = northBearing?.toDouble() ?: return@LaunchedEffect
         delay(120)
@@ -266,13 +276,16 @@ internal fun ItemArView(
             },
             onSessionCreated = {
                 session = it
+                cameraTracking = false
                 sessionError = null
             },
             onSessionFailed = {
+                cameraTracking = false
                 sessionError = "AR ist auf diesem Gerät gerade nicht verfügbar."
             },
             onSessionUpdated = { _, frame ->
                 latestFrame[0] = frame
+                cameraTracking = frame.camera.trackingState == TrackingState.TRACKING
                 val view = sceneView
                 val hit = if (view == null || selectedOwnedItem == null) {
                     null
@@ -336,6 +349,7 @@ internal fun ItemArView(
                         lifecycle = dormantArLifecycleOwner.lifecycle
                         sceneView = null
                         session = null
+                        cameraTracking = false
                         onNotice(
                             FeedbackNoticeKind.ERROR,
                             "AR ist auf diesem Gerät gerade nicht verfügbar.",
