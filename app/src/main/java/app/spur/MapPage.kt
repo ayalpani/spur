@@ -1126,7 +1126,8 @@ internal fun MapPage(
                         .navigationBarsPadding()
                         .padding(
                             start = MapControlHorizontalPadding,
-                            bottom = MapControlVerticalPadding,
+                            bottom = MapControlVerticalPadding +
+                                if (hasWaypointRail) WaypointRailHeight else 0.dp,
                         )
                         .zIndex(2f),
                     verticalArrangement = Arrangement.spacedBy(MapControlGap),
