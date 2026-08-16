@@ -60,4 +60,42 @@ class ItemSpatialMathTest {
         assertEquals(WorldMode.MAP, openArMode(mode, arClosing = true))
         assertEquals(WorldMode.AR, openArMode(mode, arClosing = false))
     }
+
+    @Test
+    fun `public anchors stay attached when the same items remain visible`() {
+        val plan = planPublicAnchors(
+            existingIds = setOf("strawberry", "pear"),
+            visibleIds = setOf("strawberry", "pear"),
+            sessionChanged = false,
+        )
+
+        assertEquals(emptySet<String>(), plan.idsToRemove)
+        assertEquals(emptySet<String>(), plan.idsToCreate)
+    }
+
+    @Test
+    fun `public anchors are replaced only with a new session or changed item set`() {
+        assertEquals(
+            PublicAnchorPlan(
+                idsToRemove = setOf("strawberry"),
+                idsToCreate = setOf("strawberry", "banana"),
+            ),
+            planPublicAnchors(
+                existingIds = setOf("strawberry"),
+                visibleIds = setOf("strawberry", "banana"),
+                sessionChanged = true,
+            ),
+        )
+        assertEquals(
+            PublicAnchorPlan(
+                idsToRemove = setOf("pear"),
+                idsToCreate = setOf("banana"),
+            ),
+            planPublicAnchors(
+                existingIds = setOf("strawberry", "pear"),
+                visibleIds = setOf("strawberry", "banana"),
+                sessionChanged = false,
+            ),
+        )
+    }
 }

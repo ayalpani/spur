@@ -69,7 +69,6 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 internal enum class ClaimOutcome {
@@ -116,11 +115,15 @@ internal fun ItemArView(
     var selectedOwnedItem by remember { mutableStateOf<OwnedItem?>(null) }
     var placement by remember { mutableStateOf<FruitAnchor?>(null) }
     var publicAnchors by remember { mutableStateOf<Map<String, FruitAnchor>>(emptyMap()) }
+    var publicAnchorSession by remember { mutableStateOf<Session?>(null) }
     var showApproximatePlacement by remember { mutableStateOf(false) }
     var waitingForLocation by remember { mutableStateOf(false) }
     var dropping by remember { mutableStateOf(false) }
     var claimingItemId by remember { mutableStateOf<String?>(null) }
     var sessionError by remember { mutableStateOf<String?>(null) }
+    val currentDeviceLocation by rememberUpdatedState(deviceLocation)
+    val currentOnClaim by rememberUpdatedState(onClaim)
+    val currentOnNotice by rememberUpdatedState(onNotice)
 
     fun clearPlacement() {
         placement?.root?.destroy()
@@ -189,21 +192,40 @@ internal fun ItemArView(
     val nearbyWithTarget = remember(nearbyItems, selectedTarget) {
         (nearbyItems + listOfNotNull(selectedTarget)).distinctBy { it.id }
     }
-    val locationKey = deviceLocation?.let {
-        Pair((it.latitude * 100_000).roundToInt(), (it.longitude * 100_000).roundToInt())
-    }
-    val bearingKey = northBearing?.div(5f)?.roundToInt()
-    LaunchedEffect(session, nearbyWithTarget, locationKey, bearingKey, cameraTracking) {
-        val activeSession = session ?: return@LaunchedEffect
+    // Location and north seed each item's world pose once. Their live values must not restart
+    // this effect: ARCore owns the stable anchor while the user pans or walks around it.
+    val publicAnchorReferenceAvailable = deviceLocation != null && northBearing != null
+    LaunchedEffect(session, nearbyWithTarget, publicAnchorReferenceAvailable, cameraTracking) {
+        val activeSession = session
+        if (activeSession == null) {
+            publicAnchors.values.forEach { it.root.destroy() }
+            publicAnchors = emptyMap()
+            publicAnchorSession = null
+            return@LaunchedEffect
+        }
+        val sessionChanged = publicAnchorSession !== activeSession
+        if (sessionChanged) {
+            publicAnchors.values.forEach { it.root.destroy() }
+            publicAnchors = emptyMap()
+            publicAnchorSession = activeSession
+        }
         if (!cameraTracking) return@LaunchedEffect
         val location = deviceLocation?.toItemLocation() ?: return@LaunchedEffect
         val bearing = northBearing?.toDouble() ?: return@LaunchedEffect
         delay(120)
         val cameraPose = latestFrame[0]?.camera?.pose ?: return@LaunchedEffect
-        val next = buildMap {
-            nearbyWithTarget.forEach { item ->
-                val distance = distanceMeters(location, item.location)
-                if (distance > ItemSpatialRadiusMeters) return@forEach
+        val visibleItems = nearbyWithTarget.filter { item ->
+            distanceMeters(location, item.location) <= ItemSpatialRadiusMeters
+        }
+        val anchorPlan = planPublicAnchors(
+            existingIds = publicAnchors.keys,
+            visibleIds = visibleItems.mapTo(mutableSetOf()) { it.id },
+            sessionChanged = sessionChanged,
+        )
+        anchorPlan.idsToRemove.forEach { id -> publicAnchors[id]?.root?.destroy() }
+        val next = publicAnchors - anchorPlan.idsToRemove + buildMap {
+            visibleItems.forEach { item ->
+                if (item.id !in anchorPlan.idsToCreate) return@forEach
                 val offset = localAnchorOffset(location, item.location, bearing)
                 val point = cameraPose.transformPoint(
                     floatArrayOf(
@@ -219,24 +241,27 @@ internal fun ItemArView(
                     kind = item.kind,
                     heightMeters = 0f,
                     localOffset = offset,
-                    onTap = {
+                    onTap = onTap@{
+                        val claimLocation = currentDeviceLocation?.toItemLocation()
+                            ?: return@onTap
+                        val claimDistance = distanceMeters(claimLocation, item.location)
                         if (
                             claimingItemId == null &&
-                            nearbyItemPresentation(distance, location.accuracyMeters) ==
+                            nearbyItemPresentation(claimDistance, claimLocation.accuracyMeters) ==
                             NearbyItemPresentation.CLAIMABLE
                         ) {
                             claimingItemId = item.id
                             scope.launch {
-                                when (onClaim(item, deviceLocation.toItemLocation())) {
-                                    ClaimOutcome.CLAIMED -> onNotice(
+                                when (currentOnClaim(item, claimLocation)) {
+                                    ClaimOutcome.CLAIMED -> currentOnNotice(
                                         FeedbackNoticeKind.PLACEHOLDER,
                                         "${item.kind.displayName} aufgenommen",
                                     )
-                                    ClaimOutcome.ALREADY_CLAIMED -> onNotice(
+                                    ClaimOutcome.ALREADY_CLAIMED -> currentOnNotice(
                                         FeedbackNoticeKind.PLACEHOLDER,
                                         "Schon gefunden",
                                     )
-                                    ClaimOutcome.FAILED -> onNotice(
+                                    ClaimOutcome.FAILED -> currentOnNotice(
                                         FeedbackNoticeKind.ERROR,
                                         "Item konnte nicht aufgenommen werden.",
                                     )
@@ -249,7 +274,6 @@ internal fun ItemArView(
                 put(item.id, root)
             }
         }
-        publicAnchors.values.forEach { it.root.destroy() }
         publicAnchors = next
     }
 

@@ -67,6 +67,23 @@ internal data class FruitAnchor(
     val baseHeightMeters: Float,
 )
 
+internal data class PublicAnchorPlan(
+    val idsToRemove: Set<String>,
+    val idsToCreate: Set<String>,
+)
+
+internal fun planPublicAnchors(
+    existingIds: Set<String>,
+    visibleIds: Set<String>,
+    sessionChanged: Boolean,
+): PublicAnchorPlan {
+    val retainedIds = if (sessionChanged) emptySet() else existingIds intersect visibleIds
+    return PublicAnchorPlan(
+        idsToRemove = existingIds - retainedIds,
+        idsToCreate = visibleIds - retainedIds,
+    )
+}
+
 @Composable
 internal fun PlacementGuidance(
     validGroundHit: Boolean,
