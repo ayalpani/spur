@@ -124,6 +124,7 @@ internal fun MapPage(
     var itemMapBounds by remember { mutableStateOf<ItemMapBounds?>(null) }
     var publicItemsPage by remember { mutableStateOf(PublicItemsPage(emptyList(), emptyList())) }
     var nearbyItems by remember { mutableStateOf(emptyList<PublicItem>()) }
+    var itemWorldRefreshGeneration by remember { mutableLongStateOf(0L) }
     var selectedPublicItem by remember { mutableStateOf<PublicItem?>(null) }
     var itemTarget by remember { mutableStateOf<PublicItem?>(null) }
     var showInventoryPage by rememberSaveable { mutableStateOf(false) }
@@ -334,14 +335,20 @@ internal fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
     LaunchedEffect(itemRepository) {
         runCatching { itemRepository?.resumeTransfers() }
+        itemWorldRefreshGeneration++
     }
-    LaunchedEffect(itemMapBounds, mapViewport?.zoom) {
+    LaunchedEffect(itemMapBounds, mapViewport?.zoom, itemWorldRefreshGeneration) {
         val bounds = itemMapBounds ?: return@LaunchedEffect
         delay(300)
         runCatching { itemsApi.list(bounds, mapViewport?.zoom ?: defaultMapZoom) }
             .onSuccess { publicItemsPage = it }
     }
-    LaunchedEffect(worldMode, latestItemLocation?.latitude, latestItemLocation?.longitude) {
+    LaunchedEffect(
+        worldMode,
+        latestItemLocation?.latitude,
+        latestItemLocation?.longitude,
+        itemWorldRefreshGeneration,
+    ) {
         if (worldMode != WorldMode.AR) return@LaunchedEffect
         val location = latestItemLocation ?: return@LaunchedEffect
         runCatching { itemsApi.nearby(location.toItemLocation()) }
@@ -721,6 +728,7 @@ internal fun MapPage(
                                     items = publicItemsPage.items.filterNot { it.id == dropped.id } + dropped,
                                 )
                                 itemTarget = dropped
+                                itemWorldRefreshGeneration++
                                 showFeedbackNotice(
                                     FeedbackNoticeKind.PLACEHOLDER,
                                     "${item.kind.displayName} abgelegt",
