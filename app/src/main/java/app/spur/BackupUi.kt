@@ -2,7 +2,10 @@ package app.spur
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
+import android.os.Build
 import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -74,7 +77,9 @@ internal fun BackupBottomSheet(
         message = null
         scope.launch {
             runCatching { context.createBackupInSelectedFolder() }
-                .onSuccess { message = "Backup gespeichert." }
+                .onSuccess {
+                    message = backupStoredMessage(context.loadSpurBackupSettings())
+                }
                 .onFailure { message = context.backupUiError(it) }
             refreshSettings()
             operation = null
@@ -92,11 +97,21 @@ internal fun BackupBottomSheet(
                 withContext(Dispatchers.IO) { context.selectSpurBackupFolder(uri) }
                 context.createBackupInSelectedFolder()
             }
-                .onSuccess { message = "Speicherort gewählt und Backup gespeichert." }
+                .onSuccess {
+                    message = backupStoredMessage(
+                        context.loadSpurBackupSettings(),
+                        destinationSelected = true,
+                    )
+                }
                 .onFailure { message = context.backupUiError(it) }
             refreshSettings()
             operation = null
         }
+    }
+    val wifiSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        if (context.loadSpurBackupSettings().waitingForWifi) saveNow()
     }
     val restoreLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -213,11 +228,19 @@ internal fun BackupBottomSheet(
             SpurPrimaryButton(
                 label = if (operation == BackupOperation.SAVING) {
                     "Backup wird erstellt …"
+                } else if (settings.waitingForWifi) {
+                    "WLAN verbinden"
                 } else {
                     "Jetzt sichern"
                 },
                 enabled = operation == null,
-                onClick = ::saveNow,
+                onClick = {
+                    if (settings.waitingForWifi) {
+                        wifiSettingsLauncher.launch(wifiSettingsIntent())
+                    } else {
+                        saveNow()
+                    }
+                },
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -315,17 +338,36 @@ private fun AutomaticBackupRow(
 
 @Composable
 private fun BackupStatus(settings: SpurBackupSettings) {
-    val status = when {
-        settings.lastError != null -> settings.lastError
-        settings.lastSuccessAt != null -> "Zuletzt gesichert: ${formatBackupDate(settings.lastSuccessAt)}"
-        else -> "Noch kein Backup gespeichert."
-    }
     Text(
-        text = status,
+        text = backupStatusText(settings),
         modifier = Modifier.fillMaxWidth(),
         color = Ink.copy(alpha = 0.62f),
         style = MaterialTheme.typography.bodyMedium,
     )
+}
+
+internal fun backupStatusText(settings: SpurBackupSettings): String = when {
+    settings.waitingForWifi -> "Backup ausstehend – WLAN verbinden."
+    settings.lastError != null -> settings.lastError
+    settings.lastSuccessAt != null && settings.treeUri?.isGoogleDriveDestination() == true ->
+        "Zuletzt an Drive übergeben: ${formatBackupDate(settings.lastSuccessAt)}"
+    settings.lastSuccessAt != null -> "Zuletzt gesichert: ${formatBackupDate(settings.lastSuccessAt)}"
+    else -> "Noch kein Backup gespeichert."
+}
+
+private fun backupStoredMessage(
+    settings: SpurBackupSettings,
+    destinationSelected: Boolean = false,
+): String = if (settings.treeUri?.isGoogleDriveDestination() == true) {
+    if (destinationSelected) {
+        "Speicherort gewählt und Backup an Drive übergeben. Drive synchronisiert im Hintergrund."
+    } else {
+        "Backup an Drive übergeben. Drive synchronisiert im Hintergrund."
+    }
+} else if (destinationSelected) {
+    "Speicherort gewählt und Backup gespeichert."
+} else {
+    "Backup gespeichert."
 }
 
 @Composable
@@ -396,8 +438,18 @@ private fun Context.backupUiError(error: Throwable): String = when {
     error.message?.startsWith("Während einer laufenden Tour") == true ->
         requireNotNull(error.message)
     error is SecurityException -> "Der Speicherort ist nicht mehr verfügbar."
+    error is BackupWaitingForWifiException ->
+        "Google Drive wird nur über eine aktive WLAN-Verbindung gesichert."
     else -> "Das Backup konnte nicht verarbeitet werden."
 }
+
+private fun wifiSettingsIntent(): Intent = Intent(
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        Settings.Panel.ACTION_WIFI
+    } else {
+        Settings.ACTION_WIFI_SETTINGS
+    },
+)
 
 private tailrec fun Context.findBackupActivity(): ComponentActivity? = when (this) {
     is ComponentActivity -> this
