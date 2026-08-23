@@ -32,5 +32,15 @@ state. A restored Home automation setting is re-armed only when the device still
 has the required permissions.
 
 Automatic backup uses one delayed WorkManager job after a completed tour. Each
-successful write creates a new document before deleting the previous successful
-backup, so an interrupted provider write cannot destroy the last good copy.
+Google Drive backup requires a validated Wi-Fi connection; without one, Spur
+keeps the backup pending and offers the Android Wi-Fi panel. Local document
+providers remain available offline. The UI distinguishes between a backup
+saved by a local document provider and one merely handed to Drive for
+background synchronization; Android's document-provider API does not report
+when Drive has committed the file to the cloud.
+
+Drive generations are not deleted automatically because its document provider
+can acknowledge a local queued write before the cloud upload finishes. Other
+document providers still create a new document before deleting the previous
+successful backup, so an interrupted provider write cannot destroy the last
+good copy.
