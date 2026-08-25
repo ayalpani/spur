@@ -400,13 +400,18 @@ class RoadProgressTest {
             repeat(22) { addAll(lapAfterStart) }
         }
 
-        val counts = historicalRoadTraversals(
+        val baseCounts = historicalRoadTraversals(
+            routes = listOf(route),
+            roads = listOf(south, east, north, west),
+        )
+        val detailedCounts = historicalRoadTraversals(
             routes = listOf(route),
             roads = listOf(south, east, north, west, parallel),
         )
 
-        assertEquals(22, counts.getValue(south.key).count)
-        assertFalse(parallel.key in counts)
+        assertEquals(22, baseCounts.getValue(south.key).count)
+        assertEquals(22, detailedCounts.getValue(south.key).count)
+        assertFalse(parallel.key in detailedCounts)
     }
 
     @Test

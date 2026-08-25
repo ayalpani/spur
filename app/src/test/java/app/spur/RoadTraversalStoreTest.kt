@@ -42,10 +42,23 @@ class RoadTraversalStoreTest {
                 added = RoadHistoryFingerprint(9, 2, 4),
             ),
         )
+    }
+
+    @Test
+    fun deletionAndPointEditInvalidateEveryCachedRoadCount() {
+        val cached = RoadHistoryFingerprint(9, 5, 12)
+
         assertFalse(
             preservesRoadProgress(
                 cached = cached,
-                current = RoadHistoryFingerprint(7, 2, 6),
+                current = RoadHistoryFingerprint(9, 4, 10),
+                added = RoadHistoryFingerprint(),
+            ),
+        )
+        assertFalse(
+            preservesRoadProgress(
+                cached = cached,
+                current = RoadHistoryFingerprint(9, 5, 13),
                 added = RoadHistoryFingerprint(),
             ),
         )
@@ -68,5 +81,43 @@ class RoadTraversalStoreTest {
             roadCountFeatures(listOf(completed)).single()
                 .getStringProperty(RoadCountLabelProperty),
         )
+    }
+
+    @Test
+    fun rebuildComparisonClassifiesEveryOldAndNewRoadCount() {
+        fun completed(key: String, count: Int) = CompletedRoad(
+            road = RenderedRoadSegment(
+                key = key,
+                points = listOf(
+                    SpurCoordinate(52.5, 13.4),
+                    SpurCoordinate(52.5005, 13.401),
+                ),
+            ),
+            count = count,
+        )
+
+        val change = compareRoadTraversals(
+            old = listOf(
+                completed("same", 2),
+                completed("up", 2),
+                completed("down", 4),
+                completed("removed", 3),
+            ).associateBy { it.road.key },
+            new = listOf(
+                completed("same", 2),
+                completed("up", 5),
+                completed("down", 1),
+                completed("added", 7),
+            ).associateBy { it.road.key },
+        )
+
+        assertEquals(1, change.unchangedRoads)
+        assertEquals(1, change.increasedRoads)
+        assertEquals(1, change.decreasedRoads)
+        assertEquals(1, change.addedRoads)
+        assertEquals(1, change.removedRoads)
+        assertEquals(4, change.changedRoads)
+        assertEquals(11L, change.oldTraversalTotal)
+        assertEquals(15L, change.newTraversalTotal)
     }
 }
