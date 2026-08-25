@@ -626,15 +626,15 @@ internal fun ItemArView(
                 } else {
                     Spacer(modifier = Modifier.weight(1f))
                 }
+                if (reserveTrailingControlSpace) {
+                    Spacer(modifier = Modifier.size(MapControlSize))
+                }
                 MapIconButton(
                     contentDescription = "Platzierung schließen",
                     onClick = ::cancelPlacement,
                     secondary = true,
                 ) {
                     PhotoCloseIcon()
-                }
-                if (reserveTrailingControlSpace) {
-                    Spacer(modifier = Modifier.size(MapControlSize))
                 }
             }
         }
