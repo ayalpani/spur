@@ -112,6 +112,10 @@ internal fun ItemArView(
     val guideMaterial = remember(materialLoader, guideColor) {
         materialLoader.createColorInstance(guideColor)
     }
+    val guideContrastColor = LocalMapControlColors.current.foreground
+    val guideContrastMaterial = remember(materialLoader, guideContrastColor) {
+        materialLoader.createColorInstance(guideContrastColor)
+    }
     val northBearing = rememberNorthBearing(deviceLocation)
     var sceneView by remember { mutableStateOf<ARSceneView?>(null) }
     var session by remember { mutableStateOf<Session?>(null) }
@@ -162,6 +166,7 @@ internal fun ItemArView(
             engine = engine,
             modelLoader = modelLoader,
             guideMaterial = guideMaterial,
+            guideContrastMaterial = guideContrastMaterial,
             anchor = activeSession.createAnchor(
                 Pose.makeTranslation(
                     anchorPosition.x.toFloat(),
@@ -195,6 +200,7 @@ internal fun ItemArView(
             engine = engine,
             modelLoader = modelLoader,
             guideMaterial = guideMaterial,
+            guideContrastMaterial = guideContrastMaterial,
             anchor = activeSession.createAnchor(pose),
             kind = selected.kind,
             heightMeters = 0f,
@@ -305,6 +311,7 @@ internal fun ItemArView(
                     engine = engine,
                     modelLoader = modelLoader,
                     guideMaterial = guideMaterial,
+                    guideContrastMaterial = guideContrastMaterial,
                     anchor = activeSession.createAnchor(
                         Pose.makeTranslation(point.x.toFloat(), point.y.toFloat(), point.z.toFloat()),
                     ),

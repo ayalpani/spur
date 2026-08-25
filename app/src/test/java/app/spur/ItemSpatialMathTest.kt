@@ -63,6 +63,16 @@ class ItemSpatialMathTest {
     }
 
     @Test
+    fun `item guide dots span from pedestal to fruit`() {
+        val centers = itemGuideDotCenters()
+
+        assertEquals(10, centers.size)
+        assertEquals(-1.562, centers.first().toDouble(), 0.001)
+        assertEquals(-0.018, centers.last().toDouble(), 0.001)
+        assertTrue(centers.zipWithNext().all { (a, b) -> b - a > 0.03f })
+    }
+
+    @Test
     fun `bearing smoothing takes shortest path around north`() {
         assertEquals(1.0, smoothBearingDegrees(359.0, 1.0, 1.0), 0.001)
         assertEquals(359.36, smoothBearingDegrees(359.0, 1.0), 0.001)
