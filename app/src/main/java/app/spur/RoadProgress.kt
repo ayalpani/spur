@@ -526,42 +526,21 @@ internal fun localCoordinateDistanceMeters(
     return hypot(toMeters.first - fromMeters.first, toMeters.second - fromMeters.second)
 }
 
-private data class NormalizedRoadMatch(
-    val road: RenderedRoadSegment,
-    val projection: RoadProjection,
-)
-
-private fun NormalizedRoadMatch.score(
-    previousCoordinate: SpurCoordinate,
-    coordinate: SpurCoordinate,
-): Double = roadMatchScore(
-    road = road,
-    projection = projection,
-    headingPenalty = roadHeadingPenalty(
-        previous = previousCoordinate,
-        current = coordinate,
-        road = road,
-        projection = projection,
-    ),
-)
-
-private fun chooseNormalizedRoadMatch(
-    candidates: List<NormalizedRoadMatch>,
-    previousMatch: NormalizedRoadMatch?,
-    previousCoordinate: SpurCoordinate,
-    coordinate: SpurCoordinate,
-): NormalizedRoadMatch? {
-    fun transitionScore(candidate: NormalizedRoadMatch): Double =
-        candidate.score(previousCoordinate, coordinate) + when {
-            previousMatch == null || candidate.road.key == previousMatch.road.key -> 0.0
-            connectedEndpointFractions(previousMatch.road, candidate.road) != null -> 0.0
+private fun chooseContinuousRoadCandidate(
+    candidates: List<RoadCandidate>,
+    previousRoad: RenderedRoadSegment?,
+): RoadCandidate? {
+    fun transitionScore(candidate: RoadCandidate): Double =
+        roadMatchScore(candidate.road, candidate.projection, candidate.headingPenalty) + when {
+            previousRoad == null || candidate.road.key == previousRoad.key -> 0.0
+            connectedEndpointFractions(previousRoad, candidate.road) != null -> 0.0
             else -> RoadUnconnectedTransitionPenaltyMeters
         }
 
     val best = candidates.minByOrNull(::transitionScore)
         ?: return null
-    val continuing = previousMatch?.let { previous ->
-        candidates.firstOrNull { it.road.key == previous.road.key }
+    val continuing = previousRoad?.let { previous ->
+        candidates.firstOrNull { it.road.key == previous.key }
     } ?: return best
     return if (
         transitionScore(continuing) <= transitionScore(best) + RoadMatchSwitchAdvantageMeters
@@ -603,7 +582,7 @@ internal fun normalizedRoadSegments(
         ranges.getOrPut(road.key, ::mutableListOf) += RoadFractionRange(start, end)
     }
 
-    fun addRange(match: NormalizedRoadMatch, otherFraction: Double) {
+    fun addRange(match: RoadCandidate, otherFraction: Double) {
         addRange(match.road, match.projection.fraction, otherFraction)
     }
 
@@ -634,7 +613,7 @@ internal fun normalizedRoadSegments(
         return bridge
     }
 
-    fun connect(previous: NormalizedRoadMatch, current: NormalizedRoadMatch) {
+    fun connect(previous: RoadCandidate, current: RoadCandidate) {
         if (previous.road.key == current.road.key) {
             addRange(previous, current.projection.fraction)
             return
@@ -652,7 +631,7 @@ internal fun normalizedRoadSegments(
     }
 
     routes.forEach { route ->
-        var previousMatch: NormalizedRoadMatch? = null
+        var previousMatch: RoadCandidate? = null
         route.zipWithNext().forEach { (from, to) ->
             if (!shouldContinue()) return emptyList()
             val distance = localCoordinateDistanceMeters(from, to)
@@ -674,15 +653,22 @@ internal fun normalizedRoadSegments(
                             if (projection.distanceMeters > RoadHistoryMatchDistanceMeters) {
                                 null
                             } else {
-                                NormalizedRoadMatch(road, projection)
+                                RoadCandidate(
+                                    road = road,
+                                    projection = projection,
+                                    headingPenalty = roadHeadingPenalty(
+                                        previous = from,
+                                        current = to,
+                                        road = road,
+                                        projection = projection,
+                                    ),
+                                )
                             }
                         }
                     }
-                val match = chooseNormalizedRoadMatch(
+                val match = chooseContinuousRoadCandidate(
                     candidates = candidates,
-                    previousMatch = previousMatch,
-                    previousCoordinate = from,
-                    coordinate = to,
+                    previousRoad = previousMatch?.road,
                 )
                 if (match == null) {
                     previousMatch = null
