@@ -68,6 +68,7 @@ internal data class RoadProgressSnapshot(
 
 internal data class RoadTraversalCursor(
     val directionOrigin: SpurCoordinate? = null,
+    val matchedRoadKey: String? = null,
 )
 
 internal data class RoadTraversalUpdate(
@@ -212,6 +213,7 @@ internal class RoadTraversalAnalyzer(
     roads: List<RenderedRoadSegment>,
 ) {
     private val roadIndex = RoadSpatialIndex(roads)
+    private val roadsByKey = roads.associateBy(RenderedRoadSegment::key)
 
     fun updateRoute(
         route: List<SpurCoordinate>,
@@ -232,12 +234,13 @@ internal class RoadTraversalAnalyzer(
         }
 
         var directionOrigin = initialCursor.directionOrigin ?: route.first()
+        var previousRoad = initialCursor.matchedRoadKey?.let(roadsByKey::get)
         val completions = mutableListOf<RoadCompletion>()
         route.zipWithNext().forEach { (from, to) ->
             if (!shouldContinue()) {
                 return RoadTraversalUpdate(
                     snapshot = tracker.currentSnapshot(),
-                    cursor = RoadTraversalCursor(directionOrigin),
+                    cursor = RoadTraversalCursor(directionOrigin, previousRoad?.key),
                     completions = completions,
                 )
             }
@@ -249,6 +252,7 @@ internal class RoadTraversalAnalyzer(
             ) {
                 tracker.resetTraversal()
                 directionOrigin = to
+                previousRoad = null
                 return@forEach
             }
 
@@ -288,14 +292,24 @@ internal class RoadTraversalAnalyzer(
                     .sortedBy {
                         roadMatchScore(it.road, it.projection, it.headingPenalty)
                     }
-                val snapshot = tracker.update(candidates)
+                val match = if (previousCoordinate == null) {
+                    previousRoad?.let { continuing ->
+                        candidates.firstOrNull { it.road.key == continuing.key }
+                    }
+                } else {
+                    chooseContinuousRoadCandidate(candidates, previousRoad)
+                }
+                val snapshot = tracker.update(match?.let(::listOf).orEmpty())
                 snapshot.completion?.let(completions::add)
-                if (previousCoordinate != null) directionOrigin = coordinate
+                if (previousCoordinate != null) {
+                    previousRoad = match?.road
+                    directionOrigin = coordinate
+                }
             }
         }
         return RoadTraversalUpdate(
             snapshot = tracker.currentSnapshot(),
-            cursor = RoadTraversalCursor(directionOrigin),
+            cursor = RoadTraversalCursor(directionOrigin, previousRoad?.key),
             completions = completions,
         )
     }

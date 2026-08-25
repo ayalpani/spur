@@ -370,6 +370,46 @@ class RoadProgressTest {
     }
 
     @Test
+    fun repeatedLoopKeepsCountingConnectedRoadBesideCloserParallelRoad() {
+        val southWest = SpurCoordinate(52.0, 13.0)
+        val southEast = SpurCoordinate(52.0, 13.001)
+        val northEast = SpurCoordinate(52.001, 13.001)
+        val northWest = SpurCoordinate(52.001, 13.0)
+        val south = RenderedRoadSegment("south", listOf(southWest, southEast))
+        val east = RenderedRoadSegment("east", listOf(southEast, northEast))
+        val north = RenderedRoadSegment("north", listOf(northEast, northWest))
+        val west = RenderedRoadSegment("west", listOf(northWest, southWest))
+        val parallel = RenderedRoadSegment(
+            key = "parallel",
+            points = listOf(
+                SpurCoordinate(52.00004, 13.0),
+                SpurCoordinate(52.00004, 13.001),
+            ),
+        )
+        val lapAfterStart = listOf(
+            SpurCoordinate(52.0, 13.0001),
+            SpurCoordinate(52.00004, 13.00014),
+            SpurCoordinate(52.0, 13.0009),
+            southEast,
+            northEast,
+            northWest,
+            southWest,
+        )
+        val route = buildList {
+            add(southWest)
+            repeat(22) { addAll(lapAfterStart) }
+        }
+
+        val counts = historicalRoadTraversals(
+            routes = listOf(route),
+            roads = listOf(south, east, north, west, parallel),
+        )
+
+        assertEquals(22, counts.getValue(south.key).count)
+        assertFalse(parallel.key in counts)
+    }
+
+    @Test
     fun roadCountLabelAppearsOnlyFromSecondTraversal() {
         assertEquals(15.0, RoadCountMinimumZoom, 0.0)
         val features = roadCountFeatures(
