@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 @Composable
@@ -126,6 +127,30 @@ internal fun ArInventoryRail(
             }
         }
     }
+}
+
+@Composable
+internal fun ArClaimPrompt(
+    item: PublicItem,
+    distanceMeters: Double,
+    accuracyMeters: Double,
+    claiming: Boolean,
+    onClaim: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val claimable = nearbyItemPresentation(distanceMeters, accuracyMeters) ==
+        NearbyItemPresentation.CLAIMABLE
+    SpurPrimaryButton(
+        label = when {
+            claiming -> "Wird aufgenommen …"
+            claimable -> "${item.kind.displayName} aufnehmen"
+            accuracyMeters > ItemMaximumLocationAccuracyMeters -> "Standort wird genauer …"
+            else -> "Noch ${ceil(distanceMeters - ItemClaimRadiusMeters).toInt().coerceAtLeast(1)} m näher"
+        },
+        enabled = claimable && !claiming,
+        onClick = onClaim,
+        modifier = modifier,
+    )
 }
 
 @Composable

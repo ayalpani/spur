@@ -179,6 +179,36 @@ internal fun ItemArView(
         )
     }
 
+    fun claim(item: PublicItem) {
+        val claimLocation = currentDeviceLocation?.toItemLocation() ?: return
+        val claimDistance = distanceMeters(claimLocation, item.location)
+        if (
+            claimingItemId != null ||
+            nearbyItemPresentation(claimDistance, claimLocation.accuracyMeters) !=
+            NearbyItemPresentation.CLAIMABLE
+        ) {
+            return
+        }
+        claimingItemId = item.id
+        scope.launch {
+            when (currentOnClaim(item, claimLocation)) {
+                ClaimOutcome.CLAIMED -> currentOnNotice(
+                    FeedbackNoticeKind.PLACEHOLDER,
+                    "${item.kind.displayName} aufgenommen",
+                )
+                ClaimOutcome.ALREADY_CLAIMED -> currentOnNotice(
+                    FeedbackNoticeKind.PLACEHOLDER,
+                    "Schon gefunden",
+                )
+                ClaimOutcome.FAILED -> currentOnNotice(
+                    FeedbackNoticeKind.ERROR,
+                    "Item konnte nicht aufgenommen werden.",
+                )
+            }
+            claimingItemId = null
+        }
+    }
+
     LaunchedEffect(selectedOwnedItem?.id) {
         clearPlacement()
         showApproximatePlacement = false
@@ -257,35 +287,6 @@ internal fun ItemArView(
                     kind = item.kind,
                     heightMeters = 0f,
                     localOffset = offset,
-                    onTap = onTap@{
-                        val claimLocation = currentDeviceLocation?.toItemLocation()
-                            ?: return@onTap
-                        val claimDistance = distanceMeters(claimLocation, item.location)
-                        if (
-                            claimingItemId == null &&
-                            nearbyItemPresentation(claimDistance, claimLocation.accuracyMeters) ==
-                            NearbyItemPresentation.CLAIMABLE
-                        ) {
-                            claimingItemId = item.id
-                            scope.launch {
-                                when (currentOnClaim(item, claimLocation)) {
-                                    ClaimOutcome.CLAIMED -> currentOnNotice(
-                                        FeedbackNoticeKind.PLACEHOLDER,
-                                        "${item.kind.displayName} aufgenommen",
-                                    )
-                                    ClaimOutcome.ALREADY_CLAIMED -> currentOnNotice(
-                                        FeedbackNoticeKind.PLACEHOLDER,
-                                        "Schon gefunden",
-                                    )
-                                    ClaimOutcome.FAILED -> currentOnNotice(
-                                        FeedbackNoticeKind.ERROR,
-                                        "Item konnte nicht aufgenommen werden.",
-                                    )
-                                }
-                                claimingItemId = null
-                            }
-                        }
-                    },
                 )
                 put(item.id, root)
             }
@@ -453,6 +454,14 @@ internal fun ItemArView(
             }
             .filter { (_, distance) -> distance > ItemSpatialRadiusMeters }
             .minByOrNull { it.second }
+        val nearestSpatialItem = nearbyWithTarget
+            .mapNotNull { item ->
+                deviceLocation?.toItemLocation()?.let { location ->
+                    Triple(item, distanceMeters(location, item.location), location.accuracyMeters)
+                }
+            }
+            .filter { (_, distance) -> distance <= ItemSpatialRadiusMeters }
+            .minByOrNull { (_, distance) -> distance }
         if (selectedOwnedItem == null && nearestGuide != null) {
             ItemDirectionGuide(
                 item = nearestGuide.first,
@@ -466,14 +475,25 @@ internal fun ItemArView(
         }
 
         if (selectedOwnedItem == null) {
-            ArInventoryRail(
-                items = inventory.items,
-                pendingItemIds = inventory.pendingDrops.mapTo(mutableSetOf()) { it.itemId },
-                selectedItemId = null,
-                onSelect = { selectedOwnedItem = it },
-                modifier = Modifier.align(Alignment.BottomCenter),
-                available = inventoryAvailable,
-            )
+            Column(modifier = Modifier.align(Alignment.BottomCenter)) {
+                nearestSpatialItem?.let { (item, distance, accuracy) ->
+                    ArClaimPrompt(
+                        item = item,
+                        distanceMeters = distance,
+                        accuracyMeters = accuracy,
+                        claiming = claimingItemId == item.id,
+                        onClaim = { claim(item) },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+                ArInventoryRail(
+                    items = inventory.items,
+                    pendingItemIds = inventory.pendingDrops.mapTo(mutableSetOf()) { it.itemId },
+                    selectedItemId = null,
+                    onSelect = { selectedOwnedItem = it },
+                    available = inventoryAvailable,
+                )
+            }
         } else {
             Column(
                 modifier = Modifier

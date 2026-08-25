@@ -6,7 +6,6 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.location.Location
-import android.view.MotionEvent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -154,7 +153,6 @@ internal fun createFruitAnchor(
     kind: ItemKind,
     heightMeters: Float,
     localOffset: LocalArOffset,
-    onTap: (() -> Unit)? = null,
 ): FruitAnchor {
     val root = AnchorNode(engine, anchor).apply { isPositionEditable = false }
     val model = ModelNode(
@@ -165,12 +163,6 @@ internal fun createFruitAnchor(
         position = Position(0f, heightMeters, 0f)
         isPositionEditable = false
         parent = root
-        onTap?.let { callback ->
-            onTouch = { event, _ ->
-                if (event.actionMasked == MotionEvent.ACTION_UP) callback()
-                true
-            }
-        }
     }
     return FruitAnchor(root, model, localOffset, heightMeters)
 }
