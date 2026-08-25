@@ -538,7 +538,7 @@ internal fun ItemArView(
                     val selectedDropPending = inventory.pendingDrops.any {
                         it.itemId == selectedOwnedItem?.id
                     }
-                    SpurPrimaryButton(
+                    ArActionButton(
                         label = when {
                             dropping -> "Wird veröffentlicht …"
                             selectedDropPending -> "Erneut veröffentlichen"
@@ -546,8 +546,8 @@ internal fun ItemArView(
                         },
                         enabled = !dropping,
                         onClick = {
-                            val item = selectedOwnedItem ?: return@SpurPrimaryButton
-                            val preview = placement ?: return@SpurPrimaryButton
+                            val item = selectedOwnedItem ?: return@ArActionButton
+                            val preview = placement ?: return@ArActionButton
                             val location = deviceLocation
                             val bearing = northBearing
                             if (
@@ -556,7 +556,7 @@ internal fun ItemArView(
                                 bearing == null
                             ) {
                                 waitingForLocation = true
-                                return@SpurPrimaryButton
+                                return@ArActionButton
                             }
                             dropping = true
                             scope.launch {
@@ -575,12 +575,12 @@ internal fun ItemArView(
                         },
                     )
                 } else if (showApproximatePlacement) {
-                    SpurSecondaryButton(
+                    ArActionButton(
                         label = "Ungefähr platzieren",
                         onClick = ::placeApproximate,
                     )
                 }
-                SpurSecondaryButton(label = "Abbrechen", onClick = ::cancelPlacement)
+                ArActionButton(label = "Abbrechen", onClick = ::cancelPlacement)
             }
         }
     }

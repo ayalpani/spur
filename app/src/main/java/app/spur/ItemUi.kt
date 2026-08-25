@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -141,7 +142,7 @@ internal fun ArClaimPrompt(
 ) {
     val claimable = nearbyItemPresentation(distanceMeters, accuracyMeters) ==
         NearbyItemPresentation.CLAIMABLE
-    SpurPrimaryButton(
+    ArActionButton(
         label = when {
             claiming -> "Wird aufgenommen …"
             claimable -> "${item.kind.displayName} aufnehmen"
@@ -152,6 +153,43 @@ internal fun ArClaimPrompt(
         onClick = onClaim,
         modifier = modifier,
     )
+}
+
+@Composable
+internal fun ArActionButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val style = secondaryMapControlStyle(LocalMapControlColors.current)
+    val colors = IconButtonDefaults.filledIconButtonColors(
+        containerColor = style.colors.background,
+        contentColor = style.colors.foreground,
+    )
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(MapControlSize)
+            .mapControlShadow(CircleShape),
+        shape = CircleShape,
+        color = if (enabled) colors.containerColor else colors.disabledContainerColor,
+        contentColor = if (enabled) colors.contentColor else colors.disabledContentColor,
+        border = style.border,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
 }
 
 @Composable
