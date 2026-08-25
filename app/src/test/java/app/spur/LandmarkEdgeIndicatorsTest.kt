@@ -75,6 +75,34 @@ class LandmarkEdgeIndicatorsTest {
     }
 
     @Test
+    fun landmarkCaptionSwitchesRenderersAtViewportBoundaryWithoutOverlap() {
+        val viewport = LandmarkIndicatorBounds(0f, 0f, 100f, 100f)
+
+        fun selectionAt(x: Float): Pair<Set<String>, List<LandmarkEdgeIndicator>> {
+            val projected = listOf(projected("fountain", priority = 0, x = x, y = 50f))
+            val indicators = landmarkEdgeIndicators(
+                projected = projected,
+                bounds = viewport,
+                minimumSeparation = 0f,
+                maximumCount = 1,
+            )
+            val edgeIndicators = outsideLandmarkIndicators(indicators, projected, viewport)
+            return mapLandmarkIds(indicators, edgeIndicators) to edgeIndicators
+        }
+
+        val (boundaryMapIds, boundaryEdgeIndicators) = selectionAt(100f)
+        assertEquals(setOf("fountain"), boundaryMapIds)
+        assertTrue(boundaryEdgeIndicators.isEmpty())
+
+        val (outsideMapIds, outsideEdgeIndicators) = selectionAt(100.1f)
+        assertTrue(outsideMapIds.isEmpty())
+        assertEquals(
+            listOf("fountain"),
+            outsideEdgeIndicators.map { it.landmark.id },
+        )
+    }
+
+    @Test
     fun edgeSelectionIsStableEvenWhileSelectedPlaceCrossesIntoTheMap() {
         val viewport = LandmarkIndicatorBounds(0f, 0f, 100f, 100f)
         val projected = listOf(
