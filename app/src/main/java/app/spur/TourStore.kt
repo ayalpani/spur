@@ -946,7 +946,6 @@ class TourStore(context: Context) :
                 COALESCE(SUM(
                     (id % $RoadHistorySignaturePrime) +
                     (recorded_at % $RoadHistorySignaturePrime) +
-                    CAST(ROUND(accuracy_meters * 10) AS INTEGER) * 17 +
                     CAST(ROUND(latitude * $RoadHistoryCoordinatePrecision) AS INTEGER) * 31 +
                     CAST(ROUND(longitude * $RoadHistoryCoordinatePrecision) AS INTEGER)
                 ), 0)
