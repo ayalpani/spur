@@ -52,6 +52,19 @@ class ItemSpatialMathTest {
     }
 
     @Test
+    fun `approximate placement stays upright at camera height despite camera pitch`() {
+        val point = approximatePlacementAnchorPosition(
+            cameraPosition = ArVector3(1.0, 1.65, 2.0),
+            cameraForward = ArVector3(0.0, -0.8, -0.6),
+            cameraRight = ArVector3(1.0, 0.0, 0.0),
+        )
+
+        assertEquals(1.0, point.x, 0.001)
+        assertEquals(1.65, point.y, 0.001)
+        assertEquals(0.0, point.z, 0.001)
+    }
+
+    @Test
     fun `placement preview anchor starts at final eye height`() {
         val point = elevatedPlacementAnchorPosition(
             ArVector3(x = 1.0, y = 0.2, z = -2.0),

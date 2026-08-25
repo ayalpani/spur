@@ -150,6 +150,18 @@ internal fun ItemArView(
         waitingForLocation = false
     }
 
+    fun publishPlacement(itemId: String) {
+        val published = placement
+        placement = null
+        if (published != null) {
+            publicAnchors[itemId]?.root?.destroy()
+            publicAnchors = publicAnchors + (itemId to published)
+        }
+        selectedOwnedItem = null
+        showApproximatePlacement = false
+        waitingForLocation = false
+    }
+
     fun placePreview(hit: HitResult) {
         val selected = selectedOwnedItem ?: return
         val activeSession = session ?: return
@@ -198,13 +210,35 @@ internal fun ItemArView(
             return
         }
         clearPlacement()
-        val pose = frame.camera.pose.compose(Pose.makeTranslation(0f, 0f, -2f))
+        val cameraPose = frame.camera.pose
+        val cameraTranslation = cameraPose.translation
+        val cameraXAxis = cameraPose.xAxis
+        val cameraZAxis = cameraPose.zAxis
+        val point = approximatePlacementAnchorPosition(
+            cameraPosition = ArVector3(
+                cameraTranslation[0].toDouble(),
+                cameraTranslation[1].toDouble(),
+                cameraTranslation[2].toDouble(),
+            ),
+            cameraForward = ArVector3(
+                -cameraZAxis[0].toDouble(),
+                -cameraZAxis[1].toDouble(),
+                -cameraZAxis[2].toDouble(),
+            ),
+            cameraRight = ArVector3(
+                cameraXAxis[0].toDouble(),
+                cameraXAxis[1].toDouble(),
+                cameraXAxis[2].toDouble(),
+            ),
+        )
         placement = createFruitAnchor(
             engine = engine,
             modelLoader = modelLoader,
             guideMaterial = guideMaterial,
             guideContrastMaterial = guideContrastMaterial,
-            anchor = activeSession.createAnchor(pose),
+            anchor = activeSession.createAnchor(
+                Pose.makeTranslation(point.x.toFloat(), point.y.toFloat(), point.z.toFloat()),
+            ),
             kind = selected.kind,
             heightMeters = 0f,
             localOffset = LocalArOffset(rightMeters = 0.0, forwardMeters = 2.0),
@@ -574,7 +608,7 @@ internal fun ItemArView(
                                     offset = preview.localOffset,
                                 )
                                 when (onDrop(item, destination)) {
-                                    DropOutcome.DROPPED -> cancelPlacement()
+                                    DropOutcome.DROPPED -> publishPlacement(item.id)
                                     DropOutcome.PENDING -> Unit
                                     DropOutcome.FAILED -> Unit
                                 }

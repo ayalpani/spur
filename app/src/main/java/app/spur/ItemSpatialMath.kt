@@ -115,6 +115,17 @@ internal fun horizontalAnchorPosition(
     )
 }
 
+internal fun approximatePlacementAnchorPosition(
+    cameraPosition: ArVector3,
+    cameraForward: ArVector3,
+    cameraRight: ArVector3,
+): ArVector3 = horizontalAnchorPosition(
+    cameraPosition = cameraPosition,
+    cameraForward = cameraForward,
+    cameraRight = cameraRight,
+    offset = LocalArOffset(rightMeters = 0.0, forwardMeters = 2.0),
+)
+
 internal fun elevatedPlacementAnchorPosition(floorPosition: ArVector3): ArVector3 =
     floorPosition.copy(y = floorPosition.y + ItemPlacementHeightMeters)
 
