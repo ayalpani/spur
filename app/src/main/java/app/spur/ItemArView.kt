@@ -585,12 +585,16 @@ internal fun ItemArView(
                             onClick = ::placeApproximate,
                             modifier = Modifier.weight(1f),
                         )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
-                    ArActionButton(
-                        label = "Abbrechen",
+                    MapIconButton(
+                        contentDescription = "Platzierung schließen",
                         onClick = ::cancelPlacement,
-                        modifier = Modifier.weight(1f),
-                    )
+                        secondary = true,
+                    ) {
+                        PhotoCloseIcon()
+                    }
                 }
             }
         }
