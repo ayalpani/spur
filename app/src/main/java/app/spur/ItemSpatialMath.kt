@@ -14,6 +14,12 @@ internal data class LocalArOffset(
     val forwardMeters: Double,
 )
 
+internal data class ArVector3(
+    val x: Double,
+    val y: Double,
+    val z: Double,
+)
+
 internal data class ItemLocationFixQuality(
     val accuracyMeters: Double,
     val ageMillis: Long,
@@ -82,6 +88,46 @@ internal fun localAnchorOffset(
         forwardMeters = cos(relativeBearing) * renderedDistance,
     )
 }
+
+internal fun horizontalAnchorPosition(
+    cameraPosition: ArVector3,
+    cameraForward: ArVector3,
+    cameraRight: ArVector3,
+    offset: LocalArOffset,
+): ArVector3 {
+    val forwardLength = sqrt(
+        cameraForward.x * cameraForward.x + cameraForward.z * cameraForward.z,
+    )
+    val (forwardX, forwardZ) = if (forwardLength > 0.0001) {
+        cameraForward.x / forwardLength to cameraForward.z / forwardLength
+    } else {
+        val rightLength = sqrt(cameraRight.x * cameraRight.x + cameraRight.z * cameraRight.z)
+        val rightX = cameraRight.x / rightLength
+        val rightZ = cameraRight.z / rightLength
+        rightZ to -rightX
+    }
+    val rightX = -forwardZ
+    val rightZ = forwardX
+    return ArVector3(
+        x = cameraPosition.x + rightX * offset.rightMeters + forwardX * offset.forwardMeters,
+        y = cameraPosition.y,
+        z = cameraPosition.z + rightZ * offset.rightMeters + forwardZ * offset.forwardMeters,
+    )
+}
+
+internal fun approximatePlacementAnchorPosition(
+    cameraPosition: ArVector3,
+    cameraForward: ArVector3,
+    cameraRight: ArVector3,
+): ArVector3 = horizontalAnchorPosition(
+    cameraPosition = cameraPosition,
+    cameraForward = cameraForward,
+    cameraRight = cameraRight,
+    offset = LocalArOffset(rightMeters = 0.0, forwardMeters = 2.0),
+)
+
+internal fun elevatedPlacementAnchorPosition(floorPosition: ArVector3): ArVector3 =
+    floorPosition.copy(y = floorPosition.y + ItemPlacementHeightMeters)
 
 internal fun isPublishableLocation(quality: ItemLocationFixQuality): Boolean =
     quality.accuracyMeters in 0.0..ItemMaximumLocationAccuracyMeters &&

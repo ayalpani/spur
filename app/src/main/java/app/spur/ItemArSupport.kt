@@ -6,7 +6,6 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.location.Location
-import android.view.MotionEvent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -34,11 +33,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
+import com.google.android.filament.MaterialInstance
 import com.google.ar.core.Anchor
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
+import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.SphereNode
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -71,6 +73,23 @@ internal data class PublicAnchorPlan(
     val idsToRemove: Set<String>,
     val idsToCreate: Set<String>,
 )
+
+private const val ItemGuideBaseRadiusMeters = 0.12f
+private const val ItemGuideBaseHeightMeters = 0.02f
+private const val ItemGuideBaseInsetRadiusMeters = 0.075f
+private const val ItemGuideBaseInsetHeightMeters = 0.004f
+private const val ItemGuideDotRadiusMeters = 0.018f
+private const val ItemGuideDotCount = 10
+
+internal fun itemGuideDotCenters(): List<Float> {
+    val first = -ItemPlacementHeightMeters +
+        ItemGuideBaseHeightMeters +
+        ItemGuideDotRadiusMeters
+    val last = -ItemGuideDotRadiusMeters
+    return List(ItemGuideDotCount) { index ->
+        first + (last - first) * index / (ItemGuideDotCount - 1)
+    }
+}
 
 internal fun planPublicAnchors(
     existingIds: Set<String>,
@@ -150,13 +169,53 @@ internal fun ItemDirectionGuide(
 internal fun createFruitAnchor(
     engine: Engine,
     modelLoader: ModelLoader,
+    guideMaterial: MaterialInstance,
+    guideContrastMaterial: MaterialInstance,
     anchor: Anchor,
     kind: ItemKind,
     heightMeters: Float,
     localOffset: LocalArOffset,
-    onTap: (() -> Unit)? = null,
 ): FruitAnchor {
     val root = AnchorNode(engine, anchor).apply { isPositionEditable = false }
+    itemGuideDotCenters().forEachIndexed { index, centerY ->
+        SphereNode(
+            engine = engine,
+            radius = ItemGuideDotRadiusMeters,
+            center = Position(y = centerY),
+            stacks = 6,
+            slices = 8,
+            materialInstance = if (index % 2 == 0) guideMaterial else guideContrastMaterial,
+        ).apply {
+            isTouchable = false
+            parent = root
+        }
+    }
+    CylinderNode(
+        engine = engine,
+        radius = ItemGuideBaseRadiusMeters,
+        height = ItemGuideBaseHeightMeters,
+        center = Position(
+            y = -ItemPlacementHeightMeters + ItemGuideBaseHeightMeters / 2f,
+        ),
+        materialInstance = guideMaterial,
+    ).apply {
+        isTouchable = false
+        parent = root
+    }
+    CylinderNode(
+        engine = engine,
+        radius = ItemGuideBaseInsetRadiusMeters,
+        height = ItemGuideBaseInsetHeightMeters,
+        center = Position(
+            y = -ItemPlacementHeightMeters +
+                ItemGuideBaseHeightMeters +
+                ItemGuideBaseInsetHeightMeters / 2f,
+        ),
+        materialInstance = guideContrastMaterial,
+    ).apply {
+        isTouchable = false
+        parent = root
+    }
     val model = ModelNode(
         modelInstance = modelLoader.createModelInstance(kind.modelAsset),
         scaleToUnits = ItemSemanticSizeMeters,
@@ -165,12 +224,6 @@ internal fun createFruitAnchor(
         position = Position(0f, heightMeters, 0f)
         isPositionEditable = false
         parent = root
-        onTap?.let { callback ->
-            onTouch = { event, _ ->
-                if (event.actionMasked == MotionEvent.ACTION_UP) callback()
-                true
-            }
-        }
     }
     return FruitAnchor(root, model, localOffset, heightMeters)
 }

@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -66,6 +67,7 @@ import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
+import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -94,6 +96,8 @@ internal fun ItemArView(
     onClaim: suspend (PublicItem, ItemLocation) -> ClaimOutcome,
     onNotice: ShowFeedbackNotice,
     onExitAr: () -> Unit,
+    controlsBottomPadding: Dp,
+    reserveTrailingControlSpace: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -104,8 +108,17 @@ internal fun ItemArView(
     var pauseObserver by remember { mutableStateOf<LifecycleEventObserver?>(null) }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val environment = rememberEnvironment(environmentLoader, isOpaque = true)
+    val guideColor = LocalMapControlColors.current.background
+    val guideMaterial = remember(materialLoader, guideColor) {
+        materialLoader.createColorInstance(guideColor)
+    }
+    val guideContrastColor = LocalMapControlColors.current.foreground
+    val guideContrastMaterial = remember(materialLoader, guideContrastColor) {
+        materialLoader.createColorInstance(guideContrastColor)
+    }
     val northBearing = rememberNorthBearing(deviceLocation)
     var sceneView by remember { mutableStateOf<ARSceneView?>(null) }
     var session by remember { mutableStateOf<Session?>(null) }
@@ -137,18 +150,47 @@ internal fun ItemArView(
         waitingForLocation = false
     }
 
+    fun publishPlacement(itemId: String) {
+        val published = placement
+        placement = null
+        if (published != null) {
+            publicAnchors[itemId]?.root?.destroy()
+            publicAnchors = publicAnchors + (itemId to published)
+        }
+        selectedOwnedItem = null
+        showApproximatePlacement = false
+        waitingForLocation = false
+    }
+
     fun placePreview(hit: HitResult) {
         val selected = selectedOwnedItem ?: return
+        val activeSession = session ?: return
         val frame = latestFrame[0] ?: return
         val relativePose = frame.camera.pose.inverse().compose(hit.hitPose)
         val translation = relativePose.translation
+        val hitTranslation = hit.hitPose.translation
+        val anchorPosition = elevatedPlacementAnchorPosition(
+            ArVector3(
+                x = hitTranslation[0].toDouble(),
+                y = hitTranslation[1].toDouble(),
+                z = hitTranslation[2].toDouble(),
+            ),
+        )
         clearPlacement()
         placement = createFruitAnchor(
             engine = engine,
             modelLoader = modelLoader,
-            anchor = hit.createAnchor(),
+            guideMaterial = guideMaterial,
+            guideContrastMaterial = guideContrastMaterial,
+            anchor = activeSession.createAnchor(
+                Pose.makeTranslation(
+                    anchorPosition.x.toFloat(),
+                    anchorPosition.y.toFloat(),
+                    anchorPosition.z.toFloat(),
+                ),
+            ),
             kind = selected.kind,
-            heightMeters = ItemPlacementHeightMeters,
+            heightMeters = 0f,
             localOffset = LocalArOffset(
                 rightMeters = translation[0].toDouble(),
                 forwardMeters = -translation[2].toDouble(),
@@ -168,15 +210,69 @@ internal fun ItemArView(
             return
         }
         clearPlacement()
-        val pose = frame.camera.pose.compose(Pose.makeTranslation(0f, 0f, -2f))
+        val cameraPose = frame.camera.pose
+        val cameraTranslation = cameraPose.translation
+        val cameraXAxis = cameraPose.xAxis
+        val cameraZAxis = cameraPose.zAxis
+        val point = approximatePlacementAnchorPosition(
+            cameraPosition = ArVector3(
+                cameraTranslation[0].toDouble(),
+                cameraTranslation[1].toDouble(),
+                cameraTranslation[2].toDouble(),
+            ),
+            cameraForward = ArVector3(
+                -cameraZAxis[0].toDouble(),
+                -cameraZAxis[1].toDouble(),
+                -cameraZAxis[2].toDouble(),
+            ),
+            cameraRight = ArVector3(
+                cameraXAxis[0].toDouble(),
+                cameraXAxis[1].toDouble(),
+                cameraXAxis[2].toDouble(),
+            ),
+        )
         placement = createFruitAnchor(
             engine = engine,
             modelLoader = modelLoader,
-            anchor = activeSession.createAnchor(pose),
+            guideMaterial = guideMaterial,
+            guideContrastMaterial = guideContrastMaterial,
+            anchor = activeSession.createAnchor(
+                Pose.makeTranslation(point.x.toFloat(), point.y.toFloat(), point.z.toFloat()),
+            ),
             kind = selected.kind,
             heightMeters = 0f,
             localOffset = LocalArOffset(rightMeters = 0.0, forwardMeters = 2.0),
         )
+    }
+
+    fun claim(item: PublicItem) {
+        val claimLocation = currentDeviceLocation?.toItemLocation() ?: return
+        val claimDistance = distanceMeters(claimLocation, item.location)
+        if (
+            claimingItemId != null ||
+            nearbyItemPresentation(claimDistance, claimLocation.accuracyMeters) !=
+            NearbyItemPresentation.CLAIMABLE
+        ) {
+            return
+        }
+        claimingItemId = item.id
+        scope.launch {
+            when (currentOnClaim(item, claimLocation)) {
+                ClaimOutcome.CLAIMED -> currentOnNotice(
+                    FeedbackNoticeKind.PLACEHOLDER,
+                    "${item.kind.displayName} aufgenommen",
+                )
+                ClaimOutcome.ALREADY_CLAIMED -> currentOnNotice(
+                    FeedbackNoticeKind.PLACEHOLDER,
+                    "Schon gefunden",
+                )
+                ClaimOutcome.FAILED -> currentOnNotice(
+                    FeedbackNoticeKind.ERROR,
+                    "Item konnte nicht aufgenommen werden.",
+                )
+            }
+            claimingItemId = null
+        }
     }
 
     LaunchedEffect(selectedOwnedItem?.id) {
@@ -227,49 +323,38 @@ internal fun ItemArView(
             visibleItems.forEach { item ->
                 if (item.id !in anchorPlan.idsToCreate) return@forEach
                 val offset = localAnchorOffset(location, item.location, bearing)
-                val point = cameraPose.transformPoint(
-                    floatArrayOf(
-                        offset.rightMeters.toFloat(),
-                        0f,
-                        -offset.forwardMeters.toFloat(),
+                val cameraTranslation = cameraPose.translation
+                val cameraXAxis = cameraPose.xAxis
+                val cameraZAxis = cameraPose.zAxis
+                val point = horizontalAnchorPosition(
+                    cameraPosition = ArVector3(
+                        cameraTranslation[0].toDouble(),
+                        cameraTranslation[1].toDouble(),
+                        cameraTranslation[2].toDouble(),
                     ),
+                    cameraForward = ArVector3(
+                        -cameraZAxis[0].toDouble(),
+                        -cameraZAxis[1].toDouble(),
+                        -cameraZAxis[2].toDouble(),
+                    ),
+                    cameraRight = ArVector3(
+                        cameraXAxis[0].toDouble(),
+                        cameraXAxis[1].toDouble(),
+                        cameraXAxis[2].toDouble(),
+                    ),
+                    offset = offset,
                 )
                 val root = createFruitAnchor(
                     engine = engine,
                     modelLoader = modelLoader,
-                    anchor = activeSession.createAnchor(Pose.makeTranslation(point)),
+                    guideMaterial = guideMaterial,
+                    guideContrastMaterial = guideContrastMaterial,
+                    anchor = activeSession.createAnchor(
+                        Pose.makeTranslation(point.x.toFloat(), point.y.toFloat(), point.z.toFloat()),
+                    ),
                     kind = item.kind,
                     heightMeters = 0f,
                     localOffset = offset,
-                    onTap = onTap@{
-                        val claimLocation = currentDeviceLocation?.toItemLocation()
-                            ?: return@onTap
-                        val claimDistance = distanceMeters(claimLocation, item.location)
-                        if (
-                            claimingItemId == null &&
-                            nearbyItemPresentation(claimDistance, claimLocation.accuracyMeters) ==
-                            NearbyItemPresentation.CLAIMABLE
-                        ) {
-                            claimingItemId = item.id
-                            scope.launch {
-                                when (currentOnClaim(item, claimLocation)) {
-                                    ClaimOutcome.CLAIMED -> currentOnNotice(
-                                        FeedbackNoticeKind.PLACEHOLDER,
-                                        "${item.kind.displayName} aufgenommen",
-                                    )
-                                    ClaimOutcome.ALREADY_CLAIMED -> currentOnNotice(
-                                        FeedbackNoticeKind.PLACEHOLDER,
-                                        "Schon gefunden",
-                                    )
-                                    ClaimOutcome.FAILED -> currentOnNotice(
-                                        FeedbackNoticeKind.ERROR,
-                                        "Item konnte nicht aufgenommen werden.",
-                                    )
-                                }
-                                claimingItemId = null
-                            }
-                        }
-                    },
                 )
                 put(item.id, root)
             }
@@ -437,6 +522,14 @@ internal fun ItemArView(
             }
             .filter { (_, distance) -> distance > ItemSpatialRadiusMeters }
             .minByOrNull { it.second }
+        val nearestSpatialItem = nearbyWithTarget
+            .mapNotNull { item ->
+                deviceLocation?.toItemLocation()?.let { location ->
+                    Triple(item, distanceMeters(location, item.location), location.accuracyMeters)
+                }
+            }
+            .filter { (_, distance) -> distance <= ItemSpatialRadiusMeters }
+            .minByOrNull { (_, distance) -> distance }
         if (selectedOwnedItem == null && nearestGuide != null) {
             ItemDirectionGuide(
                 item = nearestGuide.first,
@@ -450,28 +543,44 @@ internal fun ItemArView(
         }
 
         if (selectedOwnedItem == null) {
-            ArInventoryRail(
-                items = inventory.items,
-                pendingItemIds = inventory.pendingDrops.mapTo(mutableSetOf()) { it.itemId },
-                selectedItemId = null,
-                onSelect = { selectedOwnedItem = it },
-                modifier = Modifier.align(Alignment.BottomCenter),
-                available = inventoryAvailable,
-            )
+            Column(modifier = Modifier.align(Alignment.BottomCenter)) {
+                nearestSpatialItem?.let { (item, distance, accuracy) ->
+                    ArClaimPrompt(
+                        item = item,
+                        distanceMeters = distance,
+                        accuracyMeters = accuracy,
+                        claiming = claimingItemId == item.id,
+                        onClaim = { claim(item) },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+                ArInventoryRail(
+                    items = inventory.items,
+                    pendingItemIds = inventory.pendingDrops.mapTo(mutableSetOf()) { it.itemId },
+                    selectedItemId = null,
+                    onSelect = { selectedOwnedItem = it },
+                    available = inventoryAvailable,
+                )
+            }
         } else {
-            Column(
+            Row(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
+                    .align(Alignment.BottomStart)
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .padding(
+                        start = MapControlHorizontalPadding,
+                        end = MapControlHorizontalPadding,
+                        bottom = controlsBottomPadding,
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(MapControlGap),
+                verticalAlignment = Alignment.Bottom,
             ) {
                 if (placement != null) {
                     val selectedDropPending = inventory.pendingDrops.any {
                         it.itemId == selectedOwnedItem?.id
                     }
-                    SpurPrimaryButton(
+                    ArActionButton(
                         label = when {
                             dropping -> "Wird veröffentlicht …"
                             selectedDropPending -> "Erneut veröffentlichen"
@@ -479,8 +588,8 @@ internal fun ItemArView(
                         },
                         enabled = !dropping,
                         onClick = {
-                            val item = selectedOwnedItem ?: return@SpurPrimaryButton
-                            val preview = placement ?: return@SpurPrimaryButton
+                            val item = selectedOwnedItem ?: return@ArActionButton
+                            val preview = placement ?: return@ArActionButton
                             val location = deviceLocation
                             val bearing = northBearing
                             if (
@@ -489,7 +598,7 @@ internal fun ItemArView(
                                 bearing == null
                             ) {
                                 waitingForLocation = true
-                                return@SpurPrimaryButton
+                                return@ArActionButton
                             }
                             dropping = true
                             scope.launch {
@@ -499,21 +608,34 @@ internal fun ItemArView(
                                     offset = preview.localOffset,
                                 )
                                 when (onDrop(item, destination)) {
-                                    DropOutcome.DROPPED -> cancelPlacement()
+                                    DropOutcome.DROPPED -> publishPlacement(item.id)
                                     DropOutcome.PENDING -> Unit
                                     DropOutcome.FAILED -> Unit
                                 }
                                 dropping = false
                             }
                         },
+                        modifier = Modifier.weight(1f),
                     )
                 } else if (showApproximatePlacement) {
-                    SpurSecondaryButton(
+                    ArActionButton(
                         label = "Ungefähr platzieren",
                         onClick = ::placeApproximate,
+                        modifier = Modifier.weight(1f),
                     )
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
                 }
-                SpurSecondaryButton(label = "Abbrechen", onClick = ::cancelPlacement)
+                if (reserveTrailingControlSpace) {
+                    Spacer(modifier = Modifier.size(MapControlSize))
+                }
+                MapIconButton(
+                    contentDescription = "Platzierung schließen",
+                    onClick = ::cancelPlacement,
+                    secondary = true,
+                ) {
+                    PhotoCloseIcon()
+                }
             }
         }
     }

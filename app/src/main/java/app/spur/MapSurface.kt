@@ -745,27 +745,25 @@ internal fun MapSurface(
                     )
                 }
                 .toList()
-            landmarkIndicators.value = if (retainedIds == null) {
+            val selected = if (retainedIds == null) {
                 landmarkEdgeIndicators(
                     projected = projected,
                     bounds = bounds,
                     minimumSeparation = LandmarkMinimumSeparationDp * density,
                     maximumCount = LandmarkMaximumVisibleCount,
                 ).also { selected ->
-                    val selectedIds = selected.mapTo(linkedSetOf()) { it.landmark.id }
-                    retainedLandmarkIds = selectedIds
-                    readyMap.style?.setMapLandmarkSelection(selectedIds)
-                    outsideLandmarkIndicators(selected, projected, viewportBounds)
+                    retainedLandmarkIds = selected.mapTo(linkedSetOf()) { it.landmark.id }
                 }
             } else {
                 retainedLandmarkEdgeIndicators(
                     projected = projected,
                     bounds = bounds,
                     landmarkIds = retainedIds,
-                ).let { selected ->
-                    outsideLandmarkIndicators(selected, projected, viewportBounds)
-                }
+                )
             }
+            val edgeIndicators = outsideLandmarkIndicators(selected, projected, viewportBounds)
+            readyMap.style?.setMapLandmarkSelection(mapLandmarkIds(selected, edgeIndicators))
+            landmarkIndicators.value = edgeIndicators
         }
 
         fun scheduleLandmarkPublish() {

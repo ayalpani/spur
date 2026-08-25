@@ -3,8 +3,6 @@ package app.spur
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,14 +32,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 @Composable
@@ -52,14 +52,16 @@ internal fun ArInventoryRail(
     available: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    val hasItems = available && items.isNotEmpty()
+    val itemStyle = secondaryMapControlStyle(LocalMapControlColors.current)
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         shape = RoundedCornerShape(28.dp),
-        color = Color.White,
-        shadowElevation = MapControlElevation,
+        color = if (hasItems) Color.Transparent else Color.White,
+        shadowElevation = if (hasItems) 0.dp else MapControlElevation,
     ) {
         if (!available || items.isEmpty()) {
             Text(
@@ -83,18 +85,12 @@ internal fun ArInventoryRail(
                 items.forEach { item ->
                     val selected = item.id == selectedItemId
                     val pending = item.id in pendingItemIds
-                    Column(
+                    val shape = RoundedCornerShape(20.dp)
+                    Surface(
+                        onClick = { onSelect(item) },
+                        enabled = !pending,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .border(
-                                BorderStroke(
-                                    width = if (selected) 3.dp else 1.dp,
-                                    color = if (selected) LocalAccentColor.current else Ink.copy(alpha = 0.16f),
-                                ),
-                                RoundedCornerShape(20.dp),
-                            )
-                            .clickable(enabled = !pending) { onSelect(item) }
-                            .padding(horizontal = 18.dp, vertical = 8.dp)
+                            .mapControlShadow(shape)
                             .semantics {
                                 contentDescription = if (pending) {
                                     "${item.kind.displayName} ist noch nicht veröffentlicht"
@@ -102,28 +98,101 @@ internal fun ArInventoryRail(
                                     "${item.kind.displayName} im Raum ablegen"
                                 }
                             },
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                        shape = shape,
+                        color = itemStyle.colors.background,
+                        contentColor = itemStyle.colors.foreground,
+                        border = itemStyle.border,
                     ) {
-                        Image(
-                            painter = painterResource(item.kind.mapImageResource),
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                        )
-                        Text(
-                            text = item.kind.displayName,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        )
-                        if (pending) {
-                            Text(
-                                text = "Noch nicht veröffentlicht",
-                                color = Ink.copy(alpha = 0.62f),
-                                style = MaterialTheme.typography.labelSmall,
+                        Column(
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Image(
+                                painter = painterResource(item.kind.mapImageResource),
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
                             )
+                            Text(
+                                text = item.kind.displayName,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            )
+                            if (pending) {
+                                Text(
+                                    text = "Noch nicht veröffentlicht",
+                                    color = itemStyle.colors.foreground.copy(alpha = 0.62f),
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun ArClaimPrompt(
+    item: PublicItem,
+    distanceMeters: Double,
+    accuracyMeters: Double,
+    claiming: Boolean,
+    onClaim: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val claimable = nearbyItemPresentation(distanceMeters, accuracyMeters) ==
+        NearbyItemPresentation.CLAIMABLE
+    ArActionButton(
+        label = when {
+            claiming -> "Wird aufgenommen …"
+            claimable -> "${item.kind.displayName} aufnehmen"
+            accuracyMeters > ItemMaximumLocationAccuracyMeters -> "Standort wird genauer …"
+            else -> "Noch ${ceil(distanceMeters - ItemClaimRadiusMeters).toInt().coerceAtLeast(1)} m näher"
+        },
+        enabled = claimable && !claiming,
+        onClick = onClaim,
+        modifier = modifier,
+    )
+}
+
+@Composable
+internal fun ArActionButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val style = secondaryMapControlStyle(LocalMapControlColors.current)
+    val colors = IconButtonDefaults.filledIconButtonColors(
+        containerColor = style.colors.background,
+        contentColor = style.colors.foreground,
+    )
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(MapControlSize)
+            .mapControlShadow(CircleShape),
+        shape = CircleShape,
+        color = if (enabled) colors.containerColor else colors.disabledContainerColor,
+        contentColor = if (enabled) colors.contentColor else colors.disabledContentColor,
+        border = style.border,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

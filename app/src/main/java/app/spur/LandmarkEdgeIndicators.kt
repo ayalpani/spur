@@ -174,6 +174,16 @@ internal fun outsideLandmarkIndicators(
     }
 }
 
+internal fun mapLandmarkIds(
+    indicators: List<LandmarkEdgeIndicator>,
+    edgeIndicators: List<LandmarkEdgeIndicator>,
+): Set<String> {
+    val edgeIds = edgeIndicators.mapTo(mutableSetOf()) { it.landmark.id }
+    return indicators.mapNotNullTo(linkedSetOf()) { indicator ->
+        indicator.landmark.id.takeUnless(edgeIds::contains)
+    }
+}
+
 private fun ProjectedLandmark.clampedTo(
     bounds: LandmarkIndicatorBounds,
     center: LandmarkScreenPoint,

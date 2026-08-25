@@ -38,6 +38,54 @@ class ItemSpatialMathTest {
     }
 
     @Test
+    fun `camera pitch cannot pull a public anchor below eye height`() {
+        val point = horizontalAnchorPosition(
+            cameraPosition = ArVector3(1.0, 1.6, 2.0),
+            cameraForward = ArVector3(0.0, -0.8, -0.6),
+            cameraRight = ArVector3(1.0, 0.0, 0.0),
+            offset = LocalArOffset(rightMeters = 2.0, forwardMeters = 5.0),
+        )
+
+        assertEquals(3.0, point.x, 0.001)
+        assertEquals(1.6, point.y, 0.001)
+        assertEquals(-3.0, point.z, 0.001)
+    }
+
+    @Test
+    fun `approximate placement stays upright at camera height despite camera pitch`() {
+        val point = approximatePlacementAnchorPosition(
+            cameraPosition = ArVector3(1.0, 1.65, 2.0),
+            cameraForward = ArVector3(0.0, -0.8, -0.6),
+            cameraRight = ArVector3(1.0, 0.0, 0.0),
+        )
+
+        assertEquals(1.0, point.x, 0.001)
+        assertEquals(1.65, point.y, 0.001)
+        assertEquals(0.0, point.z, 0.001)
+    }
+
+    @Test
+    fun `placement preview anchor starts at final eye height`() {
+        val point = elevatedPlacementAnchorPosition(
+            ArVector3(x = 1.0, y = 0.2, z = -2.0),
+        )
+
+        assertEquals(1.0, point.x, 0.001)
+        assertEquals(1.8, point.y, 0.001)
+        assertEquals(-2.0, point.z, 0.001)
+    }
+
+    @Test
+    fun `item guide dots span from pedestal to fruit`() {
+        val centers = itemGuideDotCenters()
+
+        assertEquals(10, centers.size)
+        assertEquals(-1.562, centers.first().toDouble(), 0.001)
+        assertEquals(-0.018, centers.last().toDouble(), 0.001)
+        assertTrue(centers.zipWithNext().all { (a, b) -> b - a > 0.03f })
+    }
+
+    @Test
     fun `bearing smoothing takes shortest path around north`() {
         assertEquals(1.0, smoothBearingDegrees(359.0, 1.0, 1.0), 0.001)
         assertEquals(359.36, smoothBearingDegrees(359.0, 1.0), 0.001)
