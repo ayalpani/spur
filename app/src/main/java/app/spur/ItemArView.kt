@@ -139,16 +139,31 @@ internal fun ItemArView(
 
     fun placePreview(hit: HitResult) {
         val selected = selectedOwnedItem ?: return
+        val activeSession = session ?: return
         val frame = latestFrame[0] ?: return
         val relativePose = frame.camera.pose.inverse().compose(hit.hitPose)
         val translation = relativePose.translation
+        val hitTranslation = hit.hitPose.translation
+        val anchorPosition = elevatedPlacementAnchorPosition(
+            ArVector3(
+                x = hitTranslation[0].toDouble(),
+                y = hitTranslation[1].toDouble(),
+                z = hitTranslation[2].toDouble(),
+            ),
+        )
         clearPlacement()
         placement = createFruitAnchor(
             engine = engine,
             modelLoader = modelLoader,
-            anchor = hit.createAnchor(),
+            anchor = activeSession.createAnchor(
+                Pose.makeTranslation(
+                    anchorPosition.x.toFloat(),
+                    anchorPosition.y.toFloat(),
+                    anchorPosition.z.toFloat(),
+                ),
+            ),
             kind = selected.kind,
-            heightMeters = ItemPlacementHeightMeters,
+            heightMeters = 0f,
             localOffset = LocalArOffset(
                 rightMeters = translation[0].toDouble(),
                 forwardMeters = -translation[2].toDouble(),

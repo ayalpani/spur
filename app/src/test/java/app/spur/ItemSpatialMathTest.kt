@@ -52,6 +52,17 @@ class ItemSpatialMathTest {
     }
 
     @Test
+    fun `placement preview anchor starts at final eye height`() {
+        val point = elevatedPlacementAnchorPosition(
+            ArVector3(x = 1.0, y = 0.2, z = -2.0),
+        )
+
+        assertEquals(1.0, point.x, 0.001)
+        assertEquals(1.8, point.y, 0.001)
+        assertEquals(-2.0, point.z, 0.001)
+    }
+
+    @Test
     fun `bearing smoothing takes shortest path around north`() {
         assertEquals(1.0, smoothBearingDegrees(359.0, 1.0, 1.0), 0.001)
         assertEquals(359.36, smoothBearingDegrees(359.0, 1.0), 0.001)

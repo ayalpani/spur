@@ -115,6 +115,9 @@ internal fun horizontalAnchorPosition(
     )
 }
 
+internal fun elevatedPlacementAnchorPosition(floorPosition: ArVector3): ArVector3 =
+    floorPosition.copy(y = floorPosition.y + ItemPlacementHeightMeters)
+
 internal fun isPublishableLocation(quality: ItemLocationFixQuality): Boolean =
     quality.accuracyMeters in 0.0..ItemMaximumLocationAccuracyMeters &&
         max(0L, quality.ageMillis) <= ItemMaximumLocationAgeMillis
