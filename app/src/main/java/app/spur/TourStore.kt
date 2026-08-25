@@ -75,6 +75,7 @@ data class TrackPoint(
     val recordedAt: Long,
     val pauseStartedAt: Long? = null,
     val sampleCount: Int = 1,
+    val accuracyMeters: Float = 10f,
 )
 
 internal data class TourStartResult(
@@ -184,7 +185,7 @@ private data class ActiveTourTail(val point: StoredTrackPoint?)
 private data class StoredRoadHistoryPoint(
     val tourId: Long,
     val id: Long,
-    val coordinate: SpurCoordinate,
+    val sample: RoadTrackSample,
 )
 
 class TourStore(context: Context) :
@@ -945,6 +946,7 @@ class TourStore(context: Context) :
                 COALESCE(SUM(
                     (id % $RoadHistorySignaturePrime) +
                     (recorded_at % $RoadHistorySignaturePrime) +
+                    CAST(ROUND(accuracy_meters * 10) AS INTEGER) * 17 +
                     CAST(ROUND(latitude * $RoadHistoryCoordinatePrecision) AS INTEGER) * 31 +
                     CAST(ROUND(longitude * $RoadHistoryCoordinatePrecision) AS INTEGER)
                 ), 0)
@@ -967,7 +969,7 @@ class TourStore(context: Context) :
         bounds: RoadHistoryBounds,
         afterPointId: Long? = null,
         excludingTourId: Long? = null,
-    ): List<List<SpurCoordinate>> {
+    ): List<List<RoadTrackSample>> {
         val selection: String
         val arguments: Array<String>
         if (afterPointId == null) {
@@ -1014,15 +1016,15 @@ class TourStore(context: Context) :
         }
         return readableDatabase.rawQuery(
             """
-            SELECT tour_id, id, latitude, longitude
+            SELECT tour_id, id, latitude, longitude, recorded_at, accuracy_meters
             FROM track_points
             $selection
             ORDER BY tour_id, recorded_at, id
             """.trimIndent(),
             arguments,
         ).use { cursor ->
-            val routes = mutableListOf<List<SpurCoordinate>>()
-            var activeRoute = mutableListOf<SpurCoordinate>()
+            val routes = mutableListOf<List<RoadTrackSample>>()
+            var activeRoute = mutableListOf<RoadTrackSample>()
             var previous: StoredRoadHistoryPoint? = null
 
             fun finishActiveRoute() {
@@ -1034,9 +1036,13 @@ class TourStore(context: Context) :
                 val current = StoredRoadHistoryPoint(
                     tourId = cursor.getLong(0),
                     id = cursor.getLong(1),
-                    coordinate = SpurCoordinate(
-                        latitude = cursor.getDouble(2),
-                        longitude = cursor.getDouble(3),
+                    sample = RoadTrackSample(
+                        coordinate = SpurCoordinate(
+                            latitude = cursor.getDouble(2),
+                            longitude = cursor.getDouble(3),
+                        ),
+                        recordedAtMillis = cursor.getLong(4),
+                        accuracyMeters = cursor.getDouble(5),
                     ),
                 )
                 val from = previous
@@ -1044,14 +1050,14 @@ class TourStore(context: Context) :
                     from != null &&
                     from.tourId == current.tourId &&
                     (afterPointId == null || from.id > afterPointId || current.id > afterPointId) &&
-                    bounds.intersects(from.coordinate, current.coordinate)
+                    bounds.intersects(from.sample.coordinate, current.sample.coordinate)
                 ) {
-                    if (activeRoute.isEmpty()) activeRoute += from.coordinate
-                    if (activeRoute.last() != from.coordinate) {
+                    if (activeRoute.isEmpty()) activeRoute += from.sample
+                    if (activeRoute.last() != from.sample) {
                         finishActiveRoute()
-                        activeRoute += from.coordinate
+                        activeRoute += from.sample
                     }
-                    activeRoute += current.coordinate
+                    activeRoute += current.sample
                 } else {
                     finishActiveRoute()
                 }
@@ -1066,7 +1072,7 @@ class TourStore(context: Context) :
         db.rawQuery(
             """
             SELECT id, latitude, longitude, recorded_at,
-                   cluster_started_at, cluster_sample_count
+                   cluster_started_at, cluster_sample_count, accuracy_meters
             FROM track_points
             WHERE tour_id = ?
             ORDER BY recorded_at, id
@@ -1083,6 +1089,7 @@ class TourStore(context: Context) :
                             recordedAt = cursor.getLong(3),
                             pauseStartedAt = if (cursor.isNull(4)) null else cursor.getLong(4),
                             sampleCount = cursor.getInt(5),
+                            accuracyMeters = cursor.getFloat(6),
                         ),
                     )
                 }

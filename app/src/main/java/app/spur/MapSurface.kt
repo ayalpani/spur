@@ -1748,7 +1748,7 @@ internal fun MapSurface(
                     )
                 }
                 val completed = withContext(Dispatchers.Default) {
-                    historicalRoadTraversals(
+                    historicalRoadSampleTraversals(
                         routes = routes,
                         roads = roads,
                         shouldContinue = { workJob?.isActive != false },
@@ -1824,14 +1824,18 @@ internal fun MapSurface(
         } else {
             routePoints.subList(lastProcessedIndex, routePoints.size)
         }.map { point ->
-            SpurCoordinate(point.latitude, point.longitude)
+            RoadTrackSample(
+                coordinate = SpurCoordinate(point.latitude, point.longitude),
+                recordedAtMillis = point.recordedAt,
+                accuracyMeters = point.accuracyMeters.toDouble(),
+            )
         }
         val workJob = kotlin.coroutines.coroutineContext[Job]
         val update = withContext(Dispatchers.Default) {
             if (requiresReplay) {
                 roadProgressTracker.replaceCompleted(contextForRoads.completedRoads.values)
             }
-            contextForRoads.analyzer.updateRoute(
+            contextForRoads.analyzer.updateSamples(
                 route = routeToProcess,
                 tracker = roadProgressTracker,
                 initialCursor = roadTraversalCursor.takeUnless { requiresReplay }

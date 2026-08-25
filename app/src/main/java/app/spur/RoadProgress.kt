@@ -221,22 +221,59 @@ internal class RoadTraversalAnalyzer(
         initialCursor: RoadTraversalCursor = RoadTraversalCursor(),
         resetTraversal: Boolean = false,
         shouldContinue: () -> Boolean = { true },
+    ): RoadTraversalUpdate = updateSamples(
+        route = route.map(::RoadTrackSample),
+        tracker = tracker,
+        initialCursor = initialCursor,
+        resetTraversal = resetTraversal,
+        shouldContinue = shouldContinue,
+    )
+
+    fun updateSamples(
+        route: List<RoadTrackSample>,
+        tracker: RoadProgressTracker,
+        initialCursor: RoadTraversalCursor = RoadTraversalCursor(),
+        resetTraversal: Boolean = false,
+        shouldContinue: () -> Boolean = { true },
     ): RoadTraversalUpdate {
         if (resetTraversal) tracker.resetTraversal()
         if (route.size < 2) {
             return RoadTraversalUpdate(
                 snapshot = tracker.currentSnapshot(),
                 cursor = initialCursor.copy(
-                    directionOrigin = initialCursor.directionOrigin ?: route.firstOrNull(),
+                    directionOrigin = initialCursor.directionOrigin ?: route.firstOrNull()?.coordinate,
                 ),
                 completions = emptyList(),
             )
         }
 
-        var directionOrigin = initialCursor.directionOrigin ?: route.first()
+        var directionOrigin = initialCursor.directionOrigin ?: route.first().coordinate
+        var candidateDirectionOrigin = directionOrigin
         var previousRoad = initialCursor.matchedRoadKey?.let(roadsByKey::get)
         val completions = mutableListOf<RoadCompletion>()
-        route.zipWithNext().forEach { (from, to) ->
+        val observations = mutableListOf<RoadMatchObservation>()
+
+        fun applyObservations() {
+            if (observations.isEmpty()) return
+            val matches = mostLikelyRoadCandidates(
+                observations = observations,
+                initialRoad = previousRoad,
+                shouldContinue = shouldContinue,
+            )
+            observations.zip(matches).forEach { (observation, match) ->
+                val snapshot = tracker.update(match?.let(::listOf).orEmpty())
+                snapshot.completion?.let(completions::add)
+                if (match?.directionKnown == true) {
+                    previousRoad = match.road
+                    directionOrigin = observation.coordinate
+                } else if (match == null) {
+                    previousRoad = null
+                }
+            }
+            observations.clear()
+        }
+
+        route.zipWithNext().forEach { (fromSample, toSample) ->
             if (!shouldContinue()) {
                 return RoadTraversalUpdate(
                     snapshot = tracker.currentSnapshot(),
@@ -244,24 +281,32 @@ internal class RoadTraversalAnalyzer(
                     completions = completions,
                 )
             }
+            val from = fromSample.coordinate
+            val to = toSample.coordinate
             val distance = localCoordinateDistanceMeters(from, to)
-            if (distance == 0.0) return@forEach
+            val elapsedMillis = fromSample.recordedAtMillis?.let { fromTime ->
+                toSample.recordedAtMillis?.minus(fromTime)
+            }
             if (
                 distance > RoadHistoryMaximumGapMeters ||
+                elapsedMillis?.let { it <= 0L || it > RoadHistoryMaximumTimeGapMillis } == true ||
                 !roadIndex.intersectsLoadedBounds(from, to)
             ) {
+                applyObservations()
                 tracker.resetTraversal()
                 directionOrigin = to
+                candidateDirectionOrigin = to
                 previousRoad = null
                 return@forEach
             }
+            if (distance == 0.0) return@forEach
 
             val stepCount = ceil(distance / RoadHistorySampleSpacingMeters).toInt()
                 .coerceAtLeast(1)
             for (step in 1..stepCount) {
                 if (!shouldContinue()) break
                 val coordinate = interpolate(from, to, step.toDouble() / stepCount)
-                val previousCoordinate = directionOrigin.takeIf {
+                val previousCoordinate = candidateDirectionOrigin.takeIf {
                     localCoordinateDistanceMeters(it, coordinate) >=
                         RoadHeadingMinimumMovementMeters
                 }
@@ -292,21 +337,23 @@ internal class RoadTraversalAnalyzer(
                     .sortedBy {
                         roadMatchScore(it.road, it.projection, it.headingPenalty)
                     }
-                val match = if (previousCoordinate == null) {
-                    previousRoad?.let { continuing ->
-                        candidates.firstOrNull { it.road.key == continuing.key }
-                    }
-                } else {
-                    chooseContinuousRoadCandidate(candidates, previousRoad)
-                }
-                val snapshot = tracker.update(match?.let(::listOf).orEmpty())
-                snapshot.completion?.let(completions::add)
+                observations += RoadMatchObservation(
+                    coordinate = coordinate,
+                    movementMeters = previousCoordinate?.let {
+                        localCoordinateDistanceMeters(it, coordinate)
+                    } ?: 0.0,
+                    accuracyMeters = maxOf(
+                        fromSample.accuracyMeters,
+                        toSample.accuracyMeters,
+                    ),
+                    candidates = candidates,
+                )
                 if (previousCoordinate != null) {
-                    previousRoad = match?.road
-                    directionOrigin = coordinate
+                    candidateDirectionOrigin = coordinate
                 }
             }
         }
+        applyObservations()
         return RoadTraversalUpdate(
             snapshot = tracker.currentSnapshot(),
             cursor = RoadTraversalCursor(directionOrigin, previousRoad?.key),
@@ -320,12 +367,24 @@ internal fun historicalRoadTraversals(
     roads: List<RenderedRoadSegment>,
     shouldContinue: () -> Boolean = { true },
 ): Map<String, CompletedRoad> {
+    return historicalRoadSampleTraversals(
+        routes = routes.map { route -> route.map(::RoadTrackSample) },
+        roads = roads,
+        shouldContinue = shouldContinue,
+    )
+}
+
+internal fun historicalRoadSampleTraversals(
+    routes: List<List<RoadTrackSample>>,
+    roads: List<RenderedRoadSegment>,
+    shouldContinue: () -> Boolean = { true },
+): Map<String, CompletedRoad> {
     if (roads.isEmpty()) return emptyMap()
     val tracker = RoadProgressTracker()
     val analyzer = RoadTraversalAnalyzer(roads)
     routes.forEach { route ->
         if (!shouldContinue()) return emptyMap()
-        analyzer.updateRoute(
+        analyzer.updateSamples(
             route = route,
             tracker = tracker,
             resetTraversal = true,
@@ -518,7 +577,7 @@ internal fun canonicalRoadKey(
     return "$discriminator|${minOf(forward, reverse)}"
 }
 
-private fun roadLengthMeters(points: List<SpurCoordinate>): Double =
+internal fun roadLengthMeters(points: List<SpurCoordinate>): Double =
     points.zipWithNext(::localCoordinateDistanceMeters).sum()
 
 private fun interpolate(
@@ -758,7 +817,7 @@ private class RoadSpatialIndex(
     private fun cell(value: Double): Int = floor(value / RoadHistoryCellDegrees).toInt()
 }
 
-private fun connectedEndpointFractions(
+internal fun connectedEndpointFractions(
     first: RenderedRoadSegment,
     second: RenderedRoadSegment,
 ): Pair<Double, Double>? {
@@ -844,6 +903,7 @@ private const val RoadEndpointConnectionToleranceMeters = 3.0
 private const val RoadHistoryMatchDistanceMeters = 30.0
 private const val RoadHistoryMinimumMeters = 1.0
 private const val RoadHistoryMaximumGapMeters = 300.0
+private const val RoadHistoryMaximumTimeGapMillis = 60_000L
 private const val RoadHistoryMaximumBridgeMeters = 80.0
 private const val RoadHistorySampleSpacingMeters = 8.0
 private const val RoadHistoryCellDegrees = 0.001
