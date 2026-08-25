@@ -410,7 +410,12 @@ class RoadProgressTest {
         )
 
         assertEquals(22, baseCounts.getValue(south.key).count)
-        assertEquals(22, detailedCounts.getValue(south.key).count)
+        assertEquals(
+            setOf(22),
+            listOf(south, east, north, west)
+                .map { detailedCounts.getValue(it.key).count }
+                .toSet(),
+        )
         assertFalse(parallel.key in detailedCounts)
     }
 
@@ -442,49 +447,6 @@ class RoadProgressTest {
         )
 
         assertEquals(next, selected?.road)
-    }
-
-    @Test
-    fun sequenceMatcherIgnoresBriefGpsDriftToUnconnectedParallelRoad() {
-        val parallel = road.copy(
-            key = "parallel",
-            points = road.points.map { it.copy(latitude = 52.00005) },
-        )
-        val observations = listOf(
-            sequenceObservation(SpurCoordinate(52.0, 13.0001), road, parallel),
-            sequenceObservation(SpurCoordinate(52.00005, 13.0005), road, parallel),
-            sequenceObservation(SpurCoordinate(52.0, 13.0009), road, parallel),
-        )
-
-        val matches = mostLikelyRoadCandidates(observations)
-
-        assertEquals(listOf(road.key, road.key, road.key), matches.map { it?.road?.key })
-    }
-
-    @Test
-    fun sequenceMatcherLeavesImpossibleRoadJumpUnmatched() {
-        val disconnected = road.copy(
-            key = "disconnected",
-            points = road.points.map { it.copy(latitude = 52.0002) },
-        )
-        val first = SpurCoordinate(52.0, 13.0002)
-        val second = SpurCoordinate(52.0002, 13.0008)
-        val observations = listOf(
-            RoadMatchObservation(
-                coordinate = first,
-                movementMeters = 0.0,
-                candidates = listOf(candidateOn(first, road)),
-            ),
-            RoadMatchObservation(
-                coordinate = second,
-                movementMeters = localCoordinateDistanceMeters(first, second),
-                candidates = listOf(candidateOn(second, disconnected)),
-            ),
-        )
-
-        val matches = mostLikelyRoadCandidates(observations)
-
-        assertTrue(matches.any { it == null })
     }
 
     @Test
@@ -541,7 +503,7 @@ class RoadProgressTest {
             routes = listOf(
                 listOf(
                     road.points.first(),
-                    SpurCoordinate(52.0, 13.0008),
+                    SpurCoordinate(52.0, 13.0004),
                 ),
             ),
             roads = listOf(road),
@@ -551,8 +513,23 @@ class RoadProgressTest {
     }
 
     @Test
-    fun longRecordingGapDoesNotInventRoadTraversal() {
-        val counts = historicalRoadSampleTraversals(
+    fun historicalPassageToleratesGpsTrackTwentyMetersBesideRoad() {
+        val offsetRoute = listOf(
+            SpurCoordinate(52.0002, 13.0),
+            SpurCoordinate(52.0002, 13.001),
+        )
+
+        val counts = historicalRoadTraversals(
+            routes = listOf(offsetRoute),
+            roads = listOf(road),
+        )
+
+        assertEquals(1, counts.getValue(road.key).count)
+    }
+
+    @Test
+    fun longRecordingGapDoesNotInventRoadPassage() {
+        val counts = historicalRoadPassages(
             routes = listOf(
                 listOf(
                     RoadTrackSample(road.points.first(), recordedAtMillis = 0L),
@@ -703,21 +680,4 @@ class RoadProgressTest {
             ),
         )
     }
-
-    private fun sequenceObservation(
-        coordinate: SpurCoordinate,
-        vararg roads: RenderedRoadSegment,
-    ) = RoadMatchObservation(
-        coordinate = coordinate,
-        movementMeters = 25.0,
-        candidates = roads.map { candidateOn(coordinate, it) },
-    )
-
-    private fun candidateOn(
-        coordinate: SpurCoordinate,
-        road: RenderedRoadSegment,
-    ) = RoadCandidate(
-        road = road,
-        projection = projectOntoRoad(coordinate, road.points)!!,
-    )
 }

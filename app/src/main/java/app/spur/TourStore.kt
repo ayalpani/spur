@@ -75,7 +75,6 @@ data class TrackPoint(
     val recordedAt: Long,
     val pauseStartedAt: Long? = null,
     val sampleCount: Int = 1,
-    val accuracyMeters: Float = 10f,
 )
 
 internal data class TourStartResult(
@@ -1015,7 +1014,7 @@ class TourStore(context: Context) :
         }
         return readableDatabase.rawQuery(
             """
-            SELECT tour_id, id, latitude, longitude, recorded_at, accuracy_meters
+            SELECT tour_id, id, latitude, longitude, recorded_at
             FROM track_points
             $selection
             ORDER BY tour_id, recorded_at, id
@@ -1041,7 +1040,6 @@ class TourStore(context: Context) :
                             longitude = cursor.getDouble(3),
                         ),
                         recordedAtMillis = cursor.getLong(4),
-                        accuracyMeters = cursor.getDouble(5),
                     ),
                 )
                 val from = previous
@@ -1071,7 +1069,7 @@ class TourStore(context: Context) :
         db.rawQuery(
             """
             SELECT id, latitude, longitude, recorded_at,
-                   cluster_started_at, cluster_sample_count, accuracy_meters
+                   cluster_started_at, cluster_sample_count
             FROM track_points
             WHERE tour_id = ?
             ORDER BY recorded_at, id
@@ -1088,7 +1086,6 @@ class TourStore(context: Context) :
                             recordedAt = cursor.getLong(3),
                             pauseStartedAt = if (cursor.isNull(4)) null else cursor.getLong(4),
                             sampleCount = cursor.getInt(5),
-                            accuracyMeters = cursor.getFloat(6),
                         ),
                     )
                 }
