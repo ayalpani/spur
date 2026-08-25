@@ -52,8 +52,9 @@ internal class RoadTraversalStore(context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion in 2..3 && newVersion >= 4) {
+        if (oldVersion in 2..4 && newVersion >= 5) {
             if (oldVersion == 2) createRoadProgressState(db)
+            if (oldVersion == 4) db.execSQL("DROP TABLE IF EXISTS road_rebuild_stats")
             createRoadRebuildStats(db)
             return
         }
@@ -81,6 +82,7 @@ internal class RoadTraversalStore(context: Context) :
             """
             CREATE TABLE IF NOT EXISTS road_rebuild_stats (
                 id INTEGER PRIMARY KEY,
+                algorithm_version INTEGER NOT NULL,
                 compared_cells INTEGER NOT NULL,
                 unchanged_roads INTEGER NOT NULL,
                 increased_roads INTEGER NOT NULL,
@@ -95,11 +97,17 @@ internal class RoadTraversalStore(context: Context) :
     }
 
     private fun addRebuildStats(db: SQLiteDatabase, change: RoadTraversalCellChange) {
+        db.delete(
+            "road_rebuild_stats",
+            "algorithm_version != ?",
+            arrayOf(RoadTraversalAlgorithmVersion.toString()),
+        )
         db.insertWithOnConflict(
             "road_rebuild_stats",
             null,
             ContentValues().apply {
                 put("id", RoadRebuildStatsId)
+                put("algorithm_version", RoadTraversalAlgorithmVersion)
                 put("compared_cells", 0)
                 put("unchanged_roads", 0)
                 put("increased_roads", 0)
@@ -173,7 +181,7 @@ internal class RoadTraversalStore(context: Context) :
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val legacyKey = previousRoadTraversalCacheKey(cacheKey)
+            val legacyKey = latestLegacyRoadTraversalCacheKey(db, cacheKey)
             val legacy = legacyKey?.let { readTraversals(db, it) }
                 ?.takeIf { it.fingerprint == traversals.fingerprint }
             db.insertWithOnConflict(
@@ -194,7 +202,7 @@ internal class RoadTraversalStore(context: Context) :
                     compareRoadTraversals(legacy.completedRoads, traversals.completedRoads),
                 )
             }
-            legacyKey?.let { db.delete("road_traversal_cells", "cache_key = ?", arrayOf(it)) }
+            deleteLegacyRoadTraversalCells(db, cacheKey)
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -417,13 +425,43 @@ private fun DataInputStream.readSizedString(): String {
     return bytes.toString(Charsets.UTF_8)
 }
 
-internal const val RoadTraversalAlgorithmVersion = 3
-private const val PreviousRoadTraversalAlgorithmVersion = RoadTraversalAlgorithmVersion - 1
+internal const val RoadTraversalAlgorithmVersion = 4
 
-private fun previousRoadTraversalCacheKey(cacheKey: String): String? =
-    cacheKey.substringAfter(':', missingDelimiterValue = "")
+private fun latestLegacyRoadTraversalCacheKey(
+    db: SQLiteDatabase,
+    cacheKey: String,
+): String? {
+    val suffix = cacheKey.substringAfter(':', missingDelimiterValue = "")
         .takeIf(String::isNotEmpty)
-        ?.let { "$PreviousRoadTraversalAlgorithmVersion:$it" }
+        ?: return null
+    return db.query(
+        "road_traversal_cells",
+        arrayOf("cache_key"),
+        "cache_key LIKE ? AND cache_key != ?",
+        arrayOf("%:$suffix", cacheKey),
+        null,
+        null,
+        null,
+    ).use { cursor ->
+        buildList {
+            while (cursor.moveToNext()) add(cursor.getString(0))
+        }.maxByOrNull(::roadTraversalCacheAlgorithmVersion)
+    }
+}
+
+private fun deleteLegacyRoadTraversalCells(db: SQLiteDatabase, cacheKey: String) {
+    val suffix = cacheKey.substringAfter(':', missingDelimiterValue = "")
+        .takeIf(String::isNotEmpty)
+        ?: return
+    db.delete(
+        "road_traversal_cells",
+        "cache_key LIKE ? AND cache_key != ?",
+        arrayOf("%:$suffix", cacheKey),
+    )
+}
+
+private fun roadTraversalCacheAlgorithmVersion(cacheKey: String): Int =
+    cacheKey.substringBefore(':').toIntOrNull() ?: Int.MIN_VALUE
 
 private fun roadTraversalCacheZoom(cacheKey: String): Int? {
     val parts = cacheKey.split(':', limit = 3)
@@ -433,7 +471,7 @@ private fun roadTraversalCacheZoom(cacheKey: String): Int? {
 }
 
 private const val RoadTraversalDatabaseName = "road-traversal-cache.db"
-private const val RoadTraversalDatabaseVersion = 4
+private const val RoadTraversalDatabaseVersion = 5
 private const val RoadProgressStateId = 1
 private const val RoadRebuildStatsId = 1
 private const val RoadTraversalEncodingVersion = 1

@@ -540,7 +540,7 @@ internal fun localCoordinateDistanceMeters(
     return hypot(toMeters.first - fromMeters.first, toMeters.second - fromMeters.second)
 }
 
-private fun chooseContinuousRoadCandidate(
+internal fun chooseContinuousRoadCandidate(
     candidates: List<RoadCandidate>,
     previousRoad: RenderedRoadSegment?,
 ): RoadCandidate? {
@@ -838,7 +838,7 @@ private const val RoadCandidateSwitchProgressFraction = 0.1
 private const val RoadCandidateMissesBeforeReset = 2
 internal const val RoadHeadingMinimumMovementMeters = 5.0
 private const val RoadHeadingMaximumPenaltyMeters = 14.0
-private const val RoadMatchSwitchAdvantageMeters = 6.0
+private const val RoadMatchSwitchAdvantageMeters = 0.0
 private const val RoadUnconnectedTransitionPenaltyMeters = 30.0
 private const val RoadEndpointConnectionToleranceMeters = 3.0
 private const val RoadHistoryMatchDistanceMeters = 30.0

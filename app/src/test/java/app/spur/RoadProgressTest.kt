@@ -370,7 +370,7 @@ class RoadProgressTest {
     }
 
     @Test
-    fun repeatedLoopKeepsCountingConnectedRoadBesideCloserParallelRoad() {
+    fun repeatedLoopKeepsCountingAcrossConnectedRoadChangesBesideCloserParallelRoad() {
         val southWest = SpurCoordinate(52.0, 13.0)
         val southEast = SpurCoordinate(52.0, 13.001)
         val northEast = SpurCoordinate(52.001, 13.001)
@@ -412,6 +412,36 @@ class RoadProgressTest {
         assertEquals(22, baseCounts.getValue(south.key).count)
         assertEquals(22, detailedCounts.getValue(south.key).count)
         assertFalse(parallel.key in detailedCounts)
+    }
+
+    @Test
+    fun connectedRoadSwitchUsesTheBestMatchWithoutExtraStickiness() {
+        val junction = SpurCoordinate(52.0, 13.001)
+        val previous = RenderedRoadSegment(
+            key = "previous",
+            points = listOf(SpurCoordinate(52.0, 13.0), junction),
+        )
+        val next = RenderedRoadSegment(
+            key = "next",
+            points = listOf(junction, SpurCoordinate(52.001, 13.001)),
+        )
+        fun candidate(road: RenderedRoadSegment, distanceMeters: Double) = RoadCandidate(
+            road = road,
+            projection = RoadProjection(
+                coordinate = junction,
+                distanceMeters = distanceMeters,
+                distanceAlongMeters = 0.0,
+                totalLengthMeters = 100.0,
+                segmentIndex = 0,
+            ),
+        )
+
+        val selected = chooseContinuousRoadCandidate(
+            candidates = listOf(candidate(previous, 5.0), candidate(next, 0.0)),
+            previousRoad = previous,
+        )
+
+        assertEquals(next, selected?.road)
     }
 
     @Test
