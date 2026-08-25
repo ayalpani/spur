@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -95,6 +96,8 @@ internal fun ItemArView(
     onClaim: suspend (PublicItem, ItemLocation) -> ClaimOutcome,
     onNotice: ShowFeedbackNotice,
     onExitAr: () -> Unit,
+    controlsBottomPadding: Dp,
+    reserveTrailingControlSpace: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -526,75 +529,78 @@ internal fun ItemArView(
                 )
             }
         } else {
-            Column(
+            Row(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
+                    .align(Alignment.BottomStart)
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .padding(
+                        start = MapControlHorizontalPadding,
+                        end = MapControlHorizontalPadding,
+                        bottom = controlsBottomPadding,
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(MapControlGap),
+                verticalAlignment = Alignment.Bottom,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                if (placement != null) {
+                    val selectedDropPending = inventory.pendingDrops.any {
+                        it.itemId == selectedOwnedItem?.id
+                    }
+                    ArActionButton(
+                        label = when {
+                            dropping -> "Wird veröffentlicht …"
+                            selectedDropPending -> "Erneut veröffentlichen"
+                            else -> "Hier ablegen"
+                        },
+                        enabled = !dropping,
+                        onClick = {
+                            val item = selectedOwnedItem ?: return@ArActionButton
+                            val preview = placement ?: return@ArActionButton
+                            val location = deviceLocation
+                            val bearing = northBearing
+                            if (
+                                location == null ||
+                                !location.isPublishableItemLocation(System.currentTimeMillis()) ||
+                                bearing == null
+                            ) {
+                                waitingForLocation = true
+                                return@ArActionButton
+                            }
+                            dropping = true
+                            scope.launch {
+                                val destination = projectArOffset(
+                                    origin = location.toItemLocation(),
+                                    northBearingDegrees = bearing.toDouble(),
+                                    offset = preview.localOffset,
+                                )
+                                when (onDrop(item, destination)) {
+                                    DropOutcome.DROPPED -> cancelPlacement()
+                                    DropOutcome.PENDING -> Unit
+                                    DropOutcome.FAILED -> Unit
+                                }
+                                dropping = false
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                } else if (showApproximatePlacement) {
+                    ArActionButton(
+                        label = "Ungefähr platzieren",
+                        onClick = ::placeApproximate,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                MapIconButton(
+                    contentDescription = "Platzierung schließen",
+                    onClick = ::cancelPlacement,
+                    secondary = true,
                 ) {
-                    if (placement != null) {
-                        val selectedDropPending = inventory.pendingDrops.any {
-                            it.itemId == selectedOwnedItem?.id
-                        }
-                        ArActionButton(
-                            label = when {
-                                dropping -> "Wird veröffentlicht …"
-                                selectedDropPending -> "Erneut veröffentlichen"
-                                else -> "Hier ablegen"
-                            },
-                            enabled = !dropping,
-                            onClick = {
-                                val item = selectedOwnedItem ?: return@ArActionButton
-                                val preview = placement ?: return@ArActionButton
-                                val location = deviceLocation
-                                val bearing = northBearing
-                                if (
-                                    location == null ||
-                                    !location.isPublishableItemLocation(System.currentTimeMillis()) ||
-                                    bearing == null
-                                ) {
-                                    waitingForLocation = true
-                                    return@ArActionButton
-                                }
-                                dropping = true
-                                scope.launch {
-                                    val destination = projectArOffset(
-                                        origin = location.toItemLocation(),
-                                        northBearingDegrees = bearing.toDouble(),
-                                        offset = preview.localOffset,
-                                    )
-                                    when (onDrop(item, destination)) {
-                                        DropOutcome.DROPPED -> cancelPlacement()
-                                        DropOutcome.PENDING -> Unit
-                                        DropOutcome.FAILED -> Unit
-                                    }
-                                    dropping = false
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                        )
-                    } else if (showApproximatePlacement) {
-                        ArActionButton(
-                            label = "Ungefähr platzieren",
-                            onClick = ::placeApproximate,
-                            modifier = Modifier.weight(1f),
-                        )
-                    } else {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                    MapIconButton(
-                        contentDescription = "Platzierung schließen",
-                        onClick = ::cancelPlacement,
-                        secondary = true,
-                    ) {
-                        PhotoCloseIcon()
-                    }
+                    PhotoCloseIcon()
+                }
+                if (reserveTrailingControlSpace) {
+                    Spacer(modifier = Modifier.size(MapControlSize))
                 }
             }
         }

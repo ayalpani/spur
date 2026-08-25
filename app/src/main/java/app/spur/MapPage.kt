@@ -786,6 +786,9 @@ internal fun MapPage(
                     },
                     onNotice = showFeedbackNotice,
                     onExitAr = closeAr,
+                    controlsBottomPadding = MapControlVerticalPadding +
+                        if (hasWaypointRail) WaypointRailHeight else 0.dp,
+                    reserveTrailingControlSpace = !usesStackedMapPlayer,
                     modifier = Modifier.zIndex(0.5f),
                 )
             }
