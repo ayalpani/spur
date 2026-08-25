@@ -33,10 +33,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
+import com.google.android.filament.MaterialInstance
 import com.google.ar.core.Anchor
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
+import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.ModelNode
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -70,6 +72,10 @@ internal data class PublicAnchorPlan(
     val idsToRemove: Set<String>,
     val idsToCreate: Set<String>,
 )
+
+private const val ItemGuideBaseRadiusMeters = 0.12f
+private const val ItemGuideBaseHeightMeters = 0.02f
+private const val ItemGuideLineRadiusMeters = 0.0075f
 
 internal fun planPublicAnchors(
     existingIds: Set<String>,
@@ -149,12 +155,36 @@ internal fun ItemDirectionGuide(
 internal fun createFruitAnchor(
     engine: Engine,
     modelLoader: ModelLoader,
+    guideMaterial: MaterialInstance,
     anchor: Anchor,
     kind: ItemKind,
     heightMeters: Float,
     localOffset: LocalArOffset,
 ): FruitAnchor {
     val root = AnchorNode(engine, anchor).apply { isPositionEditable = false }
+    val lineHeight = ItemPlacementHeightMeters - ItemGuideBaseHeightMeters
+    CylinderNode(
+        engine = engine,
+        radius = ItemGuideLineRadiusMeters,
+        height = lineHeight,
+        center = Position(y = -lineHeight / 2f),
+        materialInstance = guideMaterial,
+    ).apply {
+        isTouchable = false
+        parent = root
+    }
+    CylinderNode(
+        engine = engine,
+        radius = ItemGuideBaseRadiusMeters,
+        height = ItemGuideBaseHeightMeters,
+        center = Position(
+            y = -ItemPlacementHeightMeters + ItemGuideBaseHeightMeters / 2f,
+        ),
+        materialInstance = guideMaterial,
+    ).apply {
+        isTouchable = false
+        parent = root
+    }
     val model = ModelNode(
         modelInstance = modelLoader.createModelInstance(kind.modelAsset),
         scaleToUnits = ItemSemanticSizeMeters,

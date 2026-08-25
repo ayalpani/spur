@@ -66,6 +66,7 @@ import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
+import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -104,8 +105,13 @@ internal fun ItemArView(
     var pauseObserver by remember { mutableStateOf<LifecycleEventObserver?>(null) }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val environment = rememberEnvironment(environmentLoader, isOpaque = true)
+    val guideColor = LocalMapControlColors.current.background
+    val guideMaterial = remember(materialLoader, guideColor) {
+        materialLoader.createColorInstance(guideColor)
+    }
     val northBearing = rememberNorthBearing(deviceLocation)
     var sceneView by remember { mutableStateOf<ARSceneView?>(null) }
     var session by remember { mutableStateOf<Session?>(null) }
@@ -155,6 +161,7 @@ internal fun ItemArView(
         placement = createFruitAnchor(
             engine = engine,
             modelLoader = modelLoader,
+            guideMaterial = guideMaterial,
             anchor = activeSession.createAnchor(
                 Pose.makeTranslation(
                     anchorPosition.x.toFloat(),
@@ -187,6 +194,7 @@ internal fun ItemArView(
         placement = createFruitAnchor(
             engine = engine,
             modelLoader = modelLoader,
+            guideMaterial = guideMaterial,
             anchor = activeSession.createAnchor(pose),
             kind = selected.kind,
             heightMeters = 0f,
@@ -296,6 +304,7 @@ internal fun ItemArView(
                 val root = createFruitAnchor(
                     engine = engine,
                     modelLoader = modelLoader,
+                    guideMaterial = guideMaterial,
                     anchor = activeSession.createAnchor(
                         Pose.makeTranslation(point.x.toFloat(), point.y.toFloat(), point.z.toFloat()),
                     ),
