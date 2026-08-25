@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spur · Competitive App Screens</title>
+  <style>
+    :root { color-scheme: light; --ink:#111; --muted:#6e716f; --surface:#f2f3f2; --line:#dadcda; --accent:#b9f36b; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#fff; color:var(--ink); font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    .page { max-width:1440px; margin:auto; padding:56px 32px 96px; }
+    .intro { max-width:820px; margin-bottom:36px; }
+    h1 { margin:0 0 12px; font-size:clamp(42px,7vw,88px); line-height:.92; letter-spacing:-.055em; }
+    .intro p { max-width:680px; color:var(--muted); font-size:18px; }
+    .meta { display:inline-flex; gap:10px; align-items:center; background:var(--accent); padding:8px 12px; border-radius:99px; color:#17200d; font-weight:650; }
+    .filters { display:flex; flex-wrap:wrap; gap:8px; margin:28px 0 44px; }
+    button { appearance:none; border:1px solid var(--line); border-radius:99px; background:#fff; padding:10px 14px; font:inherit; cursor:pointer; }
+    button.active { background:var(--ink); border-color:var(--ink); color:#fff; }
+    .grid { display:grid; gap:64px; }
+    .card { min-width:0; }
+    .card header { display:flex; align-items:end; justify-content:space-between; gap:16px; border-top:1px solid var(--line); padding-top:18px; }
+    .eyebrow { margin:0 0 3px; color:var(--muted); font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+    h2 { margin:0; font-size:32px; line-height:1; letter-spacing:-.035em; }
+    .source { color:var(--ink); text-underline-offset:3px; white-space:nowrap; }
+    .note { margin:10px 0 20px; color:var(--muted); }
+    .shots { display:flex; gap:14px; overflow-x:auto; padding:0 0 18px; scroll-snap-type:x proximity; scrollbar-color:#bbb transparent; }
+    .shots a { flex:0 0 auto; scroll-snap-align:start; display:flex; height:520px; max-width:min(82vw,940px); border-radius:20px; overflow:hidden; background:var(--surface); box-shadow:0 1px 1px rgb(0 0 0/.08),0 10px 28px rgb(0 0 0/.07); }
+    .shots img { display:block; width:auto; height:100%; object-fit:contain; }
+    .card[data-category="Street Coverage"] .shots a { height:auto; max-height:none; width:min(100%,1280px); }
+    .card[data-category="Street Coverage"] .shots img { width:100%; height:auto; }
+    .card[hidden] { display:none; }
+    footer { margin-top:72px; border-top:1px solid var(--line); padding-top:18px; color:var(--muted); }
+    @media (max-width:700px) { .page { padding:34px 18px 72px; } .shots a { height:430px; } .card header { align-items:start; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="intro">
+      <span class="meta">23 Produkte · 2026-08-06</span>
+      <h1>Apps in Spurs Fahrwasser.</h1>
+      <p>Offizielle Store-Screens und Website-Aufnahmen aus Running, Outdoor-Navigation, Bewegungs-Gamification und Street Coverage. Als visuelle Referenz – nicht als Feature-Backlog.</p>
+    </section>
+    <nav class="filters" aria-label="Kategorien">
+      <button class="active" type="button" data-filter="all">Alle</button><button type="button" data-filter="Running &amp; Training">Running &amp; Training</button><button type="button" data-filter="Outdoor &amp; Navigation">Outdoor &amp; Navigation</button><button type="button" data-filter="Exploration &amp; Game">Exploration &amp; Game</button><button type="button" data-filter="Street Coverage">Street Coverage</button>
+    </nav>
+    <section class="grid"><article class="card" data-category="Running &amp; Training">
+              <header>
+                <div><p class="eyebrow">Running &amp; Training</p><h2>Strava</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.strava&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Social feed, recording, route and activity storytelling</p>
+              <div class="shots"><a href="images/strava/01.webp"><img loading="lazy" src="images/strava/01.webp" alt="Strava screenshot"></a><a href="images/strava/02.webp"><img loading="lazy" src="images/strava/02.webp" alt="Strava screenshot"></a><a href="images/strava/03.webp"><img loading="lazy" src="images/strava/03.webp" alt="Strava screenshot"></a><a href="images/strava/04.webp"><img loading="lazy" src="images/strava/04.webp" alt="Strava screenshot"></a><a href="images/strava/05.webp"><img loading="lazy" src="images/strava/05.webp" alt="Strava screenshot"></a><a href="images/strava/06.webp"><img loading="lazy" src="images/strava/06.webp" alt="Strava screenshot"></a></div>
+            </article><article class="card" data-category="Running &amp; Training">
+              <header>
+                <div><p class="eyebrow">Running &amp; Training</p><h2>Nike Run Club</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.nike.plusgps&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Guided runs, coaching and achievement language</p>
+              <div class="shots"><a href="images/nike-run-club/01.webp"><img loading="lazy" src="images/nike-run-club/01.webp" alt="Nike Run Club screenshot"></a><a href="images/nike-run-club/02.webp"><img loading="lazy" src="images/nike-run-club/02.webp" alt="Nike Run Club screenshot"></a><a href="images/nike-run-club/03.webp"><img loading="lazy" src="images/nike-run-club/03.webp" alt="Nike Run Club screenshot"></a><a href="images/nike-run-club/04.webp"><img loading="lazy" src="images/nike-run-club/04.webp" alt="Nike Run Club screenshot"></a><a href="images/nike-run-club/05.webp"><img loading="lazy" src="images/nike-run-club/05.webp" alt="Nike Run Club screenshot"></a><a href="images/nike-run-club/06.webp"><img loading="lazy" src="images/nike-run-club/06.webp" alt="Nike Run Club screenshot"></a></div>
+            </article><article class="card" data-category="Running &amp; Training">
+              <header>
+                <div><p class="eyebrow">Running &amp; Training</p><h2>adidas Running</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.runtastic.android&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Tracking, goals, challenges and community</p>
+              <div class="shots"><a href="images/adidas-running/01.webp"><img loading="lazy" src="images/adidas-running/01.webp" alt="adidas Running screenshot"></a><a href="images/adidas-running/02.webp"><img loading="lazy" src="images/adidas-running/02.webp" alt="adidas Running screenshot"></a><a href="images/adidas-running/03.webp"><img loading="lazy" src="images/adidas-running/03.webp" alt="adidas Running screenshot"></a><a href="images/adidas-running/04.webp"><img loading="lazy" src="images/adidas-running/04.webp" alt="adidas Running screenshot"></a><a href="images/adidas-running/05.webp"><img loading="lazy" src="images/adidas-running/05.webp" alt="adidas Running screenshot"></a><a href="images/adidas-running/06.webp"><img loading="lazy" src="images/adidas-running/06.webp" alt="adidas Running screenshot"></a></div>
+            </article><article class="card" data-category="Running &amp; Training">
+              <header>
+                <div><p class="eyebrow">Running &amp; Training</p><h2>ASICS Runkeeper</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.fitnesskeeper.runkeeper.pro&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Approachable tracking, plans and progress</p>
+              <div class="shots"><a href="images/runkeeper/01.webp"><img loading="lazy" src="images/runkeeper/01.webp" alt="ASICS Runkeeper screenshot"></a><a href="images/runkeeper/02.webp"><img loading="lazy" src="images/runkeeper/02.webp" alt="ASICS Runkeeper screenshot"></a><a href="images/runkeeper/03.webp"><img loading="lazy" src="images/runkeeper/03.webp" alt="ASICS Runkeeper screenshot"></a><a href="images/runkeeper/04.webp"><img loading="lazy" src="images/runkeeper/04.webp" alt="ASICS Runkeeper screenshot"></a><a href="images/runkeeper/05.webp"><img loading="lazy" src="images/runkeeper/05.webp" alt="ASICS Runkeeper screenshot"></a><a href="images/runkeeper/06.webp"><img loading="lazy" src="images/runkeeper/06.webp" alt="ASICS Runkeeper screenshot"></a></div>
+            </article><article class="card" data-category="Running &amp; Training">
+              <header>
+                <div><p class="eyebrow">Running &amp; Training</p><h2>MapMyRun</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.mapmyrun.android2&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Classic route recording and workout analytics</p>
+              <div class="shots"><a href="images/mapmyrun/01.webp"><img loading="lazy" src="images/mapmyrun/01.webp" alt="MapMyRun screenshot"></a><a href="images/mapmyrun/02.webp"><img loading="lazy" src="images/mapmyrun/02.webp" alt="MapMyRun screenshot"></a><a href="images/mapmyrun/03.webp"><img loading="lazy" src="images/mapmyrun/03.webp" alt="MapMyRun screenshot"></a><a href="images/mapmyrun/04.webp"><img loading="lazy" src="images/mapmyrun/04.webp" alt="MapMyRun screenshot"></a><a href="images/mapmyrun/05.webp"><img loading="lazy" src="images/mapmyrun/05.webp" alt="MapMyRun screenshot"></a><a href="images/mapmyrun/06.webp"><img loading="lazy" src="images/mapmyrun/06.webp" alt="MapMyRun screenshot"></a></div>
+            </article><article class="card" data-category="Running &amp; Training">
+              <header>
+                <div><p class="eyebrow">Running &amp; Training</p><h2>Runna</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.runbuddy.prod&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Plan-led coaching and workout guidance</p>
+              <div class="shots"><a href="images/runna/01.webp"><img loading="lazy" src="images/runna/01.webp" alt="Runna screenshot"></a><a href="images/runna/02.webp"><img loading="lazy" src="images/runna/02.webp" alt="Runna screenshot"></a><a href="images/runna/03.webp"><img loading="lazy" src="images/runna/03.webp" alt="Runna screenshot"></a><a href="images/runna/04.webp"><img loading="lazy" src="images/runna/04.webp" alt="Runna screenshot"></a><a href="images/runna/05.webp"><img loading="lazy" src="images/runna/05.webp" alt="Runna screenshot"></a><a href="images/runna/06.webp"><img loading="lazy" src="images/runna/06.webp" alt="Runna screenshot"></a></div>
+            </article><article class="card" data-category="Running &amp; Training">
+              <header>
+                <div><p class="eyebrow">Running &amp; Training</p><h2>Garmin Connect</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.garmin.android.apps.connectmobile&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Dense history, health metrics and device ecosystem</p>
+              <div class="shots"><a href="images/garmin-connect/01.webp"><img loading="lazy" src="images/garmin-connect/01.webp" alt="Garmin Connect screenshot"></a><a href="images/garmin-connect/02.webp"><img loading="lazy" src="images/garmin-connect/02.webp" alt="Garmin Connect screenshot"></a><a href="images/garmin-connect/03.webp"><img loading="lazy" src="images/garmin-connect/03.webp" alt="Garmin Connect screenshot"></a><a href="images/garmin-connect/04.webp"><img loading="lazy" src="images/garmin-connect/04.webp" alt="Garmin Connect screenshot"></a><a href="images/garmin-connect/05.webp"><img loading="lazy" src="images/garmin-connect/05.webp" alt="Garmin Connect screenshot"></a><a href="images/garmin-connect/06.webp"><img loading="lazy" src="images/garmin-connect/06.webp" alt="Garmin Connect screenshot"></a></div>
+            </article><article class="card" data-category="Running &amp; Training">
+              <header>
+                <div><p class="eyebrow">Running &amp; Training</p><h2>Suunto</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.stt.android.suunto&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Map-first sports tracking and route planning</p>
+              <div class="shots"><a href="images/suunto/01.webp"><img loading="lazy" src="images/suunto/01.webp" alt="Suunto screenshot"></a><a href="images/suunto/02.webp"><img loading="lazy" src="images/suunto/02.webp" alt="Suunto screenshot"></a><a href="images/suunto/03.webp"><img loading="lazy" src="images/suunto/03.webp" alt="Suunto screenshot"></a><a href="images/suunto/04.webp"><img loading="lazy" src="images/suunto/04.webp" alt="Suunto screenshot"></a><a href="images/suunto/05.webp"><img loading="lazy" src="images/suunto/05.webp" alt="Suunto screenshot"></a><a href="images/suunto/06.webp"><img loading="lazy" src="images/suunto/06.webp" alt="Suunto screenshot"></a></div>
+            </article><article class="card" data-category="Outdoor &amp; Navigation">
+              <header>
+                <div><p class="eyebrow">Outdoor &amp; Navigation</p><h2>Komoot</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=de.komoot.android&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Route discovery, planning and turn-by-turn navigation</p>
+              <div class="shots"><a href="images/komoot/01.webp"><img loading="lazy" src="images/komoot/01.webp" alt="Komoot screenshot"></a><a href="images/komoot/02.webp"><img loading="lazy" src="images/komoot/02.webp" alt="Komoot screenshot"></a><a href="images/komoot/03.webp"><img loading="lazy" src="images/komoot/03.webp" alt="Komoot screenshot"></a><a href="images/komoot/04.webp"><img loading="lazy" src="images/komoot/04.webp" alt="Komoot screenshot"></a><a href="images/komoot/05.webp"><img loading="lazy" src="images/komoot/05.webp" alt="Komoot screenshot"></a><a href="images/komoot/06.webp"><img loading="lazy" src="images/komoot/06.webp" alt="Komoot screenshot"></a></div>
+            </article><article class="card" data-category="Outdoor &amp; Navigation">
+              <header>
+                <div><p class="eyebrow">Outdoor &amp; Navigation</p><h2>AllTrails</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.alltrails.alltrails&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Trail discovery, trust signals and navigation</p>
+              <div class="shots"><a href="images/alltrails/01.webp"><img loading="lazy" src="images/alltrails/01.webp" alt="AllTrails screenshot"></a><a href="images/alltrails/02.webp"><img loading="lazy" src="images/alltrails/02.webp" alt="AllTrails screenshot"></a><a href="images/alltrails/03.webp"><img loading="lazy" src="images/alltrails/03.webp" alt="AllTrails screenshot"></a><a href="images/alltrails/04.webp"><img loading="lazy" src="images/alltrails/04.webp" alt="AllTrails screenshot"></a><a href="images/alltrails/05.webp"><img loading="lazy" src="images/alltrails/05.webp" alt="AllTrails screenshot"></a><a href="images/alltrails/06.webp"><img loading="lazy" src="images/alltrails/06.webp" alt="AllTrails screenshot"></a></div>
+            </article><article class="card" data-category="Outdoor &amp; Navigation">
+              <header>
+                <div><p class="eyebrow">Outdoor &amp; Navigation</p><h2>Outdooractive</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.outdooractive.Outdooractive&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Professional maps, route planning and offline use</p>
+              <div class="shots"><a href="images/outdooractive/01.webp"><img loading="lazy" src="images/outdooractive/01.webp" alt="Outdooractive screenshot"></a><a href="images/outdooractive/02.webp"><img loading="lazy" src="images/outdooractive/02.webp" alt="Outdooractive screenshot"></a><a href="images/outdooractive/03.webp"><img loading="lazy" src="images/outdooractive/03.webp" alt="Outdooractive screenshot"></a><a href="images/outdooractive/04.webp"><img loading="lazy" src="images/outdooractive/04.webp" alt="Outdooractive screenshot"></a><a href="images/outdooractive/05.webp"><img loading="lazy" src="images/outdooractive/05.webp" alt="Outdooractive screenshot"></a><a href="images/outdooractive/06.webp"><img loading="lazy" src="images/outdooractive/06.webp" alt="Outdooractive screenshot"></a></div>
+            </article><article class="card" data-category="Outdoor &amp; Navigation">
+              <header>
+                <div><p class="eyebrow">Outdoor &amp; Navigation</p><h2>Wikiloc</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.wikiloc.wikilocandroid&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Community routes, recording, waypoints and photos</p>
+              <div class="shots"><a href="images/wikiloc/01.webp"><img loading="lazy" src="images/wikiloc/01.webp" alt="Wikiloc screenshot"></a><a href="images/wikiloc/02.webp"><img loading="lazy" src="images/wikiloc/02.webp" alt="Wikiloc screenshot"></a><a href="images/wikiloc/03.webp"><img loading="lazy" src="images/wikiloc/03.webp" alt="Wikiloc screenshot"></a><a href="images/wikiloc/04.webp"><img loading="lazy" src="images/wikiloc/04.webp" alt="Wikiloc screenshot"></a><a href="images/wikiloc/05.webp"><img loading="lazy" src="images/wikiloc/05.webp" alt="Wikiloc screenshot"></a><a href="images/wikiloc/06.webp"><img loading="lazy" src="images/wikiloc/06.webp" alt="Wikiloc screenshot"></a></div>
+            </article><article class="card" data-category="Outdoor &amp; Navigation">
+              <header>
+                <div><p class="eyebrow">Outdoor &amp; Navigation</p><h2>Relive</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=cc.relive.reliveapp&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Turns tracked movement and photos into a shareable story</p>
+              <div class="shots"><a href="images/relive/01.webp"><img loading="lazy" src="images/relive/01.webp" alt="Relive screenshot"></a><a href="images/relive/02.webp"><img loading="lazy" src="images/relive/02.webp" alt="Relive screenshot"></a><a href="images/relive/03.webp"><img loading="lazy" src="images/relive/03.webp" alt="Relive screenshot"></a><a href="images/relive/04.webp"><img loading="lazy" src="images/relive/04.webp" alt="Relive screenshot"></a><a href="images/relive/05.webp"><img loading="lazy" src="images/relive/05.webp" alt="Relive screenshot"></a></div>
+            </article><article class="card" data-category="Outdoor &amp; Navigation">
+              <header>
+                <div><p class="eyebrow">Outdoor &amp; Navigation</p><h2>Mapy.com</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=cz.seznam.mapy&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Strong cartography, outdoor layers and offline maps</p>
+              <div class="shots"><a href="images/mapy/01.webp"><img loading="lazy" src="images/mapy/01.webp" alt="Mapy.com screenshot"></a><a href="images/mapy/02.webp"><img loading="lazy" src="images/mapy/02.webp" alt="Mapy.com screenshot"></a><a href="images/mapy/03.webp"><img loading="lazy" src="images/mapy/03.webp" alt="Mapy.com screenshot"></a><a href="images/mapy/04.webp"><img loading="lazy" src="images/mapy/04.webp" alt="Mapy.com screenshot"></a><a href="images/mapy/05.webp"><img loading="lazy" src="images/mapy/05.webp" alt="Mapy.com screenshot"></a><a href="images/mapy/06.webp"><img loading="lazy" src="images/mapy/06.webp" alt="Mapy.com screenshot"></a></div>
+            </article><article class="card" data-category="Outdoor &amp; Navigation">
+              <header>
+                <div><p class="eyebrow">Outdoor &amp; Navigation</p><h2>OsmAnd</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=net.osmand&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Power-user map controls, layers and offline navigation</p>
+              <div class="shots"><a href="images/osmand/01.webp"><img loading="lazy" src="images/osmand/01.webp" alt="OsmAnd screenshot"></a><a href="images/osmand/02.webp"><img loading="lazy" src="images/osmand/02.webp" alt="OsmAnd screenshot"></a><a href="images/osmand/03.webp"><img loading="lazy" src="images/osmand/03.webp" alt="OsmAnd screenshot"></a><a href="images/osmand/04.webp"><img loading="lazy" src="images/osmand/04.webp" alt="OsmAnd screenshot"></a><a href="images/osmand/05.webp"><img loading="lazy" src="images/osmand/05.webp" alt="OsmAnd screenshot"></a><a href="images/osmand/06.webp"><img loading="lazy" src="images/osmand/06.webp" alt="OsmAnd screenshot"></a></div>
+            </article><article class="card" data-category="Exploration &amp; Game">
+              <header>
+                <div><p class="eyebrow">Exploration &amp; Game</p><h2>Fog of World</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.ollix.fogofworld&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Persistent fog-of-war exploration map</p>
+              <div class="shots"><a href="images/fog-of-world/01.webp"><img loading="lazy" src="images/fog-of-world/01.webp" alt="Fog of World screenshot"></a><a href="images/fog-of-world/02.webp"><img loading="lazy" src="images/fog-of-world/02.webp" alt="Fog of World screenshot"></a><a href="images/fog-of-world/03.webp"><img loading="lazy" src="images/fog-of-world/03.webp" alt="Fog of World screenshot"></a><a href="images/fog-of-world/04.webp"><img loading="lazy" src="images/fog-of-world/04.webp" alt="Fog of World screenshot"></a><a href="images/fog-of-world/05.webp"><img loading="lazy" src="images/fog-of-world/05.webp" alt="Fog of World screenshot"></a><a href="images/fog-of-world/06.webp"><img loading="lazy" src="images/fog-of-world/06.webp" alt="Fog of World screenshot"></a></div>
+            </article><article class="card" data-category="Exploration &amp; Game">
+              <header>
+                <div><p class="eyebrow">Exploration &amp; Game</p><h2>Zombies, Run!</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.sixtostart.zombiesrunclient&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Narrative motivation layered onto running</p>
+              <div class="shots"><a href="images/zombies-run/01.webp"><img loading="lazy" src="images/zombies-run/01.webp" alt="Zombies, Run! screenshot"></a><a href="images/zombies-run/02.webp"><img loading="lazy" src="images/zombies-run/02.webp" alt="Zombies, Run! screenshot"></a><a href="images/zombies-run/03.webp"><img loading="lazy" src="images/zombies-run/03.webp" alt="Zombies, Run! screenshot"></a><a href="images/zombies-run/04.webp"><img loading="lazy" src="images/zombies-run/04.webp" alt="Zombies, Run! screenshot"></a><a href="images/zombies-run/05.webp"><img loading="lazy" src="images/zombies-run/05.webp" alt="Zombies, Run! screenshot"></a></div>
+            </article><article class="card" data-category="Exploration &amp; Game">
+              <header>
+                <div><p class="eyebrow">Exploration &amp; Game</p><h2>Runiverse</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.imagine_x.Runiverse&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">Territory capture on a living 3D map</p>
+              <div class="shots"><a href="images/runiverse/01.webp"><img loading="lazy" src="images/runiverse/01.webp" alt="Runiverse screenshot"></a><a href="images/runiverse/02.webp"><img loading="lazy" src="images/runiverse/02.webp" alt="Runiverse screenshot"></a><a href="images/runiverse/03.webp"><img loading="lazy" src="images/runiverse/03.webp" alt="Runiverse screenshot"></a><a href="images/runiverse/04.webp"><img loading="lazy" src="images/runiverse/04.webp" alt="Runiverse screenshot"></a><a href="images/runiverse/05.webp"><img loading="lazy" src="images/runiverse/05.webp" alt="Runiverse screenshot"></a><a href="images/runiverse/06.webp"><img loading="lazy" src="images/runiverse/06.webp" alt="Runiverse screenshot"></a></div>
+            </article><article class="card" data-category="Exploration &amp; Game">
+              <header>
+                <div><p class="eyebrow">Exploration &amp; Game</p><h2>City Wanderer</h2></div>
+                <a class="source" href="https://play.google.com/store/apps/details?id=com.funspiritgames.rpgcityexplorer&amp;hl=en_US&amp;gl=US">Quelle ↗</a>
+              </header>
+              <p class="note">City walking with persistent fog-of-war</p>
+              <div class="shots"><a href="images/city-wanderer/01.webp"><img loading="lazy" src="images/city-wanderer/01.webp" alt="City Wanderer screenshot"></a><a href="images/city-wanderer/02.webp"><img loading="lazy" src="images/city-wanderer/02.webp" alt="City Wanderer screenshot"></a><a href="images/city-wanderer/03.webp"><img loading="lazy" src="images/city-wanderer/03.webp" alt="City Wanderer screenshot"></a><a href="images/city-wanderer/04.webp"><img loading="lazy" src="images/city-wanderer/04.webp" alt="City Wanderer screenshot"></a><a href="images/city-wanderer/05.webp"><img loading="lazy" src="images/city-wanderer/05.webp" alt="City Wanderer screenshot"></a><a href="images/city-wanderer/06.webp"><img loading="lazy" src="images/city-wanderer/06.webp" alt="City Wanderer screenshot"></a></div>
+            </article><article class="card" data-category="Street Coverage">
+              <header>
+                <div><p class="eyebrow">Street Coverage</p><h2>CityStrides</h2></div>
+                <a class="source" href="https://citystrides.com/">Quelle ↗</a>
+              </header>
+              <p class="note">Every-street completion, LifeMap and city progress</p>
+              <div class="shots"><a href="images/web/citystrides.png"><img loading="lazy" src="images/web/citystrides.png" alt="CityStrides screenshot"></a></div>
+            </article><article class="card" data-category="Street Coverage">
+              <header>
+                <div><p class="eyebrow">Street Coverage</p><h2>Wandrer</h2></div>
+                <a class="source" href="https://wandrer.earth/">Quelle ↗</a>
+              </header>
+              <p class="note">Unique-road completion across roads and trails</p>
+              <div class="shots"><a href="images/web/wandrer.png"><img loading="lazy" src="images/web/wandrer.png" alt="Wandrer screenshot"></a></div>
+            </article><article class="card" data-category="Street Coverage">
+              <header>
+                <div><p class="eyebrow">Street Coverage</p><h2>CityWalker</h2></div>
+                <a class="source" href="https://citywalker.app/">Quelle ↗</a>
+              </header>
+              <p class="note">On-device street coverage with live exploration</p>
+              <div class="shots"><a href="images/web/citywalker.png"><img loading="lazy" src="images/web/citywalker.png" alt="CityWalker screenshot"></a></div>
+            </article><article class="card" data-category="Street Coverage">
+              <header>
+                <div><p class="eyebrow">Street Coverage</p><h2>Streets</h2></div>
+                <a class="source" href="https://streets-app.com/">Quelle ↗</a>
+              </header>
+              <p class="note">iPhone walk tracking built around covering every street</p>
+              <div class="shots"><a href="images/web/streets.png"><img loading="lazy" src="images/web/streets.png" alt="Streets screenshot"></a></div>
+            </article></section>
+    <footer>Nur für interne Produkt- und Designrecherche. Marken und Screenshots gehören den jeweiligen Anbietern. Quellen sind an jeder App verlinkt.</footer>
+  </main>
+  <script>
+    const buttons = document.querySelectorAll('[data-filter]');
+    const cards = document.querySelectorAll('.card');
+    buttons.forEach(button => button.addEventListener('click', () => {
+      buttons.forEach(item => item.classList.toggle('active', item === button));
+      cards.forEach(card => card.hidden = button.dataset.filter !== 'all' && card.dataset.category !== button.dataset.filter);
+    }));
+  </script>
+</body>
+</html>

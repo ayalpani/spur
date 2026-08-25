@@ -15,3 +15,12 @@ Was daran für Spur interessant ist:
 - mehrere Routen bleiben durch ihre Farben schnell unterscheidbar
 
 Offen bleibt bewusst, ob und wofür Spur diese Darstellung später verwendet.
+
+## Lauf-, Outdoor- und Erkundungs-Apps
+
+![Übersicht bekannter und angrenzender Apps](design-references/competitive-apps-2026-08/overview.png)
+
+Die [durchklickbare Konkurrenzsammlung](design-references/competitive-apps-2026-08/index.html)
+enthält 116 aktuelle Screenshots aus 23 Produkten: große Running-Apps,
+Outdoor-Navigation, Bewegungs-Gamification und besonders nahe
+Street-Coverage-Angebote. Jede App ist mit ihrer offiziellen Quelle verlinkt.
