@@ -187,6 +187,8 @@ internal fun ArActionButton(
                 text = label,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                textAlign = TextAlign.Center,
             )
         }
     }
