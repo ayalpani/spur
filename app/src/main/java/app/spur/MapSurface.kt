@@ -1748,7 +1748,7 @@ internal fun MapSurface(
                     )
                 }
                 val completed = withContext(Dispatchers.Default) {
-                    historicalRoadTraversals(
+                    historicalRoadPassages(
                         routes = routes,
                         roads = roads,
                         shouldContinue = { workJob?.isActive != false },

@@ -14,6 +14,19 @@ internal data class CachedRoadTraversals(
     val completedRoads: Map<String, CompletedRoad>,
 )
 
+internal data class RoadTraversalCellChange(
+    val unchangedRoads: Int = 0,
+    val increasedRoads: Int = 0,
+    val decreasedRoads: Int = 0,
+    val addedRoads: Int = 0,
+    val removedRoads: Int = 0,
+    val oldTraversalTotal: Long = 0,
+    val newTraversalTotal: Long = 0,
+) {
+    val changedRoads: Int
+        get() = increasedRoads + decreasedRoads + addedRoads + removedRoads
+}
+
 internal class RoadTraversalStore(context: Context) :
     SQLiteOpenHelper(
         context.applicationContext,
@@ -35,15 +48,19 @@ internal class RoadTraversalStore(context: Context) :
             """.trimIndent(),
         )
         createRoadProgressState(db)
+        createRoadRebuildStats(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion == 2 && newVersion >= 3) {
-            createRoadProgressState(db)
+        if (oldVersion in 2..4 && newVersion >= 5) {
+            if (oldVersion == 2) createRoadProgressState(db)
+            if (oldVersion == 4) db.execSQL("DROP TABLE IF EXISTS road_rebuild_stats")
+            createRoadRebuildStats(db)
             return
         }
         db.execSQL("DROP TABLE IF EXISTS road_traversal_cells")
         db.execSQL("DROP TABLE IF EXISTS road_progress_state")
+        db.execSQL("DROP TABLE IF EXISTS road_rebuild_stats")
         onCreate(db)
     }
 
@@ -60,9 +77,83 @@ internal class RoadTraversalStore(context: Context) :
         )
     }
 
+    private fun createRoadRebuildStats(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS road_rebuild_stats (
+                id INTEGER PRIMARY KEY,
+                algorithm_version INTEGER NOT NULL,
+                compared_cells INTEGER NOT NULL,
+                unchanged_roads INTEGER NOT NULL,
+                increased_roads INTEGER NOT NULL,
+                decreased_roads INTEGER NOT NULL,
+                added_roads INTEGER NOT NULL,
+                removed_roads INTEGER NOT NULL,
+                old_traversal_total INTEGER NOT NULL,
+                new_traversal_total INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+    }
+
+    private fun addRebuildStats(db: SQLiteDatabase, change: RoadTraversalCellChange) {
+        db.delete(
+            "road_rebuild_stats",
+            "algorithm_version != ?",
+            arrayOf(RoadTraversalAlgorithmVersion.toString()),
+        )
+        db.insertWithOnConflict(
+            "road_rebuild_stats",
+            null,
+            ContentValues().apply {
+                put("id", RoadRebuildStatsId)
+                put("algorithm_version", RoadTraversalAlgorithmVersion)
+                put("compared_cells", 0)
+                put("unchanged_roads", 0)
+                put("increased_roads", 0)
+                put("decreased_roads", 0)
+                put("added_roads", 0)
+                put("removed_roads", 0)
+                put("old_traversal_total", 0)
+                put("new_traversal_total", 0)
+            },
+            SQLiteDatabase.CONFLICT_IGNORE,
+        )
+        db.execSQL(
+            """
+            UPDATE road_rebuild_stats
+            SET compared_cells = compared_cells + 1,
+                unchanged_roads = unchanged_roads + ?,
+                increased_roads = increased_roads + ?,
+                decreased_roads = decreased_roads + ?,
+                added_roads = added_roads + ?,
+                removed_roads = removed_roads + ?,
+                old_traversal_total = old_traversal_total + ?,
+                new_traversal_total = new_traversal_total + ?
+            WHERE id = ?
+            """.trimIndent(),
+            arrayOf(
+                change.unchangedRoads,
+                change.increasedRoads,
+                change.decreasedRoads,
+                change.addedRoads,
+                change.removedRoads,
+                change.oldTraversalTotal,
+                change.newTraversalTotal,
+                RoadRebuildStatsId,
+            ),
+        )
+    }
+
     @Synchronized
     fun traversals(cacheKey: String): CachedRoadTraversals? =
-        readableDatabase.query(
+        readTraversals(readableDatabase, cacheKey)
+
+    private fun readTraversals(
+        db: SQLiteDatabase,
+        cacheKey: String,
+    ): CachedRoadTraversals? =
+        db.query(
             "road_traversal_cells",
             arrayOf("maximum_point_id", "point_count", "signature", "completed_roads"),
             "cache_key = ?",
@@ -87,23 +178,43 @@ internal class RoadTraversalStore(context: Context) :
 
     @Synchronized
     fun replace(cacheKey: String, traversals: CachedRoadTraversals) {
-        writableDatabase.insertWithOnConflict(
-            "road_traversal_cells",
-            null,
-            ContentValues().apply {
-                put("cache_key", cacheKey)
-                put("maximum_point_id", traversals.fingerprint.maximumPointId)
-                put("point_count", traversals.fingerprint.pointCount)
-                put("signature", traversals.fingerprint.signature)
-                put("completed_roads", encodeCompletedRoads(traversals.completedRoads.values))
-            },
-            SQLiteDatabase.CONFLICT_REPLACE,
-        )
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val legacyKey = latestLegacyRoadTraversalCacheKey(db, cacheKey)
+            val legacy = legacyKey?.let { readTraversals(db, it) }
+                ?.takeIf { it.fingerprint == traversals.fingerprint }
+            db.insertWithOnConflict(
+                "road_traversal_cells",
+                null,
+                ContentValues().apply {
+                    put("cache_key", cacheKey)
+                    put("maximum_point_id", traversals.fingerprint.maximumPointId)
+                    put("point_count", traversals.fingerprint.pointCount)
+                    put("signature", traversals.fingerprint.signature)
+                    put("completed_roads", encodeCompletedRoads(traversals.completedRoads.values))
+                },
+                SQLiteDatabase.CONFLICT_REPLACE,
+            )
+            if (legacy != null) {
+                addRebuildStats(
+                    db,
+                    compareRoadTraversals(legacy.completedRoads, traversals.completedRoads),
+                )
+            }
+            deleteLegacyRoadTraversalCells(db, cacheKey)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
 
     @Synchronized
     fun historyBaseline(): RoadHistoryFingerprint? =
-        readableDatabase.query(
+        readHistoryBaseline(readableDatabase)
+
+    private fun readHistoryBaseline(db: SQLiteDatabase): RoadHistoryFingerprint? =
+        db.query(
             "road_progress_state",
             arrayOf("maximum_point_id", "point_count", "signature"),
             "id = ?",
@@ -123,17 +234,27 @@ internal class RoadTraversalStore(context: Context) :
 
     @Synchronized
     fun replaceHistoryBaseline(fingerprint: RoadHistoryFingerprint) {
-        writableDatabase.insertWithOnConflict(
-            "road_progress_state",
-            null,
-            ContentValues().apply {
-                put("id", RoadProgressStateId)
-                put("maximum_point_id", fingerprint.maximumPointId)
-                put("point_count", fingerprint.pointCount)
-                put("signature", fingerprint.signature)
-            },
-            SQLiteDatabase.CONFLICT_REPLACE,
-        )
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            if (readHistoryBaseline(db)?.let { it != fingerprint } == true) {
+                db.delete("road_rebuild_stats", null, null)
+            }
+            db.insertWithOnConflict(
+                "road_progress_state",
+                null,
+                ContentValues().apply {
+                    put("id", RoadProgressStateId)
+                    put("maximum_point_id", fingerprint.maximumPointId)
+                    put("point_count", fingerprint.pointCount)
+                    put("signature", fingerprint.signature)
+                },
+                SQLiteDatabase.CONFLICT_REPLACE,
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
 
     @Synchronized
@@ -151,7 +272,15 @@ internal class RoadTraversalStore(context: Context) :
 
     @Synchronized
     fun clear() {
-        writableDatabase.delete("road_traversal_cells", null, null)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("road_traversal_cells", null, null)
+            db.delete("road_rebuild_stats", null, null)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
 
     @Synchronized
@@ -176,6 +305,37 @@ internal class RoadTraversalStore(context: Context) :
                 },
             )
         }
+}
+
+internal fun compareRoadTraversals(
+    old: Map<String, CompletedRoad>,
+    new: Map<String, CompletedRoad>,
+): RoadTraversalCellChange {
+    var unchanged = 0
+    var increased = 0
+    var decreased = 0
+    var added = 0
+    var removed = 0
+    (old.keys + new.keys).forEach { key ->
+        val oldCount = old[key]?.count
+        val newCount = new[key]?.count
+        when {
+            oldCount == null -> added++
+            newCount == null -> removed++
+            oldCount == newCount -> unchanged++
+            oldCount < newCount -> increased++
+            else -> decreased++
+        }
+    }
+    return RoadTraversalCellChange(
+        unchangedRoads = unchanged,
+        increasedRoads = increased,
+        decreasedRoads = decreased,
+        addedRoads = added,
+        removedRoads = removed,
+        oldTraversalTotal = old.values.sumOf { it.count.toLong() },
+        newTraversalTotal = new.values.sumOf { it.count.toLong() },
+    )
 }
 
 internal fun preservesRoadProgress(
@@ -265,7 +425,44 @@ private fun DataInputStream.readSizedString(): String {
     return bytes.toString(Charsets.UTF_8)
 }
 
-internal const val RoadTraversalAlgorithmVersion = 2
+internal const val RoadTraversalAlgorithmVersion = 8
+
+private fun latestLegacyRoadTraversalCacheKey(
+    db: SQLiteDatabase,
+    cacheKey: String,
+): String? {
+    val suffix = cacheKey.substringAfter(':', missingDelimiterValue = "")
+        .takeIf(String::isNotEmpty)
+        ?: return null
+    return db.query(
+        "road_traversal_cells",
+        arrayOf("cache_key"),
+        "cache_key LIKE ? AND cache_key != ?",
+        arrayOf("%:$suffix", cacheKey),
+        null,
+        null,
+        null,
+    ).use { cursor ->
+        buildList {
+            while (cursor.moveToNext()) add(cursor.getString(0))
+        }.maxByOrNull(::roadTraversalCacheAlgorithmVersion)
+    }
+}
+
+private fun deleteLegacyRoadTraversalCells(db: SQLiteDatabase, cacheKey: String) {
+    val suffix = cacheKey.substringAfter(':', missingDelimiterValue = "")
+        .takeIf(String::isNotEmpty)
+        ?: return
+    db.delete(
+        "road_traversal_cells",
+        "cache_key LIKE ? AND cache_key != ?",
+        arrayOf("%:$suffix", cacheKey),
+    )
+}
+
+private fun roadTraversalCacheAlgorithmVersion(cacheKey: String): Int =
+    cacheKey.substringBefore(':').toIntOrNull() ?: Int.MIN_VALUE
+
 private fun roadTraversalCacheZoom(cacheKey: String): Int? {
     val parts = cacheKey.split(':', limit = 3)
     return parts.takeIf {
@@ -274,8 +471,9 @@ private fun roadTraversalCacheZoom(cacheKey: String): Int? {
 }
 
 private const val RoadTraversalDatabaseName = "road-traversal-cache.db"
-private const val RoadTraversalDatabaseVersion = 3
+private const val RoadTraversalDatabaseVersion = 5
 private const val RoadProgressStateId = 1
+private const val RoadRebuildStatsId = 1
 private const val RoadTraversalEncodingVersion = 1
 private const val RoadTraversalMaximumRoads = 100_000
 private const val RoadTraversalMaximumCount = 1_000_000

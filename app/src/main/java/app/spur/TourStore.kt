@@ -184,7 +184,7 @@ private data class ActiveTourTail(val point: StoredTrackPoint?)
 private data class StoredRoadHistoryPoint(
     val tourId: Long,
     val id: Long,
-    val coordinate: SpurCoordinate,
+    val sample: RoadTrackSample,
 )
 
 class TourStore(context: Context) :
@@ -967,7 +967,7 @@ class TourStore(context: Context) :
         bounds: RoadHistoryBounds,
         afterPointId: Long? = null,
         excludingTourId: Long? = null,
-    ): List<List<SpurCoordinate>> {
+    ): List<List<RoadTrackSample>> {
         val selection: String
         val arguments: Array<String>
         if (afterPointId == null) {
@@ -1014,15 +1014,15 @@ class TourStore(context: Context) :
         }
         return readableDatabase.rawQuery(
             """
-            SELECT tour_id, id, latitude, longitude
+            SELECT tour_id, id, latitude, longitude, recorded_at
             FROM track_points
             $selection
             ORDER BY tour_id, recorded_at, id
             """.trimIndent(),
             arguments,
         ).use { cursor ->
-            val routes = mutableListOf<List<SpurCoordinate>>()
-            var activeRoute = mutableListOf<SpurCoordinate>()
+            val routes = mutableListOf<List<RoadTrackSample>>()
+            var activeRoute = mutableListOf<RoadTrackSample>()
             var previous: StoredRoadHistoryPoint? = null
 
             fun finishActiveRoute() {
@@ -1034,9 +1034,12 @@ class TourStore(context: Context) :
                 val current = StoredRoadHistoryPoint(
                     tourId = cursor.getLong(0),
                     id = cursor.getLong(1),
-                    coordinate = SpurCoordinate(
-                        latitude = cursor.getDouble(2),
-                        longitude = cursor.getDouble(3),
+                    sample = RoadTrackSample(
+                        coordinate = SpurCoordinate(
+                            latitude = cursor.getDouble(2),
+                            longitude = cursor.getDouble(3),
+                        ),
+                        recordedAtMillis = cursor.getLong(4),
                     ),
                 )
                 val from = previous
@@ -1044,14 +1047,14 @@ class TourStore(context: Context) :
                     from != null &&
                     from.tourId == current.tourId &&
                     (afterPointId == null || from.id > afterPointId || current.id > afterPointId) &&
-                    bounds.intersects(from.coordinate, current.coordinate)
+                    bounds.intersects(from.sample.coordinate, current.sample.coordinate)
                 ) {
-                    if (activeRoute.isEmpty()) activeRoute += from.coordinate
-                    if (activeRoute.last() != from.coordinate) {
+                    if (activeRoute.isEmpty()) activeRoute += from.sample
+                    if (activeRoute.last() != from.sample) {
                         finishActiveRoute()
-                        activeRoute += from.coordinate
+                        activeRoute += from.sample
                     }
-                    activeRoute += current.coordinate
+                    activeRoute += current.sample
                 } else {
                     finishActiveRoute()
                 }
