@@ -10,8 +10,29 @@ internal data class RoadTrackSample(
 private data class RoadPassageState(
     val side: Int,
     val crossedInterior: Boolean,
+    val startedAtObservation: Int,
+    val distanceMeters: Double,
+    val matchedObservations: Int,
     val lastSeenAtMillis: Long?,
     val lastSeenObservation: Int,
+)
+
+private data class RoadPassageEvidence(
+    val road: RenderedRoadSegment,
+    val section: Int,
+    val startedAtObservation: Int,
+    val endedAtObservation: Int,
+    val distanceMeters: Double,
+    val matchedObservations: Int,
+) {
+    val meanDistanceMeters: Double
+        get() = if (matchedObservations == 0) Double.MAX_VALUE else
+            distanceMeters / matchedObservations
+}
+
+private data class RoadPassageObservation(
+    val coordinate: SpurCoordinate,
+    val measured: Boolean,
 )
 
 internal fun historicalRoadPassages(
@@ -26,10 +47,12 @@ internal fun historicalRoadPassages(
 
     routes.forEach { route ->
         val states = mutableMapOf<String, RoadPassageState>()
-        val routeCounts = mutableMapOf<String, Int>()
-        val matchedDistanceTotals = mutableMapOf<String, Double>()
-        val matchedObservationCounts = mutableMapOf<String, Int>()
-        var observationIndex = 0
+        val passages = mutableListOf<RoadPassageEvidence>()
+        val observations = route.firstOrNull()?.let { first ->
+            mutableListOf(RoadPassageObservation(first.coordinate, measured = true))
+        } ?: mutableListOf()
+        var observationIndex = observations.size
+        var section = 0
         route.zipWithNext().forEach { (fromSample, toSample) ->
             if (!shouldContinue()) return emptyMap()
             val from = fromSample.coordinate
@@ -44,6 +67,9 @@ internal fun historicalRoadPassages(
                 !roadIndex.intersectsLoadedBounds(from, to)
             ) {
                 states.clear()
+                section++
+                observationIndex++
+                observations += RoadPassageObservation(to, measured = true)
                 return@forEach
             }
             if (distance == 0.0) return@forEach
@@ -55,6 +81,8 @@ internal fun historicalRoadPassages(
                 observationIndex++
                 val fraction = step.toDouble() / stepCount
                 val coordinate = interpolate(from, to, fraction)
+                val measured = step == stepCount
+                observations += RoadPassageObservation(coordinate, measured)
                 val candidates = roadIndex.near(coordinate)
                     .mapNotNull { road ->
                         val projection = projectOntoRoad(coordinate, road.points)
@@ -68,11 +96,6 @@ internal fun historicalRoadPassages(
                         )
                     }
                 candidates.forEach { match ->
-                    matchedDistanceTotals[match.road.key] =
-                        matchedDistanceTotals.getOrDefault(match.road.key, 0.0) +
-                        match.projection.distanceMeters
-                    matchedObservationCounts[match.road.key] =
-                        matchedObservationCounts.getOrDefault(match.road.key, 0) + 1
                     val observedAt = interpolatedTime(
                         fromSample.recordedAtMillis,
                         toSample.recordedAtMillis,
@@ -93,23 +116,54 @@ internal fun historicalRoadPassages(
                                 )
                     }
                     if (side != 0) {
-                        if (
-                            previousState != null &&
-                            previousState.side != side &&
-                            previousState.crossedInterior
-                        ) {
-                            routeCounts[match.road.key] =
-                                routeCounts.getOrDefault(match.road.key, 0) + 1
+                        val completedState = previousState?.takeIf { state ->
+                            state.side != side && state.crossedInterior
                         }
-                        states[match.road.key] = RoadPassageState(
-                            side = side,
-                            crossedInterior = false,
-                            lastSeenAtMillis = observedAt,
-                            lastSeenObservation = observationIndex,
-                        )
+                        if (completedState != null) {
+                            passages += RoadPassageEvidence(
+                                road = match.road,
+                                section = section,
+                                startedAtObservation = completedState.startedAtObservation,
+                                endedAtObservation = observationIndex,
+                                distanceMeters = completedState.distanceMeters +
+                                    match.projection.distanceMeters.takeIf { measured }.orZero(),
+                                matchedObservations = completedState.matchedObservations +
+                                    measured.toInt(),
+                            )
+                        }
+                        states[match.road.key] = if (
+                            completedState == null &&
+                            previousState?.side == side &&
+                            !previousState.crossedInterior
+                        ) {
+                            previousState.copy(
+                                distanceMeters = previousState.distanceMeters +
+                                    match.projection.distanceMeters.takeIf { measured }.orZero(),
+                                matchedObservations = previousState.matchedObservations +
+                                    measured.toInt(),
+                                lastSeenAtMillis = observedAt,
+                                lastSeenObservation = observationIndex,
+                            )
+                        } else {
+                            RoadPassageState(
+                                side = side,
+                                crossedInterior = false,
+                                startedAtObservation = observationIndex,
+                                distanceMeters = match.projection.distanceMeters
+                                    .takeIf { measured }
+                                    .orZero(),
+                                matchedObservations = measured.toInt(),
+                                lastSeenAtMillis = observedAt,
+                                lastSeenObservation = observationIndex,
+                            )
+                        }
                     } else if (previousState != null) {
                         states[match.road.key] = previousState.copy(
                             crossedInterior = true,
+                            distanceMeters = previousState.distanceMeters +
+                                match.projection.distanceMeters.takeIf { measured }.orZero(),
+                            matchedObservations = previousState.matchedObservations +
+                                measured.toInt(),
                             lastSeenAtMillis = observedAt,
                             lastSeenObservation = observationIndex,
                         )
@@ -117,12 +171,7 @@ internal fun historicalRoadPassages(
                 }
             }
         }
-        collapseParallelPassages(
-            counts = routeCounts,
-            roadsByKey = roadsByKey,
-            matchedDistanceTotals = matchedDistanceTotals,
-            matchedObservationCounts = matchedObservationCounts,
-        ).forEach { (roadKey, count) ->
+        selectPassageWinners(passages, observations).forEach { (roadKey, count) ->
             counts[roadKey] = counts.getOrDefault(roadKey, 0) + count
         }
     }
@@ -132,69 +181,145 @@ internal fun historicalRoadPassages(
     }
 }
 
-private fun collapseParallelPassages(
-    counts: Map<String, Int>,
-    roadsByKey: Map<String, RenderedRoadSegment>,
-    matchedDistanceTotals: Map<String, Double>,
-    matchedObservationCounts: Map<String, Int>,
+private fun selectPassageWinners(
+    passages: List<RoadPassageEvidence>,
+    observations: List<RoadPassageObservation>,
 ): Map<String, Int> {
-    val remaining = counts.keys.toMutableSet()
+    val remaining = passages.toMutableSet()
     return buildMap {
         while (remaining.isNotEmpty()) {
             val cluster = mutableSetOf(remaining.first())
             var expanded: Boolean
             do {
                 expanded = false
-                remaining.filterNot(cluster::contains).forEach { candidateKey ->
+                remaining.filterNot(cluster::contains).forEach { candidate ->
                     if (
-                        cluster.any { clusterKey ->
-                            roadsAreParallelAlternatives(
-                                roadsByKey.getValue(clusterKey),
-                                roadsByKey.getValue(candidateKey),
-                            )
-                        }
+                        cluster.any { passage -> passagesCompete(passage, candidate) }
                     ) {
-                        cluster += candidateKey
+                        cluster += candidate
                         expanded = true
                     }
                 }
             } while (expanded)
             remaining.removeAll(cluster)
-            val representative = cluster.minWithOrNull(
-                compareBy<String> { roadKey ->
-                    val observations = matchedObservationCounts[roadKey].orZero()
-                    if (observations == 0) Double.MAX_VALUE else
-                        matchedDistanceTotals.getOrDefault(roadKey, 0.0) / observations
-                }.thenBy { it },
-            ) ?: continue
-            put(representative, cluster.maxOf(counts::getValue))
+            val scores = passageScores(cluster, observations)
+            val ranked = cluster.sortedWith(
+                compareBy<RoadPassageEvidence>(scores::getValue)
+                    .thenBy { it.road.key },
+            )
+            val winner = ranked.first()
+            if (
+                ranked.getOrNull(1)?.let { runnerUp ->
+                    scores.getValue(runnerUp) - scores.getValue(winner) <
+                        RoadPassageWinnerAdvantageMeters
+                } == true
+            ) {
+                continue
+            }
+            put(winner.road.key, getOrDefault(winner.road.key, 0) + 1)
         }
     }
 }
+
+private fun passageScores(
+    passages: Set<RoadPassageEvidence>,
+    observations: List<RoadPassageObservation>,
+): Map<RoadPassageEvidence, Double> {
+    if (passages.size == 1) return mapOf(passages.single() to passages.single().meanDistanceMeters)
+    val passageStartIndex = passages.minOf(RoadPassageEvidence::startedAtObservation)
+        .minus(1)
+        .coerceAtLeast(0)
+    val passageEndIndex = passages.maxOf(RoadPassageEvidence::endedAtObservation)
+        .coerceAtMost(observations.size)
+    val startIndex = (passageStartIndex downTo 0)
+        .firstOrNull { observations[it].measured }
+        ?: passageStartIndex
+    val endIndex = (passageEndIndex until observations.size)
+        .firstOrNull { observations[it].measured }
+        ?.plus(1)
+        ?: passageEndIndex
+    val distances = passages.associateWith { mutableListOf<Double>() }
+    // Synthetic samples reveal a crossing, but only recorded GPS fixes may decide
+    // which of two parallel roads the person actually used.
+    observations.subList(startIndex, endIndex)
+        .filter(RoadPassageObservation::measured)
+        .forEach { observation ->
+            val projections = passages.associateWith { passage ->
+                projectOntoRoad(observation.coordinate, passage.road.points)
+            }
+            if (
+                projections.values.any { projection ->
+                    projection == null ||
+                        projection.distanceMeters > RoadPassageMatchDistanceMeters
+                }
+            ) {
+                return@forEach
+            }
+            projections.forEach { (passage, projection) ->
+                distances.getValue(passage) += checkNotNull(projection).distanceMeters
+            }
+        }
+    return passages.associateWith { passage ->
+        distances.getValue(passage).takeIf(List<Double>::isNotEmpty)?.average()
+            ?: passage.meanDistanceMeters
+    }
+}
+
+private fun Boolean.toInt(): Int = if (this) 1 else 0
+
+private fun Double?.orZero(): Double = this ?: 0.0
+
+private fun passagesCompete(
+    first: RoadPassageEvidence,
+    second: RoadPassageEvidence,
+): Boolean {
+    if (
+        first.section != second.section ||
+        first.road.key == second.road.key ||
+        first.road.grade != second.road.grade
+    ) {
+        return false
+    }
+    val gap = maxOf(first.startedAtObservation, second.startedAtObservation) -
+        minOf(first.endedAtObservation, second.endedAtObservation) - 1
+    val corridorLengthMeters = maxOf(roadLength(first.road), roadLength(second.road))
+    val maximumGapObservations = ceil(corridorLengthMeters / RoadPassageSampleSpacingMeters)
+        .toInt()
+        .coerceAtMost(RoadPassageMaximumCompetitionGapObservations)
+    return gap <= maximumGapObservations &&
+        roadsAreParallelAlternatives(first.road, second.road)
+}
+
+private fun roadLength(road: RenderedRoadSegment): Double =
+    road.points.zipWithNext(::localCoordinateDistanceMeters).sum()
 
 private fun roadsAreParallelAlternatives(
     first: RenderedRoadSegment,
     second: RenderedRoadSegment,
 ): Boolean {
-    if (first.grade != second.grade) return false
-    val firstLength = first.points.zipWithNext(::localCoordinateDistanceMeters).sum()
-    val secondLength = second.points.zipWithNext(::localCoordinateDistanceMeters).sum()
+    val firstLength = roadLength(first)
+    val secondLength = roadLength(second)
     val shorter = if (firstLength <= secondLength) first else second
-    val longer = if (shorter === first) second else first
-    val shorterMidpoint = roadPrefix(shorter.points, 0.5).last()
-    val probes = listOf(shorter.points.first(), shorterMidpoint, shorter.points.last())
-    if (
-        probes.any { probe ->
-            projectOntoRoad(probe, longer.points)?.distanceMeters
-                ?.let { it > RoadPassageParallelRoadDistanceMeters } != false
-        }
-    ) {
-        return false
+    val longer = if (firstLength <= secondLength) second else first
+    val probes = listOf(
+        shorter.points.first(),
+        roadPrefix(shorter.points, 0.5).last(),
+        shorter.points.last(),
+    )
+    val projections = probes.map { probe ->
+        projectOntoRoad(probe, longer.points) ?: return false
     }
-    val shorterDirection = shorter.points.first() to shorter.points.last()
-    val longerDirection = longer.points.first() to longer.points.last()
-    return coordinatePairAlignment(shorterDirection, longerDirection) >=
-        RoadPassageParallelAlignment
+    val projectedSpan = projections.maxOf(RoadProjection::distanceAlongMeters) -
+        projections.minOf(RoadProjection::distanceAlongMeters)
+    return projections.all { it.distanceMeters <= RoadPassageMatchDistanceMeters } &&
+        projectedSpan >= maxOf(
+            firstLength.coerceAtMost(secondLength) * RoadPassageMinimumParallelOverlap,
+            RoadPassageMinimumParallelOverlapMeters,
+        ) &&
+        coordinatePairAlignment(
+            first.points.first() to first.points.last(),
+            second.points.first() to second.points.last(),
+        ) >= RoadPassageParallelAlignment
 }
 
 private fun coordinatePairAlignment(
@@ -218,8 +343,6 @@ private fun coordinatePairAlignment(
     )
 }
 
-private fun Int?.orZero(): Int = this ?: 0
-
 private fun interpolatedTime(
     fromMillis: Long?,
     toMillis: Long?,
@@ -230,8 +353,11 @@ private fun interpolatedTime(
 }
 
 private const val RoadPassageMatchDistanceMeters = 30.0
-private const val RoadPassageParallelRoadDistanceMeters = 5.0
 private const val RoadPassageParallelAlignment = 0.9
+private const val RoadPassageMinimumParallelOverlap = 0.5
+private const val RoadPassageMinimumParallelOverlapMeters = 30.0
+private const val RoadPassageWinnerAdvantageMeters = 2.0
+private const val RoadPassageMaximumCompetitionGapObservations = 30
 private const val RoadPassageStartFraction = 0.35
 private const val RoadPassageEndFraction = 0.65
 private const val RoadPassageMaximumGapMeters = 300.0

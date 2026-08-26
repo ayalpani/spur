@@ -370,7 +370,7 @@ class RoadProgressTest {
     }
 
     @Test
-    fun repeatedLoopKeepsCountingAcrossConnectedRoadChangesBesideCloserParallelRoad() {
+    fun ambiguousParallelRoadIsNotDoubleCounted() {
         val southWest = SpurCoordinate(52.0, 13.0)
         val southEast = SpurCoordinate(52.0, 13.001)
         val northEast = SpurCoordinate(52.001, 13.001)
@@ -410,13 +410,28 @@ class RoadProgressTest {
         )
 
         assertEquals(22, baseCounts.getValue(south.key).count)
+        assertEquals(21, detailedCounts.getValue(south.key).count)
         assertEquals(
             setOf(22),
-            listOf(south, east, north, west)
-                .map { detailedCounts.getValue(it.key).count }
-                .toSet(),
+            listOf(east, north, west).map { detailedCounts.getValue(it.key).count }.toSet(),
         )
         assertFalse(parallel.key in detailedCounts)
+    }
+
+    @Test
+    fun interpolatedSamplesDoNotOutvoteMeasuredFixesOnParallelRoads() {
+        val meadowRoad = road.copy(
+            key = "meadow",
+            points = road.points.map { it.copy(latitude = it.latitude + 0.00018) },
+        )
+
+        val counts = historicalRoadTraversals(
+            routes = List(3) { road.points },
+            roads = listOf(road, meadowRoad),
+        )
+
+        assertEquals(3, counts.getValue(road.key).count)
+        assertFalse(meadowRoad.key in counts)
     }
 
     @Test

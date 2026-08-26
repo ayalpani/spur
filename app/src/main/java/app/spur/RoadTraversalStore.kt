@@ -425,7 +425,7 @@ private fun DataInputStream.readSizedString(): String {
     return bytes.toString(Charsets.UTF_8)
 }
 
-internal const val RoadTraversalAlgorithmVersion = 7
+internal const val RoadTraversalAlgorithmVersion = 8
 
 private fun latestLegacyRoadTraversalCacheKey(
     db: SQLiteDatabase,
