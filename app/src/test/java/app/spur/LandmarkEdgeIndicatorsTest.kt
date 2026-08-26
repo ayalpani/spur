@@ -10,6 +10,17 @@ import org.junit.Test
 
 class LandmarkEdgeIndicatorsTest {
     @Test
+    fun secondPointerTurnsLandmarkTapIntoMapGesture() {
+        val landmark = Landmark("tower", "tower", SpurCoordinate(52.5, 13.4), 0)
+        val gesture = LandmarkTouchGesture(touchSlop = 10f)
+
+        gesture.start(landmark, x = 20f, y = 20f)
+        gesture.addOrRemovePointer()
+
+        assertNull(gesture.finish())
+    }
+
+    @Test
     fun offscreenPointStaysOnLineFromCenterAndInsideEdge() {
         val result = landmarkEdgeIndicators(
             projected = listOf(projected("tower", priority = 0, x = 200f, y = 75f)),
