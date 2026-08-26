@@ -476,6 +476,7 @@ class RoadProgressTest {
 
         assertEquals(1, features.size)
         assertEquals("×2", features.single().getStringProperty(RoadCountLabelProperty))
+        assertEquals(-2, features.single().getNumberProperty(RoadCountSortProperty))
     }
 
     @Test

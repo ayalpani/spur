@@ -20,6 +20,7 @@ import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineOpacity
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.layers.PropertyFactory.symbolSortKey
 import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.textAnchor
 import org.maplibre.android.style.layers.PropertyFactory.textColor
@@ -28,6 +29,7 @@ import org.maplibre.android.style.layers.PropertyFactory.textFont
 import org.maplibre.android.style.layers.PropertyFactory.textHaloColor
 import org.maplibre.android.style.layers.PropertyFactory.textHaloWidth
 import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
+import org.maplibre.android.style.layers.PropertyFactory.textPadding
 import org.maplibre.android.style.layers.PropertyFactory.textSize
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
@@ -193,8 +195,10 @@ internal fun Style.showRoadCounts(completedRoads: Collection<CompletedRoad>) {
         textHaloColor(GameRoadGreen.toArgb()),
         textHaloWidth(RoadCountHaloWidthPixels),
         textAnchor(Property.TEXT_ANCHOR_CENTER),
-        textAllowOverlap(true),
-        textIgnorePlacement(true),
+        textPadding(RoadCountCollisionPaddingPixels),
+        textAllowOverlap(false),
+        textIgnorePlacement(false),
+        symbolSortKey(Expression.get(RoadCountSortProperty)),
     )
     source.setGeoJson(
         FeatureCollection.fromFeatures(roadCountFeatures(completedRoads)),
@@ -211,6 +215,7 @@ internal fun roadCountFeatures(
         Point.fromLngLat(midpoint.longitude, midpoint.latitude),
     ).apply {
         addStringProperty(RoadCountLabelProperty, "×${completedRoad.count}")
+        addNumberProperty(RoadCountSortProperty, -completedRoad.count)
     }
 }
 
@@ -285,6 +290,8 @@ private const val RoadPulseCoreLayer = "road-progress-pulse-core-layer"
 private const val RoadCountSource = "road-progress-count-source"
 private const val RoadCountLayer = "road-progress-count-layer"
 internal const val RoadCountLabelProperty = "road_count_label"
+internal const val RoadCountSortProperty = "road_count_sort"
 internal const val RoadCountMinimumVisibleCount = 2
 private const val RoadCountTextSizeSp = 14f
 private const val RoadCountHaloWidthPixels = 2.5f
+private const val RoadCountCollisionPaddingPixels = 12f
