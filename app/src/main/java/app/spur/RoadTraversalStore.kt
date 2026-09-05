@@ -47,6 +47,13 @@ internal class RoadTraversalStore(context: Context) :
         onCreate(db)
     }
 
+    override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // Versions 4 and 5 only add rebuild diagnostics; both core tables are unchanged.
+        // Preserve the newer cache when returning from a preview build to this version.
+        if (newVersion == 3 && oldVersion in 4..5) return
+        super.onDowngrade(db, oldVersion, newVersion)
+    }
+
     private fun createRoadProgressState(db: SQLiteDatabase) {
         db.execSQL(
             """

@@ -102,3 +102,7 @@ after navigation. Road-cell preparation and historical traversal matching pause
 while Home is visible or the entry camera animation is active, then resume from
 the latest map-idle viewport. The obsolete hidden-map preparation and its
 1.5-second render timeout have been removed.
+
+The road cache accepts the additive diagnostic-only v4/v5 schema when returning
+to v3, preserving both shared cache tables and all newer diagnostic rows. Other
+unknown downgrades still fail explicitly. This does not touch `spur.db`.
