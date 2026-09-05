@@ -109,7 +109,6 @@ internal fun MapLibreMap.fitMapScreenTourRoute(
     pointZoom: Double,
     animated: Boolean,
     zoomOutBeforeAnimation: Double = 0.0,
-    tourEntryStartIsPrepared: Boolean = false,
     onAnimationFinished: () -> Unit = {},
 ) = fitTourRoute(
     points = points,
@@ -120,7 +119,6 @@ internal fun MapLibreMap.fitMapScreenTourRoute(
     pointZoom = pointZoom,
     animated = animated,
     zoomOutBeforeAnimation = zoomOutBeforeAnimation,
-    tourEntryStartIsPrepared = tourEntryStartIsPrepared,
     onAnimationFinished = onAnimationFinished,
 )
 
@@ -133,7 +131,6 @@ private fun MapLibreMap.fitTourRoute(
     pointZoom: Double,
     animated: Boolean,
     zoomOutBeforeAnimation: Double = 0.0,
-    tourEntryStartIsPrepared: Boolean = false,
     onAnimationFinished: () -> Unit = {},
 ) {
     if (points.isEmpty()) return
@@ -175,8 +172,7 @@ private fun MapLibreMap.fitTourRoute(
     if (animated) {
         if (
             targetCamera != null &&
-            zoomOutBeforeAnimation > 0.0 &&
-            !tourEntryStartIsPrepared
+            zoomOutBeforeAnimation > 0.0
         ) {
             moveCamera(
                 CameraUpdateFactory.newCameraPosition(

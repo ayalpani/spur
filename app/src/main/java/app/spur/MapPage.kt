@@ -82,9 +82,8 @@ internal fun MapPage(
     activeTour: Tour?,
     tourDisplayRequest: Long,
     animateTourEntry: Boolean = false,
-    tourEntryPreparationRequest: Long? = null,
+    deferRoadPreparation: Boolean = false,
     routePoints: List<TrackPoint>,
-    preparedTourRoute: PreparedTourRoute? = null,
     pendingDeparturePreview: PendingDeparturePreview? = null,
     roadHistoryStore: TourStore? = null,
     roadTraversalFingerprint: RoadHistoryFingerprint? = null,
@@ -102,7 +101,6 @@ internal fun MapPage(
     initialLoadingComplete: Boolean = false,
     splashExitComplete: Boolean = true,
     onInitialLoadingComplete: () -> Unit = {},
-    onTourEntryPrepared: (Long) -> Unit = {},
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -236,9 +234,6 @@ internal fun MapPage(
     }
     var presentation by remember { mutableStateOf(TourPresentation.Empty) }
     var presentationGeneration by remember { mutableLongStateOf(0L) }
-    var presentedTourId by remember { mutableStateOf<Long?>(null) }
-    var presentedRoutePoints by remember { mutableStateOf<List<TrackPoint>?>(null) }
-    var presentedMapMoments by remember { mutableStateOf<List<MapMoment>?>(null) }
     LaunchedEffect(tour, routePoints, visibleMapMoments) {
         val generation = ++presentationGeneration
         val result = tour?.let { displayedTour ->
@@ -252,19 +247,8 @@ internal fun MapPage(
         )
         if (generation == presentationGeneration) {
             presentation = result
-            presentedTourId = tour?.id
-            presentedRoutePoints = routePoints
-            presentedMapMoments = visibleMapMoments
         }
     }
-    val isTourPresentationReady = isTourPresentationReadyForEntry(
-        presentedTourId = presentedTourId,
-        tourId = tour?.id,
-        presentedRoutePoints = presentedRoutePoints,
-        routePoints = routePoints,
-        presentedMapMoments = presentedMapMoments,
-        mapMoments = visibleMapMoments,
-    )
     val renderedMapMoments = remember(presentation.mapMoments, homeSettings) {
         normalizedHomeMoments(presentation.mapMoments, homeSettings)
     }
@@ -582,15 +566,14 @@ internal fun MapPage(
                 showTourEndpoints = !isDisplayedActiveTour && !showsPendingDeparture,
                 departureCheckActive = showsPendingDeparture,
                 deferAlternateMapPreview =
-                    tourEntryPreparationRequest != null ||
+                    deferRoadPreparation ||
                     (isWaypointRailScrolling && !isFollowingLocation) ||
                     isMapGestureActive ||
                     isZoomControlInteracting,
                 isZoomControlInteracting = isZoomControlInteracting,
                 tourDisplayRequest = tourDisplayRequest,
                 animateTourEntry = animateTourEntry,
-                tourEntryPreparationRequest = tourEntryPreparationRequest,
-                tourEntryContentReady = isTourPresentationReady,
+                deferRoadPreparation = deferRoadPreparation,
                 followRequest = followRequest,
                 tourOverviewRequest = tourOverviewRequest,
                 isFollowingLocation = isFollowingLocation,
@@ -607,7 +590,6 @@ internal fun MapPage(
                 selectedPublicItemId = itemTarget?.id,
                 momentImageRevision = photoRevision,
                 routePoints = mapRoutePoints,
-                preparedTourRoute = preparedTourRoute,
                 roadHistoryStore = roadHistoryStore,
                 roadTraversalFingerprint = roadTraversalFingerprint,
                 trailColors = trailColors,
@@ -708,7 +690,6 @@ internal fun MapPage(
                 onMovementChanged = { isUserMoving = it },
                 onMapReadyChanged = { isMapRendered = it },
                 onMapGestureActiveChanged = { isMapGestureActive = it },
-                onTourEntryPrepared = onTourEntryPrepared,
             )
             }
 
@@ -1940,18 +1921,6 @@ internal fun MapPage(
         )
     }
 }
-
-internal fun isTourPresentationReadyForEntry(
-    presentedTourId: Long?,
-    tourId: Long?,
-    presentedRoutePoints: List<TrackPoint>?,
-    routePoints: List<TrackPoint>,
-    presentedMapMoments: List<MapMoment>?,
-    mapMoments: List<MapMoment>,
-): Boolean =
-    presentedTourId == tourId &&
-        presentedRoutePoints === routePoints &&
-        presentedMapMoments === mapMoments
 
 @Composable
 private fun ActiveTourNavigationBar(active: Boolean) {

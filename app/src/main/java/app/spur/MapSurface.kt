@@ -56,7 +56,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.location.modes.CameraMode
@@ -69,13 +68,11 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
-private const val TourEntryPreparationTimeoutMillis = 1_500L
 
 @Composable
 @SuppressLint("MissingPermission")
@@ -91,8 +88,7 @@ internal fun MapSurface(
     isZoomControlInteracting: Boolean,
     tourDisplayRequest: Long,
     animateTourEntry: Boolean,
-    tourEntryPreparationRequest: Long?,
-    tourEntryContentReady: Boolean,
+    deferRoadPreparation: Boolean,
     followRequest: Int,
     tourOverviewRequest: Int,
     isFollowingLocation: Boolean,
@@ -109,7 +105,6 @@ internal fun MapSurface(
     selectedPublicItemId: String?,
     momentImageRevision: Long,
     routePoints: List<TrackPoint>,
-    preparedTourRoute: PreparedTourRoute?,
     roadHistoryStore: TourStore?,
     roadTraversalFingerprint: RoadHistoryFingerprint?,
     trailColors: TrailColors,
@@ -142,7 +137,6 @@ internal fun MapSurface(
     onMovementChanged: (Boolean) -> Unit,
     onMapReadyChanged: (Boolean) -> Unit,
     onMapGestureActiveChanged: (Boolean) -> Unit,
-    onTourEntryPrepared: (Long) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -162,10 +156,6 @@ internal fun MapSurface(
     val currentOnMovementChanged by rememberUpdatedState(onMovementChanged)
     val currentOnMapReadyChanged by rememberUpdatedState(onMapReadyChanged)
     val currentOnMapGestureActiveChanged by rememberUpdatedState(onMapGestureActiveChanged)
-    val currentOnTourEntryPrepared by rememberUpdatedState(onTourEntryPrepared)
-    val currentTourEntryPreparationRequest by rememberUpdatedState(
-        tourEntryPreparationRequest,
-    )
     val currentIsZoomControlInteracting by rememberUpdatedState(isZoomControlInteracting)
     val currentOnAlternateMapPreviewChanged by rememberUpdatedState(
         onAlternateMapPreviewChanged,
@@ -257,10 +247,10 @@ internal fun MapSurface(
     var hasLoadedMapStyle by remember { mutableStateOf(false) }
     var isSelectedTrackPointVisible by remember { mutableStateOf(false) }
     var isTourEntryTransitionActive by remember { mutableStateOf(false) }
+    val postponeRoadPreparation = deferRoadPreparation || isTourEntryTransitionActive
+    val currentDeferRoadPreparation by rememberUpdatedState(postponeRoadPreparation)
     var fittedTourId by remember { mutableStateOf<Long?>(null) }
     var fittedTourDisplayRequest by remember { mutableLongStateOf(-1L) }
-    var preparedTourEntryId by remember { mutableStateOf<Long?>(null) }
-    var preparedTourEntryPoints by remember { mutableStateOf<List<TrackPoint>?>(null) }
     var lastMapSettingsRotation by remember { mutableStateOf(defaultMapRotation) }
     val mapView = remember {
         MapLibre.getInstance(context)
@@ -903,7 +893,7 @@ internal fun MapSurface(
             publishManualLocationPosition()
             publishPendingMomentPosition()
             publishHomeStartPoint()
-            if (currentTourEntryPreparationRequest == null) {
+            if (!currentDeferRoadPreparation) {
                 map?.takeUnless { currentIsZoomControlInteracting }?.let { readyMap ->
                     val shouldRefreshRoadHistory =
                         readyMap.roadNetworkCameraKey() != currentRoadHistoryCameraKey
@@ -1050,9 +1040,6 @@ internal fun MapSurface(
             }
         }
         val mapIdleListener = MapView.OnDidBecomeIdleListener {
-            if (currentTourEntryPreparationRequest != null) {
-                return@OnDidBecomeIdleListener
-            }
             if (!roadNetworkNeedsLoad) return@OnDidBecomeIdleListener
             roadNetworkNeedsLoad = false
             val readyMap = map ?: return@OnDidBecomeIdleListener
@@ -1502,8 +1489,7 @@ internal fun MapSurface(
     LaunchedEffect(routePoints, trailColors, showTourEndpoints, mapStyleRevision) {
         if (mapStyleRevision == 0) return@LaunchedEffect
         val points = routePoints
-        val prepared = preparedTourRoute?.takeIf { it.points === points }
-            ?: withContext(Dispatchers.Default) { prepareTourRoute(points) }
+        val prepared = withContext(Dispatchers.Default) { prepareTourRoute(points) }
         mapView.getMapAsync { map ->
             if (points !== currentRoutePoints) return@getMapAsync
             map.style?.let { style ->
@@ -1518,117 +1504,12 @@ internal fun MapSurface(
     }
 
     LaunchedEffect(
-        tourEntryPreparationRequest,
-        tourEntryContentReady,
-        mapStyleRevision,
-        routePoints,
-        preparedTourRoute,
-        preparedMapMomentImages,
-        preparedMapMoments,
-        mapMoments,
-        trailColors,
-        showTourEndpoints,
-    ) {
-        val request = tourEntryPreparationRequest ?: return@LaunchedEffect
-        val id = tourId ?: return@LaunchedEffect
-        if (!tourEntryContentReady || mapStyleRevision == 0) return@LaunchedEffect
-        val points = routePoints
-        val preparedRoute = preparedTourRoute?.takeIf { it.points === points }
-            ?: return@LaunchedEffect
-        val preparedImages = preparedMapMomentImages?.takeIf {
-            it.keys == mapMomentImageKeys(mapMoments)
-        } ?: return@LaunchedEffect
-        val preparedMoments = preparedMapMoments?.takeIf {
-            it.moments === mapMoments
-        } ?: return@LaunchedEffect
-        val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
-            mapView.getMapAsync { readyMap ->
-                if (continuation.isActive) continuation.resume(readyMap)
-            }
-        }
-        val style = map.style ?: return@LaunchedEffect
-        val originalCamera = map.cameraPosition
-        val wasFollowingLocation = currentIsFollowingLocation
-        var delivered = false
-        isTourEntryTransitionActive = true
-        if (wasFollowingLocation && map.locationComponent.isLocationComponentActivated) {
-            map.locationComponent.cameraMode = CameraMode.NONE
-        }
-        try {
-            withTimeoutOrNull(TourEntryPreparationTimeoutMillis) {
-                mapView.awaitFullyRenderedAfter {
-                    style.showMapMomentImages(preparedImages)
-                    style.showMapMoments(preparedMoments, momentsAtUserSpot)
-                    style.showTourRoute(preparedRoute.routeFeatures, currentTrailColors)
-                    style.showTourPauses(preparedRoute.pauseFeatures, tourPauseMarker)
-                    style.showTourEndpoints(
-                        points.takeIf { showTourEndpoints }.orEmpty(),
-                        currentTrailColors,
-                    )
-                    map.fitMapScreenTourRoute(
-                        points = points,
-                        density = context.resources.displayMetrics.density,
-                        pointZoom = defaultMapZoom,
-                        animated = false,
-                    )
-                }
-                val targetCamera = map.cameraPosition
-                val startZoom = tourEntryStartZoom(targetCamera.zoom)
-                if (startZoom != targetCamera.zoom) {
-                    mapView.awaitFullyRenderedAfter {
-                        map.moveCamera(
-                            CameraUpdateFactory.newCameraPosition(
-                                org.maplibre.android.camera.CameraPosition.Builder(targetCamera)
-                                    .zoom(startZoom)
-                                    .build(),
-                            ),
-                        )
-                    }
-                }
-            }
-            if (
-                currentTourEntryPreparationRequest != request ||
-                currentRoutePoints !== points
-            ) return@LaunchedEffect
-            preparedTourEntryId = id
-            preparedTourEntryPoints = points
-            delivered = true
-            currentOnTourEntryPrepared(request)
-        } finally {
-            if (!delivered) {
-                isTourEntryTransitionActive = false
-                if (preparedTourEntryId == id) preparedTourEntryId = null
-                if (preparedTourEntryPoints === points) preparedTourEntryPoints = null
-                if (
-                    wasFollowingLocation &&
-                    currentIsFollowingLocation &&
-                    map.locationComponent.isLocationComponentActivated
-                ) {
-                    map.followLocation(
-                        context = context,
-                        manualLocation = currentManualLocation,
-                        transitionDuration = 0L,
-                        targetZoom = originalCamera.zoom,
-                        defaultMapBearing = originalCamera.bearing,
-                        followTravelDirection =
-                            currentDefaultMapRotation == MapRotation.TRAVEL_DIRECTION &&
-                                stableTravelBearing != null,
-                    )
-                } else {
-                    map.moveCamera(
-                        CameraUpdateFactory.newCameraPosition(originalCamera),
-                    )
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(
         mapStyleRevision,
         roadNetworkLoadRevision,
+        postponeRoadPreparation,
         isZoomControlInteracting,
     ) {
-        if (mapStyleRevision == 0 || isZoomControlInteracting) return@LaunchedEffect
+        if (mapStyleRevision == 0 || isZoomControlInteracting || postponeRoadPreparation) return@LaunchedEffect
         val expectedCameraKey = roadNetworkReadyCameraKey ?: return@LaunchedEffect
         val expectedViewportKey = roadNetworkReadyViewportKey ?: return@LaunchedEffect
         val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
@@ -1671,6 +1552,7 @@ internal fun MapSurface(
     LaunchedEffect(
         mapStyleRevision,
         roadHistoryMapRevision,
+        postponeRoadPreparation,
         loadedRoadsRevision,
         roadTraversalFingerprint,
         preparedRoadProgressFingerprint,
@@ -1681,6 +1563,7 @@ internal fun MapSurface(
         roadTraversalStore,
     ) {
         if (mapStyleRevision == 0) return@LaunchedEffect
+        if (postponeRoadPreparation) return@LaunchedEffect
         val traversalFingerprint = roadTraversalFingerprint ?: return@LaunchedEffect
         if (preparedRoadProgressFingerprint != traversalFingerprint) return@LaunchedEffect
         val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
@@ -2000,9 +1883,7 @@ internal fun MapSurface(
         tourDisplayRequest,
         animateTourEntry,
         routePoints,
-        tourEntryPreparationRequest,
     ) {
-        if (tourEntryPreparationRequest != null) return@LaunchedEffect
         if (
             !shouldFitTourRoute(
                 tourId = tourId,
@@ -2013,10 +1894,6 @@ internal fun MapSurface(
             )
         ) return@LaunchedEffect
         val id = tourId ?: return@LaunchedEffect
-        val entryStartIsPrepared =
-            animateTourEntry &&
-                preparedTourEntryId == id &&
-                preparedTourEntryPoints === routePoints
         if (animateTourEntry) isTourEntryTransitionActive = true
         mapView.getMapAsync { map ->
             mapView.post {
@@ -2034,17 +1911,12 @@ internal fun MapSurface(
                     } else {
                         0.0
                     },
-                    tourEntryStartIsPrepared = entryStartIsPrepared,
                     onAnimationFinished = {
                         if (animateTourEntry) isTourEntryTransitionActive = false
                     },
                 )
                 fittedTourId = id
                 fittedTourDisplayRequest = tourDisplayRequest
-                if (entryStartIsPrepared) {
-                    preparedTourEntryId = null
-                    preparedTourEntryPoints = null
-                }
             }
         }
     }
@@ -2187,49 +2059,6 @@ private fun RoadNetworkCameraKey.roadTraversalCacheKey(): String =
 
 private fun RoadHistoryFingerprint.cacheIdentity(): String =
     "$maximumPointId:$pointCount:$signature"
-
-private suspend fun MapView.awaitFullyRenderedAfter(change: () -> Unit) {
-    suspendCancellableCoroutine { continuation ->
-        var isIdle = false
-        var isFullyRendered = false
-        var listenersRemoved = false
-        lateinit var idleListener: MapView.OnDidBecomeIdleListener
-        lateinit var renderedListener: MapView.OnDidFinishRenderingFrameListener
-
-        fun removeListeners() {
-            if (listenersRemoved) return
-            listenersRemoved = true
-            removeOnDidBecomeIdleListener(idleListener)
-            removeOnDidFinishRenderingFrameListener(renderedListener)
-        }
-
-        fun resumeWhenReady() {
-            if (!isIdle || !isFullyRendered || !continuation.isActive) return
-            removeListeners()
-            continuation.resume(Unit)
-        }
-
-        idleListener = MapView.OnDidBecomeIdleListener {
-            isIdle = true
-            resumeWhenReady()
-        }
-        renderedListener = MapView.OnDidFinishRenderingFrameListener { fullyRendered, _, _ ->
-            if (fullyRendered) isFullyRendered = true
-            resumeWhenReady()
-        }
-        addOnDidBecomeIdleListener(idleListener)
-        addOnDidFinishRenderingFrameListener(renderedListener)
-        continuation.invokeOnCancellation {
-            post { removeListeners() }
-        }
-        try {
-            change()
-        } catch (throwable: Throwable) {
-            removeListeners()
-            if (continuation.isActive) continuation.resumeWithException(throwable)
-        }
-    }
-}
 
 private fun MapLibreMap.roadNetworkCameraKey(): RoadNetworkCameraKey? {
     val target = cameraPosition.target ?: return null

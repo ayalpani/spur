@@ -43,6 +43,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -54,14 +56,6 @@ import androidx.compose.runtime.setValue
 internal data class RestoredActiveTourState(
     val activeTour: Tour,
     val displayedTourId: Long,
-)
-
-private data class HomeTourMapSnapshot(
-    val revision: TourRevision?,
-    val tour: Tour?,
-    val tourId: Long?,
-    val routePoints: List<TrackPoint>,
-    val preparedRoute: PreparedTourRoute?,
 )
 
 internal fun restoredActiveTourState(
@@ -84,9 +78,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var displayedTourRequest by rememberSaveable { mutableLongStateOf(0L) }
     var homeTourEntryRequest by remember { mutableLongStateOf(-1L) }
     var routePoints by remember { mutableStateOf(emptyList<TrackPoint>()) }
-    var preparedDisplayedTourRoute by remember {
-        mutableStateOf<PreparedTourRoute?>(null)
-    }
     var pendingDeparturePreview by remember {
         mutableStateOf<PendingDeparturePreview?>(null)
     }
@@ -98,9 +89,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var historyPhotoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var historyPhotos by remember { mutableStateOf(emptyList<MapMoment>()) }
     var openingTourId by remember { mutableStateOf<Long?>(null) }
-    var homeTourPreparationGeneration by remember { mutableLongStateOf(0L) }
-    var homeTourPreparationRequest by remember { mutableLongStateOf(-1L) }
-    var homeTourMapSnapshot by remember { mutableStateOf<HomeTourMapSnapshot?>(null) }
+    var homeTourOpeningJob by remember { mutableStateOf<Job?>(null) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var initialMapLoadingComplete by rememberSaveable { mutableStateOf(false) }
     var historyPreloadingEnabled by remember { mutableStateOf(false) }
@@ -133,16 +122,9 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         feedbackNotice = FeedbackNotice(feedbackNoticeId, kind, message)
     }
     val cancelHomeTourOpening = {
+        homeTourOpeningJob?.cancel()
+        homeTourOpeningJob = null
         openingTourId = null
-        homeTourPreparationRequest = -1L
-        homeTourMapSnapshot?.let { snapshot ->
-            displayedTourRevision = snapshot.revision
-            displayedTour = snapshot.tour
-            displayedTourId = snapshot.tourId
-            routePoints = snapshot.routePoints
-            preparedDisplayedTourRoute = snapshot.preparedRoute
-        }
-        homeTourMapSnapshot = null
     }
 
     LaunchedEffect(initialMapLoadingComplete) {
@@ -152,11 +134,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
         }
         delay(InitialLoaderExitDurationMillis.toLong())
         historyPreloadingEnabled = true
-    }
-    LaunchedEffect(routePoints) {
-        if (preparedDisplayedTourRoute?.points !== routePoints) {
-            preparedDisplayedTourRoute = null
-        }
     }
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -407,13 +384,9 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         tour = mapTour,
                         activeTour = activeTour,
                         tourDisplayRequest = displayedTourRequest,
-                        animateTourEntry =
-                            homeTourPreparationRequest < 0L &&
-                                displayedTourRequest == homeTourEntryRequest,
-                        tourEntryPreparationRequest = homeTourPreparationRequest
-                            .takeIf { it >= 0L },
+                        animateTourEntry = displayedTourRequest == homeTourEntryRequest,
                         routePoints = routePoints,
-                        preparedTourRoute = preparedDisplayedTourRoute,
+                        deferRoadPreparation = homeVisible || openingTourId != null,
                         pendingDeparturePreview = pendingDeparturePreview,
                         roadHistoryStore = store,
                         roadTraversalFingerprint = roadTraversalFingerprint,
@@ -549,20 +522,6 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         onInitialLoadingComplete = {
                             initialMapLoadingComplete = true
                         },
-                        onTourEntryPrepared = { request ->
-                            if (
-                                request == homeTourPreparationRequest &&
-                                openingTourId == displayedTourId &&
-                                navController.currentDestination?.route == SpurRoute.HOME
-                            ) {
-                                displayedTourRequest++
-                                homeTourEntryRequest = displayedTourRequest
-                                homeTourPreparationRequest = -1L
-                                homeTourMapSnapshot = null
-                                openingTourId = null
-                                navController.navigate(SpurRoute.MAP)
-                            }
-                        },
                     )
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         val panelWidth = with(LocalDensity.current) {
@@ -591,48 +550,44 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                 onOpenTour = { id ->
                                     if (openingTourId == null) {
                                         openingTourId = id
-                                        scope.launch {
-                                            val loadedTour = withContext(Dispatchers.IO) {
-                                                store.tourRevision(id)?.let { revision ->
-                                                    revision to store.points(id)
+                                        homeTourOpeningJob = scope.launch {
+                                            try {
+                                                val loadedTour = withContext(Dispatchers.IO) {
+                                                    store.tourRevision(id)?.let { revision ->
+                                                        revision to store.points(id)
+                                                    }
                                                 }
-                                            }
-                                            val preparedRoute = loadedTour?.let {
-                                                withContext(Dispatchers.Default) {
-                                                    prepareTourRoute(it.second)
+                                                if (navController.currentDestination?.route != SpurRoute.HOME) {
+                                                    return@launch
                                                 }
-                                            }
-                                            if (
-                                                openingTourId != id ||
-                                                navController.currentDestination?.route !=
-                                                SpurRoute.HOME
-                                            ) {
-                                                if (openingTourId == id) openingTourId = null
-                                                return@launch
-                                            }
-                                            if (loadedTour == null) {
-                                                openingTourId = null
+                                                if (loadedTour == null) {
+                                                    showFeedbackNotice(
+                                                        FeedbackNoticeKind.ERROR,
+                                                        "Tour konnte nicht geöffnet werden.",
+                                                    )
+                                                    return@launch
+                                                }
+                                                displayedTourRevision = loadedTour.first
+                                                displayedTour = loadedTour.first.asTour()
+                                                displayedTourId = id
+                                                routePoints = loadedTour.second
+                                                displayedTourRequest++
+                                                homeTourEntryRequest = displayedTourRequest
+                                                navController.navigate(SpurRoute.MAP)
+                                            } catch (cancelled: CancellationException) {
+                                                throw cancelled
+                                            } catch (_: Exception) {
                                                 showFeedbackNotice(
                                                     FeedbackNoticeKind.ERROR,
                                                     "Tour konnte nicht geöffnet werden.",
                                                 )
-                                                return@launch
+                                            } finally {
+                                                // A cancelled request must not unlock a newer request.
+                                                if (homeTourOpeningJob == coroutineContext[Job]) {
+                                                    openingTourId = null
+                                                    homeTourOpeningJob = null
+                                                }
                                             }
-                                            homeTourMapSnapshot = HomeTourMapSnapshot(
-                                                revision = displayedTourRevision,
-                                                tour = displayedTour,
-                                                tourId = displayedTourId,
-                                                routePoints = routePoints,
-                                                preparedRoute = preparedDisplayedTourRoute,
-                                            )
-                                            displayedTourRevision = loadedTour.first
-                                            displayedTour = loadedTour.first.asTour()
-                                            displayedTourId = id
-                                            routePoints = loadedTour.second
-                                            preparedDisplayedTourRoute = preparedRoute
-                                            homeTourPreparationGeneration++
-                                            homeTourPreparationRequest =
-                                                homeTourPreparationGeneration
                                         }
                                     }
                                 },

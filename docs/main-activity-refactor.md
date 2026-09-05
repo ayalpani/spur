@@ -90,3 +90,19 @@ The existing-data compatibility check had passed on the TourEditor-v2 baseline
 before the reset. It could not be repeated at final branch acceptance because
 that original device state no longer existed. A fresh tour did persist across a
 forced process restart and reopened through history/editor after the refactor.
+
+## Archived-tour entry
+
+`SpurApp` opens the map destination once the selected tour revision and points
+are read. It owns the cancellable loading job and releases the list on read
+failure or Back; map-render callbacks no longer control navigation or lock
+Home. `MapPage` prepares the waypoint presentation asynchronously, and
+`MapSurface` prepares the route and performs the existing entry camera motion
+after navigation. Road-cell preparation and historical traversal matching pause
+while Home is visible or the entry camera animation is active, then resume from
+the latest map-idle viewport. The obsolete hidden-map preparation and its
+1.5-second render timeout have been removed.
+
+The road cache accepts the additive diagnostic-only v4/v5 schema when returning
+to v3, preserving both shared cache tables and all newer diagnostic rows. Other
+unknown downgrades still fail explicitly. This does not touch `spur.db`.
