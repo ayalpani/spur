@@ -88,8 +88,11 @@ class TrackingService : Service() {
                 return
             }
             val session = activeTrackingSession ?: return
-            result.locations.map(::Location).forEach { location ->
-                trackingHandler.post { persistLocation(session, location) }
+            val locations = result.locations.map(::Location)
+            trackingHandler.post {
+                store.inLocationBatch {
+                    locations.forEach { location -> persistLocation(session, location) }
+                }
             }
         }
     }
@@ -384,8 +387,15 @@ class TrackingService : Service() {
         session: ActiveTrackingSession,
         location: Location,
     ) {
-        if (!isCurrent(session)) return
-        if (applicationContext.loadManualLocation() != null) return
+        val ignoredReason = when {
+            !isCurrent(session) -> RawLocationDecision.STALE_SESSION
+            applicationContext.loadManualLocation() != null -> RawLocationDecision.MANUAL_LOCATION
+            else -> null
+        }
+        if (ignoredReason != null) {
+            store.recordIgnoredLocation(session.tourId, location, ignoredReason)
+            return
+        }
         val sample = location.toBufferedHomeLocation()
         val automaticResult = session.automaticProcessor?.record(
             sample = sample,

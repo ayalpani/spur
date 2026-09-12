@@ -156,12 +156,9 @@ internal fun shouldAcceptPoint(
     elapsedMillis: Long?,
     allowFastMovement: Boolean = false,
 ): Boolean {
-    if (accuracyMeters > 40f) return false
-    if (distanceMeters == null || elapsedMillis == null) return true
-    if (elapsedMillis <= 0L) return false
-    if (!allowFastMovement && distanceMeters / (elapsedMillis / 1_000f) > 55f) return false
-    val noiseFloor = (accuracyMeters * 0.5f).coerceIn(4f, 10f)
-    return distanceMeters >= noiseFloor
+    return pointRejectionReason(
+        accuracyMeters, distanceMeters, elapsedMillis, allowFastMovement,
+    ) == null
 }
 
 private data class StoredTrackPoint(
@@ -192,6 +189,14 @@ class TourStore(context: Context) :
     private val appContext = context.applicationContext
     private val gpsStartGates = mutableMapOf<Long, GpsStartGate>()
     private val stationaryExitFixes = mutableMapOf<Long, MutableList<Location>>()
+    private var rawLocationPrunedAt = 0L
+
+    override fun onOpen(db: SQLiteDatabase) {
+        super.onOpen(db)
+        db.ensureRawLocationTable()
+        db.pruneRawLocations()
+        rawLocationPrunedAt = System.currentTimeMillis()
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -333,9 +338,45 @@ class TourStore(context: Context) :
         tourId: Long,
         location: Location,
         allowFastMovement: Boolean = false,
-    ): Boolean {
+    ): Boolean = inLocationBatch {
+        val now = System.currentTimeMillis()
+        if (now - rawLocationPrunedAt >= 86_400_000L) {
+            writableDatabase.pruneRawLocations(now)
+            rawLocationPrunedAt = now
+        }
+        val decision = appendLocationDecision(tourId, location, allowFastMovement)
+        if (!allowFastMovement) {
+            writableDatabase.recordRawLocation(tourId, location, decision)
+        }
+        decision.accepted
+    }
+
+    @Synchronized
+    internal fun recordIgnoredLocation(tourId: Long, location: Location, decision: RawLocationDecision) {
+        writableDatabase.recordRawLocation(tourId, location, decision)
+    }
+
+    // Batches delivered by Android share one commit, including route and diagnostic rows.
+    @Synchronized
+    internal fun <T> inLocationBatch(block: () -> T): T {
         val db = writableDatabase
-        val previous = latestPointOfActiveTour(db, tourId) ?: return false
+        db.beginTransaction()
+        try {
+            val result = block()
+            db.setTransactionSuccessful()
+            return result
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    private fun appendLocationDecision(
+        tourId: Long,
+        location: Location,
+        allowFastMovement: Boolean = false,
+    ): RawLocationDecision {
+        val db = writableDatabase
+        val previous = latestPointOfActiveTour(db, tourId) ?: return RawLocationDecision.INACTIVE_TOUR
         val previousLocation = previous.point?.asLocation()
         val accuracyMeters = if (location.hasAccuracy()) {
             location.accuracy
@@ -355,7 +396,8 @@ class TourStore(context: Context) :
                 observedAtMillis = SystemClock.elapsedRealtime(),
             )
         ) {
-            return false
+            return if (accuracyMeters > 40f) RawLocationDecision.POOR_ACCURACY
+            else RawLocationDecision.STARTUP_PENDING
         }
 
         val storedPrevious = previous.point
@@ -392,17 +434,10 @@ class TourStore(context: Context) :
                 sampleCount = storedPrevious.clusterSampleCount.coerceAtLeast(1) + 1,
                 clusterStartedAt = storedPrevious.recordedAt,
             )
-            return true
+            return RawLocationDecision.STATIONARY_MERGED
         }
-        if (
-            !shouldAcceptPoint(
-                accuracyMeters = accuracyMeters,
-                distanceMeters = distance,
-                elapsedMillis = elapsed,
-                allowFastMovement = allowFastMovement,
-            )
-        ) {
-            return false
+        pointRejectionReason(accuracyMeters, distance, elapsed, allowFastMovement)?.let {
+            return it
         }
 
         insertLocations(
@@ -414,7 +449,7 @@ class TourStore(context: Context) :
         gpsStartGates.remove(tourId)
         stationaryExitFixes.remove(tourId)
         if (!allowFastMovement) collapseStationaryWindow(db, tourId, location.time)
-        return true
+        return RawLocationDecision.ACCEPTED
     }
 
     private fun latestPointOfActiveTour(
@@ -455,11 +490,12 @@ class TourStore(context: Context) :
         clusterPoint: StoredTrackPoint,
         location: Location,
         accuracyMeters: Float,
-    ): Boolean {
+    ): RawLocationDecision {
         val clusterLocation = clusterPoint.asLocation()
         val distance = clusterLocation.distanceTo(location)
         val elapsed = location.time - clusterPoint.recordedAt
-        if (accuracyMeters > 40f || elapsed <= 0L) return false
+        if (accuracyMeters > 40f) return RawLocationDecision.POOR_ACCURACY
+        if (elapsed <= 0L) return RawLocationDecision.NON_MONOTONIC_TIME
         if (distance <= stationaryExitDistanceMeters(accuracyMeters)) {
             stationaryExitFixes.remove(tourId)
             val oldCount = clusterPoint.clusterSampleCount.coerceAtLeast(1)
@@ -478,20 +514,12 @@ class TourStore(context: Context) :
                 accuracyMeters = accuracyMeters,
                 sampleCount = newCount,
             )
-            return true
+            return RawLocationDecision.STATIONARY_MERGED
         }
-        if (
-            !shouldAcceptPoint(
-                accuracyMeters = accuracyMeters,
-                distanceMeters = distance,
-                elapsedMillis = elapsed,
-            )
-        ) {
-            return false
-        }
+        pointRejectionReason(accuracyMeters, distance, elapsed)?.let { return it }
         val exitFixes = stationaryExitFixes.getOrPut(tourId) { mutableListOf() }
         exitFixes += Location(location)
-        if (exitFixes.size < StationaryExitFixCount) return false
+        if (exitFixes.size < StationaryExitFixCount) return RawLocationDecision.STATIONARY_EXIT_PENDING
         stationaryExitFixes.remove(tourId)
         insertLocations(
             db = db,
@@ -499,7 +527,7 @@ class TourStore(context: Context) :
             locations = exitFixes,
             previous = clusterLocation,
         )
-        return true
+        return RawLocationDecision.ACCEPTED
     }
 
     private fun insertLocations(
@@ -764,8 +792,23 @@ class TourStore(context: Context) :
         try {
             val prepared = automaticStartLocations(startPoint, locations, exitAt)
             val duplicateIndex = AutomaticStartDuplicateIndex(points(db, tourId))
+            val measuredLocations = locations.toHashSet()
             prepared.forEach { location ->
-                if (!duplicateIndex.contains(location)) {
+                val duplicate = duplicateIndex.contains(location)
+                if (location in measuredLocations) {
+                    db.recordRawLocation(
+                        tourId,
+                        Location("pre-roll").apply {
+                            latitude = location.latitude
+                            longitude = location.longitude
+                            time = location.recordedAt
+                            accuracy = location.accuracyMeters
+                        },
+                        if (duplicate) RawLocationDecision.PRE_ROLL_DUPLICATE
+                        else RawLocationDecision.PRE_ROLL_ACCEPTED,
+                    )
+                }
+                if (!duplicate) {
                     val id = insertRawLocation(
                         db = db,
                         tourId = tourId,
@@ -1126,6 +1169,7 @@ class TourStore(context: Context) :
         val db = writableDatabase
         db.beginTransaction()
         try {
+            db.delete("raw_locations", "tour_id = ?", arrayOf(id.toString()))
             db.delete("track_points", "tour_id = ?", arrayOf(id.toString()))
             db.delete("tours", "id = ?", arrayOf(id.toString()))
             db.setTransactionSuccessful()
