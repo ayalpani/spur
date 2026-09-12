@@ -339,11 +339,6 @@ class TourStore(context: Context) :
         location: Location,
         allowFastMovement: Boolean = false,
     ): Boolean = inLocationBatch {
-        val now = System.currentTimeMillis()
-        if (now - rawLocationPrunedAt >= 86_400_000L) {
-            writableDatabase.pruneRawLocations(now)
-            rawLocationPrunedAt = now
-        }
         val decision = appendLocationDecision(tourId, location, allowFastMovement)
         if (!allowFastMovement) {
             writableDatabase.recordRawLocation(tourId, location, decision)
@@ -352,14 +347,18 @@ class TourStore(context: Context) :
     }
 
     @Synchronized
-    internal fun recordIgnoredLocation(tourId: Long, location: Location, decision: RawLocationDecision) {
-        writableDatabase.recordRawLocation(tourId, location, decision)
-    }
+    internal fun recordIgnoredLocation(tourId: Long, location: Location, decision: RawLocationDecision) =
+        inLocationBatch { writableDatabase.recordRawLocation(tourId, location, decision) }
 
     // Batches delivered by Android share one commit, including route and diagnostic rows.
     @Synchronized
     internal fun <T> inLocationBatch(block: () -> T): T {
         val db = writableDatabase
+        val now = System.currentTimeMillis()
+        if (now - rawLocationPrunedAt >= 86_400_000L) {
+            writableDatabase.pruneRawLocations(now)
+            rawLocationPrunedAt = now
+        }
         db.beginTransaction()
         try {
             val result = block()
