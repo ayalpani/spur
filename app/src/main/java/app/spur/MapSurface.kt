@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.PointF
 import android.graphics.RectF
 import android.os.Build
+import android.os.SystemClock
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -22,6 +23,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -249,6 +252,8 @@ internal fun MapSurface(
     var preparedMapMoments by remember { mutableStateOf<PreparedMapMoments?>(null) }
     var mapMomentImagePreparationGeneration by remember { mutableLongStateOf(0L) }
     var currentLocation by remember { mutableStateOf<SpurCoordinate?>(null) }
+    var latestMapLocation by remember { mutableStateOf<android.location.Location?>(null) }
+    var handledFollowRequest by remember { mutableStateOf(0) }
     val currentGpsLocation by rememberUpdatedState(currentLocation)
     var stableTravelBearing by remember { mutableStateOf<Float?>(null) }
     var isAtHome by remember { mutableStateOf(false) }
@@ -300,6 +305,12 @@ internal fun MapSurface(
             var isTraveling = false
             val client = LocationServices.getFusedLocationProviderClient(context)
             fun publishLocation(location: android.location.Location) {
+                if (!isNewerMapLocation(
+                        location.elapsedRealtimeNanos,
+                        latestMapLocation?.elapsedRealtimeNanos,
+                    )
+                ) return
+                latestMapLocation = android.location.Location(location)
                 currentOnItemLocationChanged(android.location.Location(location))
                 val settings = context.loadHomeAutoStartSettings()
                 val coordinate = SpurCoordinate(location.latitude, location.longitude)
@@ -527,7 +538,7 @@ internal fun MapSurface(
                     previewCameraPosition = map.cameraPosition
                     map.mapViewport(currentIsSatelliteView)?.let(currentOnViewportChanged)
                     currentOnItemBoundsChanged(map.publicItemBounds())
-                    if (currentIsFollowingLocation) {
+                    if (currentIsFollowingLocation && currentFollowRequest == handledFollowRequest) {
                         map.followLocation(
                             context = context,
                             manualLocation = currentManualLocation,
@@ -1182,14 +1193,51 @@ internal fun MapSurface(
         }
     }
 
-    LaunchedEffect(followRequest, manualLocation, isFollowingLocation) {
-        if (followRequest == 0 || !isFollowingLocation) return@LaunchedEffect
+    val lifecycleState by lifecycle.currentStateFlow.collectAsState()
+    LaunchedEffect(followRequest, manualLocation, isFollowingLocation, hasLoadedMapStyle, lifecycleState) {
+        if (
+            followRequest == 0 || followRequest == handledFollowRequest ||
+            !isFollowingLocation || !hasLoadedMapStyle ||
+            !lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+        ) return@LaunchedEffect
         val request = followRequest
-        mapView.getMapAsync { map ->
+        handledFollowRequest = request
+        var completed = false
+        try {
+            val map = suspendCancellableCoroutine<MapLibreMap> { continuation ->
+                mapView.getMapAsync { readyMap ->
+                    if (continuation.isActive) continuation.resume(readyMap)
+                }
+            }
+            // Keep GPS updates flowing, but do not move the camera while choosing the fix.
+            if (map.locationComponent.isLocationComponentActivated) {
+                map.locationComponent.cameraMode = CameraMode.NONE
+            }
+            if (manualLocation == null && context.hasLocationPermission()) {
+                awaitFreshMapLocation(
+                    fixTimes = snapshotFlow { latestMapLocation?.elapsedRealtimeNanos },
+                    nowNanos = SystemClock::elapsedRealtimeNanos,
+                )
+            }
             if (
-                request != currentFollowRequest ||
-                !currentIsFollowingLocation
-            ) return@getMapAsync
+                request != currentFollowRequest || !currentIsFollowingLocation ||
+                !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            ) return@LaunchedEffect
+            if (manualLocation == null && map.locationComponent.isLocationComponentActivated) {
+                latestMapLocation?.let { location ->
+                    val coordinate = normalizedHomeCoordinate(
+                        context.loadHomeAutoStartSettings(),
+                        SpurCoordinate(location.latitude, location.longitude),
+                    )
+                    map.locationComponent.forceLocationUpdate(
+                        android.location.Location(location).apply {
+                            latitude = coordinate.latitude
+                            longitude = coordinate.longitude
+                            stableTravelBearing?.let { bearing = it }
+                        },
+                    )
+                }
+            }
             map.followLocation(
                 context = context,
                 manualLocation = manualLocation,
@@ -1202,6 +1250,11 @@ internal fun MapSurface(
                     currentDefaultMapRotation == MapRotation.TRAVEL_DIRECTION &&
                         stableTravelBearing != null,
             )
+            completed = true
+        } finally {
+            if (!completed && request == currentFollowRequest && currentIsFollowingLocation) {
+                currentOnFollowingInterrupted()
+            }
         }
     }
 
