@@ -34,6 +34,25 @@ und als Route auf der Karte dargestellt. Foto- und Videomomente nutzen CameraX.
 
 Die ausführliche Produktskizze liegt in [PRODUCT.md](PRODUCT.md).
 
+## Schutz vor versehentlich veröffentlichten Zugangsdaten
+
+Lokale `.env`-Dateien, private Schlüssel und Signing-Keystores werden durch
+`.gitignore` ausgeschlossen. `.env.example`, `.env.sample` und `.env.template`
+dürfen ausschließlich Platzhalter enthalten. Bereits versionierte Dateien
+werden durch Ignore-Regeln nicht nachträglich entfernt.
+
+Der GitHub-Workflow **Secret scan** prüft bei Pushes und Pull Requests die
+vollständig abgerufene Git-Historie mit Gitleaks. Treffer lassen den Check
+fehlschlagen; Geheimniswerte werden in der Ausgabe geschwärzt. Der Check läuft
+nach dem Upload und verhindert selbst keinen Push. Für eine verpflichtende
+Merge-Sperre muss `gitleaks` als erforderlicher Statuscheck eingerichtet werden.
+
+Vor einem Push lässt sich derselbe Scan mit installiertem Gitleaks lokal starten:
+
+```sh
+gitleaks git . --log-opts="--all --full-history" --redact=100 --ignore-gitleaks-allow
+```
+
 ## Architektur und Wartung
 
 - [Architektur und Zustandsbesitz](docs/architecture.md)
