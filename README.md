@@ -1,60 +1,100 @@
 # Spur
 
-**Wege, die dir gehören.**
+**A personal map of the places you explore.** Record walks, see the streets
+and paths you have covered, and leave photos, videos, voice notes, or emojis
+along the way. Built for remembering a city, without turning every outing
+into a workout or a social feed.
 
-Spur ist eine private Android-App zum Aufzeichnen von Stadttouren und
-ortsgebundenen Erinnerungen. Touren, Standortpunkte, Fotos und Notizen bleiben
-standardmäßig auf dem Gerät.
+<p>
+  <img src="docs/images/spur-map.webp" width="30%" alt="Spur map with an emoji moment at a public landmark in Berlin">
+  <img src="docs/images/spur-moments.webp" width="30%" alt="Moment picker offering photo, video, voice, and emoji">
+  <img src="docs/images/spur-history.webp" width="30%" alt="Home view with a weekly activity summary and demo tour history">
+</p>
 
-## Produktprinzipien
+*Earlier demo captures from the landing-page branch. They show a public Berlin
+location, not the author's home; the current interface may differ.*
 
-- local first, ohne Account und eigenes Backend
-- zuverlässiges GPS-Tracking, auch bei gesperrtem Bildschirm
-- konsequente Einhandbedienung mit Bottom Gravity
-- ruhiges Werkzeug statt Fitness- oder Social-App
-- Daten verlassen das Gerät nur nach einer bewussten Nutzeraktion
+## At a glance
 
-## Technischer Start
+- **Started:** July 23, 2026, by Arash Yalpani.
+- **Status:** experimental native Android app, version 0.1.0.
+- **Platform:** Android 8.0 or later; AR features depend on device support.
+- **Local first:** tour history and recorded moments are stored on your device.
+  No account is required.
 
-- Kotlin
-- Jetpack Compose und Material 3
-- Android 8.0+ (API 26)
+## What you can do
 
-Die startfähige Compose-App nutzt MapLibre mit OpenStreetMap-Vektorkacheln für
-ihre primäre Kartenansicht. Ein kurzes Standort-Onboarding führt zur
-Android-Freigabe; danach folgt die Karte Position und Gerätekompass. Touren
-werden über einen Foreground Service aufgezeichnet, lokal in SQLite gespeichert
-und als Route auf der Karte dargestellt. Foto- und Videomomente nutzen CameraX.
+Start a tour and keep recording with the screen locked. Add a photo, video,
+voice recording, or emoji to a place. Revisit tours from Home, browse their
+waypoints, and see your recent activity and accumulated street coverage.
 
-## Starten
+Optional Home Zone automation can start and finish tours as you leave and
+return. Back up tours and moments to a folder you choose through Android's
+file providers. Experimental AR items let you place and discover objects
+in the world.
 
-1. Projekt in Android Studio öffnen.
-2. Gradle-Synchronisierung abwarten.
-3. `app` auf einem Emulator oder Android-Gerät starten.
+## Privacy and connectivity
 
-Die ausführliche Produktskizze liegt in [PRODUCT.md](PRODUCT.md).
+Your recorded tours and moments stay on the device unless you share them or
+enable backups to a chosen destination. Map imagery, map tiles, and landmark
+lookups use external services. The optional public-item feature exchanges item
+locations with the [Spur Items Service](server/README.md); it is separate from
+private tour recording. Local first does not mean every feature works offline.
 
-## Schutz vor versehentlich veröffentlichten Zugangsdaten
+## Built with
 
-Lokale `.env`-Dateien, private Schlüssel und Signing-Keystores werden durch
-`.gitignore` ausgeschlossen. `.env.example`, `.env.sample` und `.env.template`
-dürfen ausschließlich Platzhalter enthalten. Bereits versionierte Dateien
-werden durch Ignore-Regeln nicht nachträglich entfernt.
+- **Kotlin, Jetpack Compose, and Material 3** for the native interface.
+- **MapLibre and OpenStreetMap-based maps** for the map and route display.
+- **Android location services and SQLite** for tracking and local tour storage.
+- **CameraX** for photos and video; Android media APIs for voice moments.
+- **ARCore and SceneView** for experimental AR items.
+- **WorkManager and Android document providers** for backups.
+- **Go and SQLite** for the optional public-item service.
 
-Der GitHub-Workflow **Secret scan** prüft bei Pushes und Pull Requests die
-vollständig abgerufene Git-Historie mit Gitleaks. Treffer lassen den Check
-fehlschlagen; Geheimniswerte werden in der Ausgabe geschwärzt. Der Check läuft
-nach dem Upload und verhindert selbst keinen Push. Für eine verpflichtende
-Merge-Sperre muss `gitleaks` als erforderlicher Statuscheck eingerichtet werden.
+## Try it
 
-Vor einem Push lässt sich derselbe Scan mit installiertem Gitleaks lokal starten:
+Open the project in Android Studio with JDK 17 and Android SDK 35 installed.
+Let Gradle sync, then build and run the **app** module on an Android device.
+Grant location access when prompted; background tracking and Home Zone
+behaviour require the corresponding Android permissions. Camera and microphone
+access are requested for the relevant moment types.
+
+To build a debug APK from the command line, configure `ANDROID_HOME` or
+`local.properties`, then run:
+
+```sh
+./gradlew assembleDebug
+```
+
+The APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+
+## Development
+
+Run the project's checks with:
+
+```sh
+./gradlew testDebugUnitTest assembleDebug lintDebug
+```
+
+GitHub runs a **Secret scan** on pushes and pull requests. To check locally
+before pushing, install Gitleaks and run:
 
 ```sh
 gitleaks git . --log-opts="--all --full-history" --redact=100 --ignore-gitleaks-allow
 ```
 
-## Architektur und Wartung
+Local `.env` files, private keys, and signing keystores are ignored. Environment
+example files must contain placeholders only. Ignore rules do not remove files
+already committed, and the GitHub check runs after upload; it does not block a
+push. Making `gitleaks` a required status check is a separate repository setting.
 
-- [Architektur und Zustandsbesitz](docs/architecture.md)
-- [Protokoll der MainActivity-Zerlegung](docs/main-activity-refactor.md)
-- [Verbindliche Änderungs- und Prüfregeln](AGENTS.md)
+## More
+
+[Product notes](PRODUCT.md) ·
+[Architecture](docs/architecture.md) ·
+[Backups](docs/backup.md) ·
+[Maintenance notes](docs/main-activity-refactor.md) ·
+[Change and verification rules](AGENTS.md)
+
+See [third-party notices](THIRD_PARTY_NOTICES.md) for the Lucide icons and
+Kenney models. No project-wide license has been added yet.
