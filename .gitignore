@@ -7,3 +7,22 @@ local.properties
 *.iml
 work/
 outputs/
+
+# Local credentials and signing material (including nested projects).
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+key.properties
+keystore.properties
+signing.properties
+id_rsa
+id_ecdsa
+id_ed25519
