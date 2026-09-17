@@ -177,7 +177,8 @@ internal fun MapPage(
     DisposableEffect(landmarkStore) {
         onDispose { landmarkStore.close() }
     }
-    var followRequest by rememberSaveable { mutableStateOf(0) }
+    // A tap is an event, not state to replay after Activity recreation.
+    var followRequest by remember { mutableStateOf(0) }
     var tourOverviewRequest by rememberSaveable { mutableStateOf(0) }
     var isFollowingLocation by rememberSaveable { mutableStateOf(false) }
     var isUserMoving by remember { mutableStateOf(false) }

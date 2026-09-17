@@ -90,3 +90,16 @@ The existing-data compatibility check had passed on the TourEditor-v2 baseline
 before the reset. It could not be repeated at final branch acceptance because
 that original device state no longer existed. A fresh tour did persist across a
 forced process restart and reopened through history/editor after the refactor.
+
+### Location centering
+
+`MapPage` keeps center-button requests only in the current composition; Activity
+restoration must not replay a previous tap. `MapSurface` consumes each request
+once and cancels pending centering on lifecycle exit, map gestures, or a newer
+request. It uses the existing live GPS subscription and
+`MapLocationFreshness.kt` to wait at most one second for a fix no older than
+three seconds, then uses the best available fix. Measurement ordering and age
+use Android monotonic elapsed time; cached or duplicate older fixes cannot
+replace a newer map location. This does not change recorded tour points.
+The existing large `MapSurface` coordinator remains a deliberate size exception;
+this fix does not combine camera behavior changes with a structural extraction.
