@@ -3,10 +3,6 @@ package app.spur
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,100 +29,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
-
-@Composable
-internal fun ArInventoryRail(
-    items: List<OwnedItem>,
-    pendingItemIds: Set<String> = emptySet(),
-    selectedItemId: String?,
-    onSelect: (OwnedItem) -> Unit,
-    available: Boolean = true,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        shape = RoundedCornerShape(28.dp),
-        color = Color.White,
-        shadowElevation = MapControlElevation,
-    ) {
-        if (!available || items.isEmpty()) {
-            Text(
-                text = if (available) {
-                    "Dein Inventar ist leer"
-                } else {
-                    "Das verschlüsselte Inventar ist gerade nicht verfügbar"
-                },
-                modifier = Modifier.padding(20.dp),
-                color = Ink.copy(alpha = 0.62f),
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-            )
-        } else {
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items.forEach { item ->
-                    val selected = item.id == selectedItemId
-                    val pending = item.id in pendingItemIds
-                    Column(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .border(
-                                BorderStroke(
-                                    width = if (selected) 3.dp else 1.dp,
-                                    color = if (selected) LocalAccentColor.current else Ink.copy(alpha = 0.16f),
-                                ),
-                                RoundedCornerShape(20.dp),
-                            )
-                            .clickable(enabled = !pending) { onSelect(item) }
-                            .padding(horizontal = 18.dp, vertical = 8.dp)
-                            .semantics {
-                                contentDescription = if (pending) {
-                                    "${item.kind.displayName} ist noch nicht veröffentlicht"
-                                } else {
-                                    "${item.kind.displayName} im Raum ablegen"
-                                }
-                            },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Image(
-                            painter = painterResource(item.kind.mapImageResource),
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                        )
-                        Text(
-                            text = item.kind.displayName,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        )
-                        if (pending) {
-                            Text(
-                                text = "Noch nicht veröffentlicht",
-                                color = Ink.copy(alpha = 0.62f),
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 internal fun InventoryPage(
@@ -278,7 +185,6 @@ private fun ItemProvenance(item: OwnedItem) {
 @Composable
 internal fun PublicItemDetails(
     item: PublicItem,
-    onOpenInAr: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -313,6 +219,5 @@ internal fun PublicItemDetails(
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-        SpurPrimaryButton(label = "In AR ansehen", onClick = onOpenInAr)
     }
 }

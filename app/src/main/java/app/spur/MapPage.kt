@@ -1,6 +1,5 @@
 package app.spur
 
-import android.location.Location
 import android.media.MediaPlayer
 import android.util.Log
 import androidx.activity.compose.BackHandler
@@ -118,12 +117,8 @@ internal fun MapPage(
     }
     val inventory by itemRepository?.inventory?.collectAsState()
         ?: remember { mutableStateOf(ItemInventory()) }
-    var worldMode by rememberSaveable { mutableStateOf(WorldMode.MAP) }
-    var arClosing by remember { mutableStateOf(false) }
-    var latestItemLocation by remember { mutableStateOf<Location?>(null) }
     var itemMapBounds by remember { mutableStateOf<ItemMapBounds?>(null) }
     var publicItemsPage by remember { mutableStateOf(PublicItemsPage(emptyList(), emptyList())) }
-    var nearbyItems by remember { mutableStateOf(emptyList<PublicItem>()) }
     var itemWorldRefreshGeneration by remember { mutableLongStateOf(0L) }
     var selectedPublicItem by remember { mutableStateOf<PublicItem?>(null) }
     var itemTarget by remember { mutableStateOf<PublicItem?>(null) }
@@ -156,19 +151,6 @@ internal fun MapPage(
             MapControlVerticalPadding +
             if (usesStackedMapPlayer) MapControlSize + MapControlGap else 0.dp
     val scope = rememberCoroutineScope()
-    val closeAr: () -> Unit = {
-        if (worldMode == WorldMode.AR) {
-            worldMode = closeArMode(worldMode)
-            arClosing = true
-            scope.launch {
-                delay(3_000)
-                arClosing = false
-            }
-        }
-    }
-    val openAr: () -> Unit = {
-        worldMode = openArMode(worldMode, arClosing)
-    }
     val landmarkStore = remember(context) { LandmarkStore(context) }
     var landmarks by remember { mutableStateOf(emptyList<Landmark>()) }
     LaunchedEffect(landmarkStore) {
@@ -304,8 +286,7 @@ internal fun MapPage(
     }
     var mapInitializationStarted by remember { mutableStateOf(false) }
     val isMapReady = isMapRendered && minimumMapLoadingTimeElapsed
-    val areMapControlsVisible = worldMode == WorldMode.MAP &&
-        shouldShowTourChrome(isMapGestureActive) &&
+    val areMapControlsVisible = shouldShowTourChrome(isMapGestureActive) &&
         isMapReady &&
         !isHomeSelectionMode
     val hasTourModeHeader = tour != null &&
@@ -343,17 +324,6 @@ internal fun MapPage(
         delay(300)
         runCatching { itemsApi.list(bounds, mapViewport?.zoom ?: defaultMapZoom) }
             .onSuccess { publicItemsPage = it }
-    }
-    LaunchedEffect(
-        worldMode,
-        latestItemLocation?.latitude,
-        latestItemLocation?.longitude,
-        itemWorldRefreshGeneration,
-    ) {
-        if (worldMode != WorldMode.AR) return@LaunchedEffect
-        val location = latestItemLocation ?: return@LaunchedEffect
-        runCatching { itemsApi.nearby(location.toItemLocation()) }
-            .onSuccess { nearbyItems = it.items }
     }
     LaunchedEffect(isDisplayedActiveTour) {
         if (!isDisplayedActiveTour) showTourEndConfirmation = false
@@ -399,9 +369,6 @@ internal fun MapPage(
         } else {
             closeHomeSelection()
         }
-    }
-    BackHandler(enabled = worldMode == WorldMode.AR && !showInventoryPage) {
-        closeAr()
     }
     LaunchedEffect(tour?.id, editorLocations.size) {
         editorFocusRequest = 0L
@@ -576,7 +543,6 @@ internal fun MapPage(
         Box(modifier = Modifier.fillMaxSize()) {
             if (mapInitializationStarted) {
             MapSurface(
-                isWorldVisible = worldMode == WorldMode.MAP,
                 tourId = tour?.id,
                 activeTourId = activeTour?.id,
                 isTourActive = isTourActive,
@@ -677,7 +643,6 @@ internal fun MapPage(
                     selectedPublicItem = item
                 },
                 onItemBoundsChanged = { itemMapBounds = it },
-                onItemLocationChanged = { latestItemLocation = it },
                 onLocationClick = followOwnLocation,
                 onBuildingClick = {
                     if (
@@ -711,84 +676,6 @@ internal fun MapPage(
                 onMapGestureActiveChanged = { isMapGestureActive = it },
                 onTourEntryPrepared = onTourEntryPrepared,
             )
-            }
-
-            if (worldMode == WorldMode.AR) {
-                ItemArView(
-                    inventory = inventory,
-                    inventoryAvailable = itemRepository != null,
-                    deviceLocation = latestItemLocation,
-                    nearbyItems = nearbyItems,
-                    selectedTarget = itemTarget,
-                    onDrop = { item, location ->
-                        val repository = itemRepository
-                            ?: return@ItemArView DropOutcome.FAILED
-                        val result = runCatching { repository.drop(item, location) }
-                            .onSuccess { dropped ->
-                                publicItemsPage = publicItemsPage.copy(
-                                    items = publicItemsPage.items.filterNot { it.id == dropped.id } + dropped,
-                                )
-                                itemTarget = dropped
-                                itemWorldRefreshGeneration++
-                                showFeedbackNotice(
-                                    FeedbackNoticeKind.PLACEHOLDER,
-                                    "${item.kind.displayName} abgelegt",
-                                )
-                            }
-                            .onFailure {
-                                showFeedbackNotice(
-                                    FeedbackNoticeKind.ERROR,
-                                    if (repository.inventory.value.pendingDrops.any { pending -> pending.itemId == item.id }) {
-                                        "Offline – Ablage wird später fortgesetzt."
-                                    } else {
-                                        "Item konnte nicht abgelegt werden."
-                                    },
-                                )
-                            }
-                        when {
-                            result.isSuccess -> DropOutcome.DROPPED
-                            repository.inventory.value.pendingDrops.any { it.itemId == item.id } ->
-                                DropOutcome.PENDING
-                            else -> DropOutcome.FAILED
-                        }
-                    },
-                    onClaim = { item, location ->
-                        val currentLocation = latestItemLocation
-                        val repository = itemRepository
-                        if (
-                            currentLocation == null ||
-                            !currentLocation.isPublishableItemLocation(System.currentTimeMillis()) ||
-                            repository == null
-                        ) {
-                            ClaimOutcome.FAILED
-                        } else {
-                            try {
-                                repository.claim(item, location)
-                                publicItemsPage = publicItemsPage.copy(
-                                    items = publicItemsPage.items.filterNot { it.id == item.id },
-                                )
-                                nearbyItems = nearbyItems.filterNot { it.id == item.id }
-                                if (itemTarget?.id == item.id) itemTarget = null
-                                ClaimOutcome.CLAIMED
-                            } catch (failure: ItemsApiException) {
-                                if (failure.code == "already_claimed") {
-                                    publicItemsPage = publicItemsPage.copy(
-                                        items = publicItemsPage.items.filterNot { it.id == item.id },
-                                    )
-                                    nearbyItems = nearbyItems.filterNot { it.id == item.id }
-                                    ClaimOutcome.ALREADY_CLAIMED
-                                } else {
-                                    ClaimOutcome.FAILED
-                                }
-                            } catch (_: Exception) {
-                                ClaimOutcome.FAILED
-                            }
-                        }
-                    },
-                    onNotice = showFeedbackNotice,
-                    onExitAr = closeAr,
-                    modifier = Modifier.zIndex(0.5f),
-                )
             }
 
             TourModeHeader(
@@ -1086,11 +973,6 @@ internal fun MapPage(
                             verticalArrangement = Arrangement.spacedBy(MapControlGap),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            WorldModeToggle(
-                                mode = WorldMode.MAP,
-                                enabled = !arClosing,
-                                onClick = openAr,
-                            )
                             if (manualLocation != null) {
                                 MapIconButton(
                                     contentDescription =
@@ -1125,26 +1007,6 @@ internal fun MapPage(
                             Spacer(modifier = Modifier.size(MapControlSize))
                         }
                     }
-                }
-            }
-
-            if (worldMode == WorldMode.AR) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .navigationBarsPadding()
-                        .padding(
-                            start = MapControlHorizontalPadding,
-                            bottom = MapControlVerticalPadding +
-                                if (hasWaypointRail) WaypointRailHeight else 0.dp,
-                        )
-                        .zIndex(2f),
-                    verticalArrangement = Arrangement.spacedBy(MapControlGap),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    WorldModeToggle(mode = WorldMode.AR, onClick = closeAr)
-                    if (manualLocation != null) Spacer(modifier = Modifier.size(MapControlSize))
-                    Spacer(modifier = Modifier.size(MapControlSize))
                 }
             }
 
@@ -1434,16 +1296,7 @@ internal fun MapPage(
             onDismissRequest = { selectedPublicItem = null },
             sheetState = publicItemSheetState,
         ) {
-            PublicItemDetails(
-                item = item,
-                onOpenInAr = {
-                    scope.launch {
-                        publicItemSheetState.hide()
-                        selectedPublicItem = null
-                        openAr()
-                    }
-                },
-            )
+            PublicItemDetails(item = item)
         }
     }
 

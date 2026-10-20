@@ -18,7 +18,7 @@ location, not the author's home; the current interface may differ.*
 
 - **Started:** July 23, 2026, by Arash Yalpani.
 - **Status:** experimental native Android app, version 0.1.0.
-- **Platform:** Android 8.0 or later; AR features depend on device support.
+- **Platform:** Android 8.0 or later.
 - **Local first:** tour history and recorded moments are stored on your device.
   No account is required.
 
@@ -30,8 +30,7 @@ waypoints, and see your recent activity and accumulated street coverage.
 
 Optional Home Zone automation can start and finish tours as you leave and
 return. Back up tours and moments to a folder you choose through Android's
-file providers. Experimental AR items let you place and discover objects
-in the world.
+file providers.
 
 ## Privacy and connectivity
 
@@ -47,7 +46,6 @@ private tour recording. Local first does not mean every feature works offline.
 - **MapLibre and OpenStreetMap-based maps** for the map and route display.
 - **Android location services and SQLite** for tracking and local tour storage.
 - **CameraX** for photos and video; Android media APIs for voice moments.
-- **ARCore and SceneView** for experimental AR items.
 - **WorkManager and Android document providers** for backups.
 - **Go and SQLite** for the optional public-item service.
 

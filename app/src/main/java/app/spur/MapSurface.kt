@@ -84,7 +84,6 @@ private const val TourEntryPreparationTimeoutMillis = 1_500L
 @SuppressLint("MissingPermission")
 internal fun MapSurface(
     modifier: Modifier = Modifier,
-    isWorldVisible: Boolean = true,
     tourId: Long?,
     activeTourId: Long?,
     isTourActive: Boolean,
@@ -134,7 +133,6 @@ internal fun MapSurface(
     onMomentClick: (MapMoment, Offset, PhotoOpenPreview?) -> Unit,
     onPublicItemClick: (PublicItem) -> Unit,
     onItemBoundsChanged: (ItemMapBounds) -> Unit,
-    onItemLocationChanged: (android.location.Location?) -> Unit,
     onLocationClick: () -> Unit,
     onBuildingClick: (SelectedBuilding) -> Unit,
     onHomeStartPointChanged: (SpurCoordinate) -> Unit,
@@ -154,7 +152,6 @@ internal fun MapSurface(
     val currentOnMomentClick by rememberUpdatedState(onMomentClick)
     val currentOnPublicItemClick by rememberUpdatedState(onPublicItemClick)
     val currentOnItemBoundsChanged by rememberUpdatedState(onItemBoundsChanged)
-    val currentOnItemLocationChanged by rememberUpdatedState(onItemLocationChanged)
     val currentOnLocationClick by rememberUpdatedState(onLocationClick)
     val currentOnBuildingClick by rememberUpdatedState(onBuildingClick)
     val currentOnHomeStartPointChanged by rememberUpdatedState(onHomeStartPointChanged)
@@ -277,11 +274,6 @@ internal fun MapSurface(
         roadHistoryStore?.let { RoadTraversalStore(context) }
     }
 
-    LaunchedEffect(isWorldVisible) {
-        mapView.visibility = if (isWorldVisible) android.view.View.VISIBLE else android.view.View.INVISIBLE
-        mapView.isEnabled = isWorldVisible
-    }
-
     DisposableEffect(roadTraversalStore) {
         onDispose { roadTraversalStore?.close() }
     }
@@ -295,7 +287,6 @@ internal fun MapSurface(
     DisposableEffect(context, lifecycle, manualLocation) {
         if (!context.hasLocationPermission() || manualLocation != null) {
             currentLocation = null
-            currentOnItemLocationChanged(null)
             isAtHome = false
             currentOnMovementChanged(false)
             onDispose {}
@@ -311,7 +302,6 @@ internal fun MapSurface(
                     )
                 ) return
                 latestMapLocation = android.location.Location(location)
-                currentOnItemLocationChanged(android.location.Location(location))
                 val settings = context.loadHomeAutoStartSettings()
                 val coordinate = SpurCoordinate(location.latitude, location.longitude)
                 val normalizedCoordinate = normalizedHomeCoordinate(settings, coordinate)
@@ -415,7 +405,6 @@ internal fun MapSurface(
             onDispose {
                 lifecycle.removeObserver(observer)
                 stopLocationUpdates()
-                currentOnItemLocationChanged(null)
             }
         }
     }

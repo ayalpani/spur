@@ -1,5 +1,9 @@
 # ADR 0001: Anonyme räumliche Items
 
+> **Status (20.10.2026):** Die AR-Ansicht wurde entfernt. Spur enthält kein
+> ARCore, kein SceneView und keinen `WorldMode` mehr; die folgenden Abschnitte
+> zur AR-Darstellung sind nur noch historisch.
+
 ## Entscheidung
 
 Spur behandelt Karte und Augmented Reality als zwei Ansichten derselben Welt.

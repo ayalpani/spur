@@ -2,19 +2,13 @@ package app.spur
 
 import java.time.LocalDate
 
-internal enum class WorldMode {
-    MAP,
-    AR,
-}
-
 internal enum class ItemKind(
     val displayName: String,
-    val modelAsset: String,
     val mapImageResource: Int,
 ) {
-    STRAWBERRY("Erdbeere", "models/strawberry.glb", R.drawable.item_strawberry),
-    PEAR("Birne", "models/pear.glb", R.drawable.item_pear),
-    BANANA("Banane", "models/banana.glb", R.drawable.item_banana),
+    STRAWBERRY("Erdbeere", R.drawable.item_strawberry),
+    PEAR("Birne", R.drawable.item_pear),
+    BANANA("Banane", R.drawable.item_banana),
 }
 
 internal data class ProvenanceEvent(
@@ -96,18 +90,6 @@ internal data class ItemInventory(
     val pendingDrops: List<PendingItemDrop> = emptyList(),
 )
 
-internal enum class NearbyItemPresentation {
-    HIDDEN,
-    DIRECTION_GUIDE,
-    SPATIAL,
-    CLAIMABLE,
-}
-
 internal const val ItemDiscoveryRadiusMeters = 50.0
-internal const val ItemSpatialRadiusMeters = 15.0
-internal const val ItemClaimRadiusMeters = 10.0
-internal const val ItemMaximumLocalAnchorMeters = 8.0
 internal const val ItemMaximumLocationAccuracyMeters = 15.0
 internal const val ItemMaximumLocationAgeMillis = 10_000L
-internal const val ItemPlacementHeightMeters = 1.60f
-internal const val ItemSemanticSizeMeters = 0.25f
