@@ -160,6 +160,10 @@ and set `ANDROID_SERIAL` for Gradle device tests.
   complete cell. React to later road-source updates, wait for the next idle,
   and merge that rendered viewport once per source revision so parent-tile
   fallbacks cannot permanently hide roads from subsequently loaded ideal tiles.
+- Keep every map edge indicator tappable while it is shown. A landmark
+  indicator centers the map on its landmark; the own-location `Ich` indicator
+  runs the same follow action as the location/follow control. Forward drags
+  that start on an indicator to the map so they still pan it.
 - Resolve exact-location map-moment clusters at a bounded street-level zoom
   where marker fan-out takes over; never zoom indefinitely toward coincident
   coordinates.

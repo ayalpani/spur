@@ -2048,6 +2048,22 @@ internal fun MapSurface(
         }
     }
 
+    val forwardEdgeIndicatorTouch: (MotionEvent, Boolean) -> Unit = { event, cancelClick ->
+        val mapLocation = IntArray(2)
+        mapView.getLocationOnScreen(mapLocation)
+        MotionEvent.obtain(event).also { forwarded ->
+            forwarded.setLocation(
+                event.rawX - mapLocation[0],
+                event.rawY - mapLocation[1],
+            )
+            if (cancelClick && forwarded.actionMasked == MotionEvent.ACTION_UP) {
+                forwarded.action = MotionEvent.ACTION_CANCEL
+            }
+            mapView.dispatchTouchEvent(forwarded)
+            forwarded.recycle()
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         AndroidView(
             factory = { mapView },
@@ -2066,21 +2082,7 @@ internal fun MapSurface(
         LandmarkEdgeOverlay(
             indicators = landmarkIndicators,
             visible = landmarkIndicatorsVisible,
-            onForwardMapTouch = { event, cancelClick ->
-                val mapLocation = IntArray(2)
-                mapView.getLocationOnScreen(mapLocation)
-                MotionEvent.obtain(event).also { forwarded ->
-                    forwarded.setLocation(
-                        event.rawX - mapLocation[0],
-                        event.rawY - mapLocation[1],
-                    )
-                    if (cancelClick && forwarded.actionMasked == MotionEvent.ACTION_UP) {
-                        forwarded.action = MotionEvent.ACTION_CANCEL
-                    }
-                    mapView.dispatchTouchEvent(forwarded)
-                    forwarded.recycle()
-                }
-            },
+            onForwardMapTouch = forwardEdgeIndicatorTouch,
             onLandmarkTap = { landmark ->
                 mapView.getMapAsync { map ->
                     map.animateCamera(
@@ -2102,6 +2104,8 @@ internal fun MapSurface(
             visible = landmarkIndicatorsVisible,
             colors = locationMarkerColors,
             pulseColor = trailColors.stroke,
+            onForwardMapTouch = forwardEdgeIndicatorTouch,
+            onLocationTap = { currentOnLocationClick() },
             modifier = Modifier.fillMaxSize(),
         )
 

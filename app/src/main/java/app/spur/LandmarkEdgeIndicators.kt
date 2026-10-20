@@ -249,6 +249,8 @@ internal fun LocationEdgeOverlay(
     visible: Boolean,
     colors: LocationMarkerColors,
     pulseColor: Color,
+    onForwardMapTouch: (MotionEvent, Boolean) -> Unit,
+    onLocationTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val displayed = indicator.value
@@ -262,6 +264,11 @@ internal fun LocationEdgeOverlay(
         modifier = modifier.clearAndSetSemantics {
             if (shown) {
                 contentDescription = "Eigener Standort außerhalb der Karte"
+                role = Role.Button
+                onClick(label = "Zum eigenen Standort") {
+                    onLocationTap()
+                    true
+                }
             }
         },
         content = {
@@ -270,7 +277,12 @@ internal fun LocationEdgeOverlay(
                     indicator = location,
                     colors = colors,
                     pulseColor = pulseColor,
-                    modifier = Modifier.graphicsLayer { this.alpha = alpha.value },
+                    modifier = edgeIndicatorTapModifier(
+                        key = LocationEdgeIndicatorKey,
+                        interactive = shown,
+                        onForwardMapTouch = onForwardMapTouch,
+                        onTap = onLocationTap,
+                    ).graphicsLayer { this.alpha = alpha.value },
                 )
             }
         },
@@ -429,7 +441,6 @@ private fun LandmarkLabelPlacement.anchorY(height: Int, markerRadius: Int): Int 
 }
 
 @Composable
-@OptIn(ExperimentalComposeUiApi::class)
 private fun LandmarkIndicatorContent(
     indicator: LandmarkEdgeIndicator,
     alpha: State<Float>,
@@ -437,61 +448,74 @@ private fun LandmarkIndicatorContent(
     onForwardMapTouch: (MotionEvent, Boolean) -> Unit,
     onLandmarkTap: (Landmark) -> Unit,
 ) {
-    val touchSlop = LocalViewConfiguration.current.touchSlop
-    var downX by remember(indicator.landmark.id) { mutableFloatStateOf(0f) }
-    var downY by remember(indicator.landmark.id) { mutableFloatStateOf(0f) }
-    var isTap by remember(indicator.landmark.id) { mutableStateOf(false) }
-    val gestureModifier = if (!interactive) {
-        Modifier
-    } else {
-        Modifier
-            .semantics {
-                role = Role.Button
-                onClick(label = "Auf Karte zentrieren") {
-                    onLandmarkTap(indicator.landmark)
-                    true
-                }
-            }
-            .pointerInteropFilter { event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        downX = event.x
-                        downY = event.y
-                        isTap = true
-                        onForwardMapTouch(event, false)
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val deltaX = event.x - downX
-                        val deltaY = event.y - downY
-                        if (deltaX * deltaX + deltaY * deltaY > touchSlop * touchSlop) {
-                            isTap = false
-                        }
-                        onForwardMapTouch(event, false)
-                    }
-                    MotionEvent.ACTION_POINTER_DOWN -> {
-                        isTap = false
-                        onForwardMapTouch(event, false)
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        val tapped = isTap
-                        onForwardMapTouch(event, tapped)
-                        if (tapped) onLandmarkTap(indicator.landmark)
-                        isTap = false
-                    }
-                    MotionEvent.ACTION_CANCEL -> {
-                        isTap = false
-                        onForwardMapTouch(event, false)
-                    }
-                }
-                true
-            }
-    }
+    val gestureModifier = edgeIndicatorTapModifier(
+        key = indicator.landmark.id,
+        interactive = interactive,
+        onForwardMapTouch = onForwardMapTouch,
+        onTap = { onLandmarkTap(indicator.landmark) },
+    )
     EdgeIndicatorContent(
         labelPlacement = indicator.labelPlacement,
         modifier = gestureModifier.graphicsLayer { this.alpha = alpha.value },
         marker = { LandmarkMarker(indicator) },
         label = { LandmarkLabel(indicator.landmark) },
     )
+}
+
+@Composable
+@OptIn(ExperimentalComposeUiApi::class)
+private fun edgeIndicatorTapModifier(
+    key: Any,
+    interactive: Boolean,
+    onForwardMapTouch: (MotionEvent, Boolean) -> Unit,
+    onTap: () -> Unit,
+): Modifier {
+    val touchSlop = LocalViewConfiguration.current.touchSlop
+    var downX by remember(key) { mutableFloatStateOf(0f) }
+    var downY by remember(key) { mutableFloatStateOf(0f) }
+    var isTap by remember(key) { mutableStateOf(false) }
+    if (!interactive) return Modifier
+    return Modifier
+        .semantics {
+            role = Role.Button
+            onClick(label = "Auf Karte zentrieren") {
+                onTap()
+                true
+            }
+        }
+        .pointerInteropFilter { event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                    isTap = true
+                    onForwardMapTouch(event, false)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val deltaX = event.x - downX
+                    val deltaY = event.y - downY
+                    if (deltaX * deltaX + deltaY * deltaY > touchSlop * touchSlop) {
+                        isTap = false
+                    }
+                    onForwardMapTouch(event, false)
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    isTap = false
+                    onForwardMapTouch(event, false)
+                }
+                MotionEvent.ACTION_UP -> {
+                    val tapped = isTap
+                    onForwardMapTouch(event, tapped)
+                    if (tapped) onTap()
+                    isTap = false
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    isTap = false
+                    onForwardMapTouch(event, false)
+                }
+            }
+            true
+        }
 }
 
 @Composable
@@ -615,6 +639,7 @@ internal val LandmarkDisplayOrder = compareBy<Landmark>(
 private val LandmarkSelectionOrder = Comparator<ProjectedLandmark> { left, right ->
     LandmarkDisplayOrder.compare(left.landmark, right.landmark)
 }
+private const val LocationEdgeIndicatorKey = "own-location"
 private const val LandmarkNavigationDefaultAngleCorrection = 45f
 private const val LandmarkNavigationOutlineWidth = 6f
 private const val LocationNavigationOuterOutlineWidth = 10f
