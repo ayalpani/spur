@@ -131,6 +131,7 @@ internal fun MapPage(
             MapControlVerticalPadding +
             if (usesStackedMapPlayer) MapControlSize + MapControlGap else 0.dp
     val scope = rememberCoroutineScope()
+    val mapObstructions = remember { MapObstructions() }
     val landmarkStore = remember(context) { LandmarkStore(context) }
     var landmarks by remember { mutableStateOf(emptyList<Landmark>()) }
     LaunchedEffect(landmarkStore) {
@@ -528,11 +529,7 @@ internal fun MapPage(
                 tourEntryContentReady = isTourPresentationReady,
                 followRequest = followRequest,
                 tourOverviewRequest = tourOverviewRequest,
-                // Keep edge indicators clear of the tour header and bottom controls.
-                edgeIndicatorTopInsetDp =
-                    if (hasTourModeHeader) TourModeHeaderHeight.value else 0f,
-                edgeIndicatorBottomInsetDp =
-                    (mapActionsBottomPadding + MapControlSize).value,
+                mapObstructions = mapObstructions,
                 isFollowingLocation = isFollowingLocation,
                 locationPulseGeneration = requestedLocationPulseGeneration,
                 isSatelliteView = isSatelliteView,
@@ -683,7 +680,8 @@ internal fun MapPage(
                 },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .zIndex(1f),
+                    .zIndex(1f)
+                    .mapObstruction("tour-header", mapObstructions, active = hasTourModeHeader),
             )
 
             AnimatedVisibility(
@@ -694,6 +692,11 @@ internal fun MapPage(
                     .padding(
                         top = MapControlVerticalPadding,
                         end = MapControlHorizontalPadding,
+                    )
+                    .mapObstruction(
+                        "main-menu",
+                        mapObstructions,
+                        active = tour == null && activeTour == null,
                     ),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
@@ -716,7 +719,8 @@ internal fun MapPage(
                         start = MapControlHorizontalPadding,
                         top = MapControlVerticalPadding +
                             if (hasTourModeHeader) 60.dp else 0.dp,
-                    ),
+                    )
+                    .mapObstruction("home", mapObstructions, active = archivedTour == null),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
@@ -734,7 +738,9 @@ internal fun MapPage(
 
             AnimatedVisibility(
                 visible = areMapControlsVisible,
-                modifier = Modifier.align(Alignment.BottomEnd),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .mapObstruction("control-rail", mapObstructions),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
@@ -841,7 +847,9 @@ internal fun MapPage(
 
             AnimatedVisibility(
                 visible = areMapControlsVisible,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .mapObstruction("bottom-controls", mapObstructions),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {
@@ -978,7 +986,9 @@ internal fun MapPage(
 
             AnimatedVisibility(
                 visible = isWaypointRailVisible,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .mapObstruction("waypoint-rail", mapObstructions, active = hasWaypointRail),
                 enter = fadeIn(tween(MotionDurationDefaultMillis)),
                 exit = fadeOut(tween(MotionDurationDefaultMillis)),
             ) {

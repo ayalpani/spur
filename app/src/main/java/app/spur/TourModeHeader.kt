@@ -92,7 +92,7 @@ internal fun TourModeHeader(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .height(TourModeHeaderHeight),
+                    .height(60.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (active) {
@@ -215,5 +215,3 @@ internal fun TourModeHeader(
 
 internal fun isDisplayedActiveTour(tour: Tour?, activeTour: Tour?): Boolean =
     tour != null && activeTour != null && tour.id == activeTour.id && tour.endedAt == null
-
-internal val TourModeHeaderHeight = 60.dp

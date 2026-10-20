@@ -97,8 +97,7 @@ internal fun MapSurface(
     tourEntryContentReady: Boolean,
     followRequest: Int,
     tourOverviewRequest: Int,
-    edgeIndicatorTopInsetDp: Float,
-    edgeIndicatorBottomInsetDp: Float,
+    mapObstructions: MapObstructions,
     isFollowingLocation: Boolean,
     locationPulseGeneration: Long,
     isSatelliteView: Boolean,
@@ -182,8 +181,7 @@ internal fun MapSurface(
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
-    val currentEdgeIndicatorTopInsetDp by rememberUpdatedState(edgeIndicatorTopInsetDp)
-    val currentEdgeIndicatorBottomInsetDp by rememberUpdatedState(edgeIndicatorBottomInsetDp)
+    val currentMapObstructions by rememberUpdatedState(mapObstructions)
     val currentZoomRequest by rememberUpdatedState(zoomRequest)
     val currentDefaultMapZoom by rememberUpdatedState(defaultMapZoom)
     val currentLocationPulseGeneration by rememberUpdatedState(locationPulseGeneration)
@@ -232,6 +230,9 @@ internal fun MapSurface(
     }
     val locationEdgeIndicator = remember {
         mutableStateOf<LocationEdgeIndicator?>(null)
+    }
+    val landmarkIndicatorArea = remember {
+        mutableStateOf<LandmarkIndicatorBounds?>(null)
     }
     var landmarkIndicatorsVisible by remember { mutableStateOf(false) }
     var previewCameraPosition by remember {
@@ -679,25 +680,27 @@ internal fun MapSurface(
             val locationEdgeInset = LocationEdgeInsetDp * density
             val systemInsets = ViewCompat.getRootWindowInsets(mapView)
                 ?.getInsets(WindowInsetsCompat.Type.systemBars())
-            val bounds = LandmarkIndicatorBounds(
-                left = (systemInsets?.left ?: 0) + edgeInset,
-                top = (systemInsets?.top ?: 0) +
-                    currentEdgeIndicatorTopInsetDp * density +
-                    edgeInset,
-                right = mapView.width -
-                    (systemInsets?.right ?: 0) -
-                    LandmarkRightEdgeInsetDp * density,
-                bottom = mapView.height -
-                    (systemInsets?.bottom ?: 0) -
-                    currentEdgeIndicatorBottomInsetDp * density -
-                    edgeInset,
-            )
+            val mapWindowLocation = IntArray(2).also(mapView::getLocationInWindow)
+            // The area no map chrome covers; edge indicators stay inside it.
             val viewportBounds = LandmarkIndicatorBounds(
                 left = (systemInsets?.left ?: 0).toFloat(),
                 top = (systemInsets?.top ?: 0).toFloat(),
                 right = (mapView.width - (systemInsets?.right ?: 0)).toFloat(),
                 bottom = (mapView.height - (systemInsets?.bottom ?: 0)).toFloat(),
+            ).avoiding(
+                obstructions = currentMapObstructions.windowBounds().map { rect ->
+                    LandmarkIndicatorBounds(
+                        left = rect.left - mapWindowLocation[0],
+                        top = rect.top - mapWindowLocation[1],
+                        right = rect.right - mapWindowLocation[0],
+                        bottom = rect.bottom - mapWindowLocation[1],
+                    )
+                },
+                gap = LandmarkObstructionGapDp * density,
+                attachDistance = edgeInset,
             )
+            landmarkIndicatorArea.value = viewportBounds
+            val bounds = viewportBounds.inset(edgeInset)
             val retainedIds = retainedLandmarkIds
             locationEdgeIndicator.value = effectiveLocationIndicatorCoordinate(
                 gpsLocation = currentGpsLocation,
@@ -734,27 +737,30 @@ internal fun MapSurface(
                     )
                 }
                 .toList()
-            landmarkIndicators.value = if (retainedIds == null) {
-                landmarkEdgeIndicators(
-                    projected = projected,
-                    bounds = bounds,
-                    minimumSeparation = LandmarkMinimumSeparationDp * density,
-                    maximumCount = LandmarkMaximumVisibleCount,
-                ).also { selected ->
-                    val selectedIds = selected.mapTo(linkedSetOf()) { it.landmark.id }
-                    retainedLandmarkIds = selectedIds
-                    readyMap.style?.setMapLandmarkSelection(selectedIds)
-                    outsideLandmarkIndicators(selected, projected, viewportBounds)
+            val locationIndicator = locationEdgeIndicator.value
+            landmarkIndicators.value = (
+                if (retainedIds == null) {
+                    landmarkEdgeIndicators(
+                        projected = projected,
+                        bounds = bounds,
+                        minimumSeparation = LandmarkMinimumSeparationDp * density,
+                        maximumCount = LandmarkMaximumVisibleCount,
+                    ).also { selected ->
+                        val selectedIds = selected.mapTo(linkedSetOf()) { it.landmark.id }
+                        retainedLandmarkIds = selectedIds
+                        readyMap.style?.setMapLandmarkSelection(selectedIds)
+                        outsideLandmarkIndicators(selected, projected, viewportBounds)
+                    }
+                } else {
+                    retainedLandmarkEdgeIndicators(
+                        projected = projected,
+                        bounds = bounds,
+                        landmarkIds = retainedIds,
+                    ).let { selected ->
+                        outsideLandmarkIndicators(selected, projected, viewportBounds)
+                    }
                 }
-            } else {
-                retainedLandmarkEdgeIndicators(
-                    projected = projected,
-                    bounds = bounds,
-                    landmarkIds = retainedIds,
-                ).let { selected ->
-                    outsideLandmarkIndicators(selected, projected, viewportBounds)
-                }
-            }
+            ).withoutOverlapping(locationIndicator, LocationOverlapDp * density)
         }
 
         fun scheduleLandmarkPublish() {
@@ -2088,6 +2094,7 @@ internal fun MapSurface(
 
         LandmarkEdgeOverlay(
             indicators = landmarkIndicators,
+            area = landmarkIndicatorArea,
             visible = landmarkIndicatorsVisible,
             onForwardMapTouch = forwardEdgeIndicatorTouch,
             onLandmarkTap = { landmark ->
@@ -2108,6 +2115,7 @@ internal fun MapSurface(
 
         LocationEdgeOverlay(
             indicator = locationEdgeIndicator,
+            area = landmarkIndicatorArea,
             visible = landmarkIndicatorsVisible,
             colors = locationMarkerColors,
             pulseColor = trailColors.stroke,

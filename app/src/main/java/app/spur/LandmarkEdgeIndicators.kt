@@ -160,6 +160,20 @@ internal fun locationEdgeIndicatorFor(
     )
 }
 
+/** Drops landmark indicators that would sit on the own-location indicator, which wins taps. */
+internal fun List<LandmarkEdgeIndicator>.withoutOverlapping(
+    location: LocationEdgeIndicator?,
+    distance: Float,
+): List<LandmarkEdgeIndicator> {
+    if (location == null || !location.isOffscreen) return this
+    val distanceSquared = distance * distance
+    return filter { indicator ->
+        val deltaX = indicator.point.x - location.point.x
+        val deltaY = indicator.point.y - location.point.y
+        deltaX * deltaX + deltaY * deltaY >= distanceSquared
+    }
+}
+
 internal fun LandmarkScreenPoint.isOutside(bounds: LandmarkIndicatorBounds): Boolean =
     x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom
 
@@ -246,6 +260,7 @@ private fun LandmarkScreenPoint.clampedTo(
 @Composable
 internal fun LocationEdgeOverlay(
     indicator: State<LocationEdgeIndicator?>,
+    area: State<LandmarkIndicatorBounds?>,
     visible: Boolean,
     colors: LocationMarkerColors,
     pulseColor: Color,
@@ -292,15 +307,17 @@ internal fun LocationEdgeOverlay(
         layout(constraints.maxWidth, constraints.maxHeight) {
             if (displayed != null && placeable != null) {
                 val markerRadius = LandmarkIndicatorArrowSize.roundToPx() / 2
+                val x = displayed.point.x.roundToInt() - displayed.labelPlacement.anchorX(
+                    placeable.width,
+                    markerRadius,
+                )
+                val y = displayed.point.y.roundToInt() - displayed.labelPlacement.anchorY(
+                    placeable.height,
+                    markerRadius,
+                )
                 placeable.place(
-                    x = displayed.point.x.roundToInt() - displayed.labelPlacement.anchorX(
-                        placeable.width,
-                        markerRadius,
-                    ),
-                    y = displayed.point.y.roundToInt() - displayed.labelPlacement.anchorY(
-                        placeable.height,
-                        markerRadius,
-                    ),
+                    x = x.clampedInto(area.value?.left, area.value?.right, placeable.width),
+                    y = y.clampedInto(area.value?.top, area.value?.bottom, placeable.height),
                 )
             }
         }
@@ -375,6 +392,7 @@ private fun EdgeIndicatorContent(
 @Composable
 internal fun LandmarkEdgeOverlay(
     indicators: State<List<LandmarkEdgeIndicator>>,
+    area: State<LandmarkIndicatorBounds?>,
     visible: Boolean,
     onForwardMapTouch: (MotionEvent, Boolean) -> Unit,
     onLandmarkTap: (Landmark) -> Unit,
@@ -409,19 +427,29 @@ internal fun LandmarkEdgeOverlay(
                 } else {
                     LandmarkIndicatorDotSize.roundToPx() / 2
                 }
+                val x = indicator.point.x.roundToInt() - indicator.labelPlacement.anchorX(
+                    placeable.width,
+                    markerRadius,
+                )
+                val y = indicator.point.y.roundToInt() - indicator.labelPlacement.anchorY(
+                    placeable.height,
+                    markerRadius,
+                )
                 placeable.place(
-                    x = indicator.point.x.roundToInt() - indicator.labelPlacement.anchorX(
-                        placeable.width,
-                        markerRadius,
-                    ),
-                    y = indicator.point.y.roundToInt() - indicator.labelPlacement.anchorY(
-                        placeable.height,
-                        markerRadius,
-                    ),
+                    x = x.clampedInto(area.value?.left, area.value?.right, placeable.width),
+                    y = y.clampedInto(area.value?.top, area.value?.bottom, placeable.height),
                 )
             }
         }
     }
+}
+
+/** Keeps a whole marker-and-label block inside the unobstructed map area. */
+internal fun Int.clampedInto(start: Float?, end: Float?, size: Int): Int {
+    if (start == null || end == null) return this
+    val minimum = start.roundToInt()
+    val maximum = end.roundToInt() - size
+    return if (maximum < minimum) this else coerceIn(minimum, maximum)
 }
 
 private fun LandmarkLabelPlacement.anchorX(width: Int, markerRadius: Int): Int = when (this) {
@@ -649,10 +677,8 @@ private val LandmarkMarkerOutlineWidth = 3.dp
 private val LandmarkIndicatorGap = 6.dp
 internal const val LandmarkEdgeInsetDp = 24f
 internal const val LocationEdgeInsetDp = 12f
-
-// Keeps right-edge indicators clear of the map control rail.
-internal const val LandmarkRightEdgeInsetDp =
-    (MapControlHorizontalPaddingDp + MapControlSizeDp + MapControlGapDp).toFloat()
+internal const val LandmarkObstructionGapDp = 4f
+internal const val LocationOverlapDp = 56f
 internal const val LandmarkMinimumSeparationDp = 112f
 internal const val LandmarkMaximumVisibleCount = 5
 internal const val LandmarkIndicatorHideDelayMillis = 2_000L
