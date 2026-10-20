@@ -261,6 +261,8 @@ private fun LandmarkScreenPoint.clampedTo(
 internal fun LocationEdgeOverlay(
     indicator: State<LocationEdgeIndicator?>,
     area: State<LandmarkIndicatorBounds?>,
+    obstacles: State<List<LandmarkIndicatorBounds>>,
+    placements: EdgeIndicatorPlacements,
     visible: Boolean,
     colors: LocationMarkerColors,
     pulseColor: Color,
@@ -305,6 +307,7 @@ internal fun LocationEdgeOverlay(
         val placeable = measurables.singleOrNull()
             ?.measure(constraints.copy(minWidth = 0, minHeight = 0))
         layout(constraints.maxWidth, constraints.maxHeight) {
+            placements.location = null
             if (displayed != null && placeable != null) {
                 val markerRadius = LandmarkIndicatorArrowSize.roundToPx() / 2
                 val x = displayed.point.x.roundToInt() - displayed.labelPlacement.anchorX(
@@ -315,9 +318,23 @@ internal fun LocationEdgeOverlay(
                     placeable.height,
                     markerRadius,
                 )
+                val gap = LandmarkObstructionGapDp.dp.toPx()
+                val block = area.value?.let { freeArea ->
+                    resolveIndicatorBlock(
+                        left = x.toFloat(),
+                        top = y.toFloat(),
+                        width = placeable.width.toFloat(),
+                        height = placeable.height.toFloat(),
+                        area = freeArea,
+                        obstacles = obstacles.value,
+                        gap = gap,
+                        alongHorizontalEdge = displayed.labelPlacement.isVertical(),
+                    )
+                }
+                if (shown && block != null) placements.location = block.outset(gap)
                 placeable.place(
-                    x = x.clampedInto(area.value?.left, area.value?.right, placeable.width),
-                    y = y.clampedInto(area.value?.top, area.value?.bottom, placeable.height),
+                    x = block?.left?.roundToInt() ?: x,
+                    y = block?.top?.roundToInt() ?: y,
                 )
             }
         }
@@ -393,6 +410,8 @@ private fun EdgeIndicatorContent(
 internal fun LandmarkEdgeOverlay(
     indicators: State<List<LandmarkEdgeIndicator>>,
     area: State<LandmarkIndicatorBounds?>,
+    obstacles: State<List<LandmarkIndicatorBounds>>,
+    placements: EdgeIndicatorPlacements,
     visible: Boolean,
     onForwardMapTouch: (MotionEvent, Boolean) -> Unit,
     onLandmarkTap: (Landmark) -> Unit,
@@ -421,6 +440,9 @@ internal fun LandmarkEdgeOverlay(
     ) { measurables, constraints ->
         val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
         layout(constraints.maxWidth, constraints.maxHeight) {
+            val gap = LandmarkObstructionGapDp.dp.toPx()
+            val placed = ArrayList<LandmarkIndicatorBounds>(displayed.size + 1)
+            placements.location?.let(placed::add)
             displayed.zip(placeables).forEach { (indicator, placeable) ->
                 val markerRadius = if (indicator.isEdgeArrow) {
                     LandmarkIndicatorArrowSize.roundToPx() / 2
@@ -435,22 +457,31 @@ internal fun LandmarkEdgeOverlay(
                     placeable.height,
                     markerRadius,
                 )
+                val block = area.value?.let { freeArea ->
+                    resolveIndicatorBlock(
+                        left = x.toFloat(),
+                        top = y.toFloat(),
+                        width = placeable.width.toFloat(),
+                        height = placeable.height.toFloat(),
+                        area = freeArea,
+                        obstacles = obstacles.value + placed,
+                        gap = gap,
+                        alongHorizontalEdge = indicator.labelPlacement.isVertical(),
+                    )
+                }
+                block?.let { placed += it.outset(gap) }
                 placeable.place(
-                    x = x.clampedInto(area.value?.left, area.value?.right, placeable.width),
-                    y = y.clampedInto(area.value?.top, area.value?.bottom, placeable.height),
+                    x = block?.left?.roundToInt() ?: x,
+                    y = block?.top?.roundToInt() ?: y,
                 )
             }
         }
     }
 }
 
-/** Keeps a whole marker-and-label block inside the unobstructed map area. */
-internal fun Int.clampedInto(start: Float?, end: Float?, size: Int): Int {
-    if (start == null || end == null) return this
-    val minimum = start.roundToInt()
-    val maximum = end.roundToInt() - size
-    return if (maximum < minimum) this else coerceIn(minimum, maximum)
-}
+/** Labels above or below the marker belong to indicators on the top or bottom edge. */
+private fun LandmarkLabelPlacement.isVertical(): Boolean =
+    this == LandmarkLabelPlacement.BELOW || this == LandmarkLabelPlacement.ABOVE
 
 private fun LandmarkLabelPlacement.anchorX(width: Int, markerRadius: Int): Int = when (this) {
     LandmarkLabelPlacement.RIGHT -> markerRadius

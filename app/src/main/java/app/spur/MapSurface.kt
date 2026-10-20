@@ -234,6 +234,10 @@ internal fun MapSurface(
     val landmarkIndicatorArea = remember {
         mutableStateOf<LandmarkIndicatorBounds?>(null)
     }
+    val landmarkIndicatorObstacles = remember {
+        mutableStateOf(emptyList<LandmarkIndicatorBounds>())
+    }
+    val edgeIndicatorPlacements = remember { EdgeIndicatorPlacements() }
     var landmarkIndicatorsVisible by remember { mutableStateOf(false) }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
@@ -681,24 +685,22 @@ internal fun MapSurface(
             val systemInsets = ViewCompat.getRootWindowInsets(mapView)
                 ?.getInsets(WindowInsetsCompat.Type.systemBars())
             val mapWindowLocation = IntArray(2).also(mapView::getLocationInWindow)
-            // The area no map chrome covers; edge indicators stay inside it.
             val viewportBounds = LandmarkIndicatorBounds(
                 left = (systemInsets?.left ?: 0).toFloat(),
                 top = (systemInsets?.top ?: 0).toFloat(),
                 right = (mapView.width - (systemInsets?.right ?: 0)).toFloat(),
                 bottom = (mapView.height - (systemInsets?.bottom ?: 0)).toFloat(),
-            ).avoiding(
-                obstructions = currentMapObstructions.windowBounds().map { rect ->
+            )
+            // Map chrome in map coordinates; each indicator block slides clear of it.
+            landmarkIndicatorObstacles.value =
+                currentMapObstructions.windowBounds().map { rect ->
                     LandmarkIndicatorBounds(
                         left = rect.left - mapWindowLocation[0],
                         top = rect.top - mapWindowLocation[1],
                         right = rect.right - mapWindowLocation[0],
                         bottom = rect.bottom - mapWindowLocation[1],
                     )
-                },
-                gap = LandmarkObstructionGapDp * density,
-                attachDistance = edgeInset,
-            )
+                }
             landmarkIndicatorArea.value = viewportBounds
             val bounds = viewportBounds.inset(edgeInset)
             val retainedIds = retainedLandmarkIds
@@ -2092,9 +2094,25 @@ internal fun MapSurface(
                 },
         )
 
+        // Placed first so landmark indicators can make room for the own location.
+        LocationEdgeOverlay(
+            indicator = locationEdgeIndicator,
+            area = landmarkIndicatorArea,
+            obstacles = landmarkIndicatorObstacles,
+            placements = edgeIndicatorPlacements,
+            visible = landmarkIndicatorsVisible,
+            colors = locationMarkerColors,
+            pulseColor = trailColors.stroke,
+            onForwardMapTouch = forwardEdgeIndicatorTouch,
+            onLocationTap = { currentOnLocationClick() },
+            modifier = Modifier.fillMaxSize(),
+        )
+
         LandmarkEdgeOverlay(
             indicators = landmarkIndicators,
             area = landmarkIndicatorArea,
+            obstacles = landmarkIndicatorObstacles,
+            placements = edgeIndicatorPlacements,
             visible = landmarkIndicatorsVisible,
             onForwardMapTouch = forwardEdgeIndicatorTouch,
             onLandmarkTap = { landmark ->
@@ -2110,17 +2128,6 @@ internal fun MapSurface(
                     )
                 }
             },
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        LocationEdgeOverlay(
-            indicator = locationEdgeIndicator,
-            area = landmarkIndicatorArea,
-            visible = landmarkIndicatorsVisible,
-            colors = locationMarkerColors,
-            pulseColor = trailColors.stroke,
-            onForwardMapTouch = forwardEdgeIndicatorTouch,
-            onLocationTap = { currentOnLocationClick() },
             modifier = Modifier.fillMaxSize(),
         )
 

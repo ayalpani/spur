@@ -6,6 +6,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.node.GlobalPositionAwareModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
+import kotlin.math.abs
 
 /**
  * Window bounds of the map chrome (header, control rails, bottom bars) that edge
@@ -67,51 +68,63 @@ private class MapObstructionNode(
 }
 
 /**
- * Shrinks these bounds so none of [obstructions] overlaps them. Each obstruction that
- * reaches within [attachDistance] of one or more sides pushes back the side that loses
- * the least area, so a tall rail narrows the map from the side and a wide bar shortens
- * it from above or below. Obstructions floating further inside are ignored.
+ * Places one marker-and-label block of [width] x [height], wanted at [left]/[top], inside
+ * [area] without overlapping any of [obstacles]. A blocked block moves the shortest
+ * distance that clears every obstacle, counting moves away from its screen edge double
+ * so it prefers sliding along that edge past a corner button. [alongHorizontalEdge] is
+ * true for blocks on the top or bottom edge.
  */
-internal fun LandmarkIndicatorBounds.avoiding(
-    obstructions: List<LandmarkIndicatorBounds>,
+internal fun resolveIndicatorBlock(
+    left: Float,
+    top: Float,
+    width: Float,
+    height: Float,
+    area: LandmarkIndicatorBounds,
+    obstacles: List<LandmarkIndicatorBounds>,
     gap: Float,
-    attachDistance: Float,
+    alongHorizontalEdge: Boolean,
 ): LandmarkIndicatorBounds {
-    var result = this
-    obstructions
-        .sortedByDescending { (it.right - it.left) * (it.bottom - it.top) }
-        .forEach { obstruction ->
-            val current = result
-            if (
-                obstruction.right <= current.left || obstruction.left >= current.right ||
-                obstruction.bottom <= current.top || obstruction.top >= current.bottom
-            ) return@forEach
-            val width = current.right - current.left
-            val height = current.bottom - current.top
-            val candidates = buildList {
-                if (obstruction.top <= current.top + attachDistance) {
-                    val top = obstruction.bottom + gap
-                    add((top - current.top) * width to current.copy(top = top))
-                }
-                if (obstruction.bottom >= current.bottom - attachDistance) {
-                    val bottom = obstruction.top - gap
-                    add((current.bottom - bottom) * width to current.copy(bottom = bottom))
-                }
-                if (obstruction.left <= current.left + attachDistance) {
-                    val left = obstruction.right + gap
-                    add((left - current.left) * height to current.copy(left = left))
-                }
-                if (obstruction.right >= current.right - attachDistance) {
-                    val right = obstruction.left - gap
-                    add((current.right - right) * height to current.copy(right = right))
-                }
-            }
-            candidates
-                .filter { (_, bounds) -> bounds.left < bounds.right && bounds.top < bounds.bottom }
-                .minByOrNull { (loss, _) -> loss }
-                ?.let { (_, bounds) -> result = bounds }
-        }
-    return result
+    val horizontalCost = if (alongHorizontalEdge) 1f else 2f
+    val verticalCost = if (alongHorizontalEdge) 2f else 1f
+    val wantedLeft = left
+    val wantedTop = top
+    fun at(position: Pair<Float, Float>) = LandmarkIndicatorBounds(
+        left = position.first.coerceIn(area.left, maxOf(area.left, area.right - width)),
+        top = position.second.coerceIn(area.top, maxOf(area.top, area.bottom - height)),
+        right = 0f,
+        bottom = 0f,
+    ).let { it.copy(right = it.left + width, bottom = it.top + height) }
+    fun LandmarkIndicatorBounds.isFree() = obstacles.none { it.overlaps(this) }
+    fun LandmarkIndicatorBounds.distance() =
+        abs(this.left - wantedLeft) * horizontalCost + abs(this.top - wantedTop) * verticalCost
+    fun LandmarkIndicatorBounds.neighbours() = obstacles.flatMap { obstacle ->
+        listOf(
+            obstacle.left - gap - width to this.top,
+            obstacle.right + gap to this.top,
+            this.left to obstacle.top - gap - height,
+            this.left to obstacle.bottom + gap,
+        )
+    }.map(::at)
+
+    val start = at(wantedLeft to wantedTop)
+    if (start.isFree()) return start
+    // Two steps reach corners, where a block must clear a bar and a button at once.
+    val firstStep = start.neighbours()
+    return (firstStep + firstStep.flatMap { it.neighbours() })
+        .filter { it.isFree() }
+        .minByOrNull { it.distance() }
+        ?: start
+}
+
+private fun LandmarkIndicatorBounds.overlaps(other: LandmarkIndicatorBounds): Boolean =
+    left < other.right && other.left < right && top < other.bottom && other.top < bottom
+
+internal fun LandmarkIndicatorBounds.outset(amount: Float): LandmarkIndicatorBounds =
+    inset(-amount)
+
+/** Blocks already placed in the current layout pass, so later indicators avoid them. */
+internal class EdgeIndicatorPlacements {
+    var location: LandmarkIndicatorBounds? = null
 }
 
 internal fun LandmarkIndicatorBounds.inset(amount: Float): LandmarkIndicatorBounds =
