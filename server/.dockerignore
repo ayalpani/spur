@@ -1,5 +1,0 @@
-.git
-deploy
-*.db
-*.db-*
-coverage.out

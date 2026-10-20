@@ -72,7 +72,6 @@ internal fun StartTourBottomSheet(
 
 @Composable
 internal fun MainMenu(
-    onOpenInventory: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenGoogleMaps: () -> Unit,
     onRenameTour: (() -> Unit)?,
@@ -88,7 +87,6 @@ internal fun MainMenu(
             .navigationBarsPadding()
             .padding(bottom = 24.dp),
     ) {
-        SheetMenuNavigationItem(label = "Inventar", onClick = onOpenInventory)
         SheetMenuNavigationItem(label = "Über Spur", onClick = onOpenAbout)
         SheetMenuNavigationItem(label = "Settings", onClick = onOpenSettings)
         SheetMenuDivider()

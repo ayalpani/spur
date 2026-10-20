@@ -1,5 +1,10 @@
 # ADR 0001: Anonyme räumliche Items
 
+> **Status (20.10.2026): Aufgehoben.** Die AR-Ansicht und das gesamte
+> Item-System (Inventar, öffentliche Items auf der Karte, Items-API und der
+> Go-Dienst unter `server/`) wurden entfernt. Diese Entscheidung ist nur noch
+> historisch.
+
 ## Entscheidung
 
 Spur behandelt Karte und Augmented Reality als zwei Ansichten derselben Welt.
