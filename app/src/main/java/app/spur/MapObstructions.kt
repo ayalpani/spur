@@ -1,5 +1,6 @@
 package app.spur
 
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -10,13 +11,14 @@ import kotlin.math.abs
 
 /**
  * Window bounds of the map chrome (header, control rails, bottom bars) that edge
- * indicators must stay clear of. Read on the main thread when indicators are published.
+ * indicators must stay clear of. Snapshot state, so indicators re-place themselves
+ * whenever chrome is measured again (for example after fading back in).
  */
 internal class MapObstructions {
-    private val bounds = LinkedHashMap<String, Rect>()
+    private val bounds = mutableStateMapOf<String, Rect>()
 
     fun update(key: String, rect: Rect) {
-        bounds[key] = rect
+        if (bounds[key] != rect) bounds[key] = rect
     }
 
     fun remove(key: String) {

@@ -27,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -181,7 +182,6 @@ internal fun MapSurface(
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
-    val currentMapObstructions by rememberUpdatedState(mapObstructions)
     val currentZoomRequest by rememberUpdatedState(zoomRequest)
     val currentDefaultMapZoom by rememberUpdatedState(defaultMapZoom)
     val currentLocationPulseGeneration by rememberUpdatedState(locationPulseGeneration)
@@ -234,8 +234,20 @@ internal fun MapSurface(
     val landmarkIndicatorArea = remember {
         mutableStateOf<LandmarkIndicatorBounds?>(null)
     }
-    val landmarkIndicatorObstacles = remember {
-        mutableStateOf(emptyList<LandmarkIndicatorBounds>())
+    val landmarkIndicatorMapOffset = remember { mutableStateOf(IntArray(2)) }
+    // Map chrome in map coordinates; each indicator block slides clear of it.
+    val landmarkIndicatorObstacles = remember(mapObstructions) {
+        derivedStateOf {
+            val offset = landmarkIndicatorMapOffset.value
+            mapObstructions.windowBounds().map { rect ->
+                LandmarkIndicatorBounds(
+                    left = rect.left - offset[0],
+                    top = rect.top - offset[1],
+                    right = rect.right - offset[0],
+                    bottom = rect.bottom - offset[1],
+                )
+            }
+        }
     }
     val edgeIndicatorPlacements = remember { EdgeIndicatorPlacements() }
     var landmarkIndicatorsVisible by remember { mutableStateOf(false) }
@@ -691,16 +703,9 @@ internal fun MapSurface(
                 right = (mapView.width - (systemInsets?.right ?: 0)).toFloat(),
                 bottom = (mapView.height - (systemInsets?.bottom ?: 0)).toFloat(),
             )
-            // Map chrome in map coordinates; each indicator block slides clear of it.
-            landmarkIndicatorObstacles.value =
-                currentMapObstructions.windowBounds().map { rect ->
-                    LandmarkIndicatorBounds(
-                        left = rect.left - mapWindowLocation[0],
-                        top = rect.top - mapWindowLocation[1],
-                        right = rect.right - mapWindowLocation[0],
-                        bottom = rect.bottom - mapWindowLocation[1],
-                    )
-                }
+            if (!mapWindowLocation.contentEquals(landmarkIndicatorMapOffset.value)) {
+                landmarkIndicatorMapOffset.value = mapWindowLocation
+            }
             landmarkIndicatorArea.value = viewportBounds
             val bounds = viewportBounds.inset(edgeInset)
             val retainedIds = retainedLandmarkIds
