@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
                 }
                 .start()
         }
-        enableEdgeToEdge()
+        enableEdgeToEdge(statusBarStyle = SpurStatusBarStyle)
         setContent { SpurApp(splashExitComplete = splashExitComplete) }
     }
 }

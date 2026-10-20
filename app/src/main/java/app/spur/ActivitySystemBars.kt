@@ -4,6 +4,7 @@ package app.spur
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Color as AndroidColor
 import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -18,6 +19,11 @@ import androidx.core.view.WindowCompat
 import java.util.WeakHashMap
 
 internal const val ActivityNavigationBarOverlayPriority = 1
+
+// Spur always draws light surfaces behind the status bar, so its icons stay dark
+// even when the system runs in dark mode.
+internal val SpurStatusBarStyle: SystemBarStyle =
+    SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT)
 
 @Composable
 internal fun ActivityNavigationBar(
@@ -120,6 +126,7 @@ private object ActivityNavigationBarOverrides {
         val colorInt = color.toArgb()
         val useDarkIcons = color.luminance() > 0.5f
         enableEdgeToEdge(
+            statusBarStyle = SpurStatusBarStyle,
             navigationBarStyle = navigationBarStyle(
                 color = colorInt,
                 useDarkIcons = useDarkIcons,
@@ -138,6 +145,7 @@ private object ActivityNavigationBarOverrides {
     private fun ComponentActivity.restoreNavigationBar(baseline: Baseline) {
         val useDarkIcons = baseline.useDarkIcons ?: (Color(baseline.color).luminance() > 0.5f)
         enableEdgeToEdge(
+            statusBarStyle = SpurStatusBarStyle,
             navigationBarStyle = navigationBarStyle(
                 color = baseline.color,
                 useDarkIcons = useDarkIcons,
