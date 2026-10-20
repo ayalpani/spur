@@ -36,9 +36,8 @@ file providers.
 
 Your recorded tours and moments stay on the device unless you share them or
 enable backups to a chosen destination. Map imagery, map tiles, and landmark
-lookups use external services. The optional public-item feature exchanges item
-locations with the [Spur Items Service](server/README.md); it is separate from
-private tour recording. Local first does not mean every feature works offline.
+lookups use external services. Local first does not mean every feature works
+offline.
 
 ## Built with
 
@@ -47,7 +46,6 @@ private tour recording. Local first does not mean every feature works offline.
 - **Android location services and SQLite** for tracking and local tour storage.
 - **CameraX** for photos and video; Android media APIs for voice moments.
 - **WorkManager and Android document providers** for backups.
-- **Go and SQLite** for the optional public-item service.
 
 ## Try it
 

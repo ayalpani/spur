@@ -107,8 +107,6 @@ internal fun MapSurface(
     mapSettingsVisible: Boolean,
     landmarks: List<Landmark>,
     mapMoments: List<MapMoment>,
-    publicItemsPage: PublicItemsPage,
-    selectedPublicItemId: String?,
     momentImageRevision: Long,
     routePoints: List<TrackPoint>,
     preparedTourRoute: PreparedTourRoute?,
@@ -131,8 +129,6 @@ internal fun MapSurface(
     onMomentPlaced: (MapMoment) -> Unit,
     onMomentPlacementFailed: (PendingMapMoment) -> Unit,
     onMomentClick: (MapMoment, Offset, PhotoOpenPreview?) -> Unit,
-    onPublicItemClick: (PublicItem) -> Unit,
-    onItemBoundsChanged: (ItemMapBounds) -> Unit,
     onLocationClick: () -> Unit,
     onBuildingClick: (SelectedBuilding) -> Unit,
     onHomeStartPointChanged: (SpurCoordinate) -> Unit,
@@ -150,8 +146,6 @@ internal fun MapSurface(
     val currentOnMomentPlaced by rememberUpdatedState(onMomentPlaced)
     val currentOnMomentPlacementFailed by rememberUpdatedState(onMomentPlacementFailed)
     val currentOnMomentClick by rememberUpdatedState(onMomentClick)
-    val currentOnPublicItemClick by rememberUpdatedState(onPublicItemClick)
-    val currentOnItemBoundsChanged by rememberUpdatedState(onItemBoundsChanged)
     val currentOnLocationClick by rememberUpdatedState(onLocationClick)
     val currentOnBuildingClick by rememberUpdatedState(onBuildingClick)
     val currentOnHomeStartPointChanged by rememberUpdatedState(onHomeStartPointChanged)
@@ -173,7 +167,6 @@ internal fun MapSurface(
     val currentOnViewportChanged by rememberUpdatedState(onViewportChanged)
     val currentLandmarks by rememberUpdatedState(landmarks)
     val currentMapMoments by rememberUpdatedState(mapMoments)
-    val currentPublicItemsPage by rememberUpdatedState(publicItemsPage)
     val currentRoutePoints by rememberUpdatedState(routePoints)
     val currentTrailColors by rememberUpdatedState(trailColors)
     val tourPauseMarker = remember(context) {
@@ -526,7 +519,6 @@ internal fun MapSurface(
                     }
                     previewCameraPosition = map.cameraPosition
                     map.mapViewport(currentIsSatelliteView)?.let(currentOnViewportChanged)
-                    currentOnItemBoundsChanged(map.publicItemBounds())
                     if (currentIsFollowingLocation && currentFollowRequest == handledFollowRequest) {
                         map.followLocation(
                             context = context,
@@ -545,16 +537,6 @@ internal fun MapSurface(
                         currentOnMapReadyChanged(true)
                     }
                 },
-            )
-        }
-    }
-
-    LaunchedEffect(publicItemsPage, selectedPublicItemId, mapStyleRevision) {
-        mapView.getMapAsync { map ->
-            map.style?.showPublicItems(
-                context = context,
-                page = publicItemsPage,
-                selectedItemId = selectedPublicItemId,
             )
         }
     }
@@ -844,14 +826,6 @@ internal fun MapSurface(
             )
         }
 
-        fun publicItemAt(readyMap: MapLibreMap, screenPoint: PointF): PublicItem? {
-            val itemId = readyMap.queryRenderedFeatures(
-                screenPoint,
-                PublicItemLayer,
-            ).firstOrNull()?.getStringProperty(PublicItemIdProperty)
-            return currentPublicItemsPage.items.firstOrNull { it.id == itemId }
-        }
-
         fun centerLandmark(landmark: Landmark) {
             val readyMap = map ?: return
             readyMap.animateCamera(
@@ -919,7 +893,6 @@ internal fun MapSurface(
                 }
             }
             map?.mapViewport(currentIsSatelliteView)?.let(currentOnViewportChanged)
-            map?.publicItemBounds()?.let(currentOnItemBoundsChanged)
         }
         val clickListener = MapLibreMap.OnMapClickListener { point ->
             val readyMap = map ?: return@OnMapClickListener false
@@ -947,22 +920,6 @@ internal fun MapSurface(
                 return@OnMapClickListener true
             }
             if (currentIsHomeStartPointSelection) return@OnMapClickListener true
-            val publicItem = publicItemAt(readyMap, screenPoint)
-            if (publicItem != null) {
-                currentOnPublicItemClick(publicItem)
-                return@OnMapClickListener true
-            }
-            val itemCluster = readyMap.queryRenderedFeatures(
-                screenPoint,
-                PublicItemClusterLayer,
-            ).firstOrNull()
-            if (itemCluster != null) {
-                val clusterPoint = (itemCluster.geometry() as? org.maplibre.geojson.Point)
-                    ?.let { LatLng(it.latitude(), it.longitude()) }
-                    ?: point
-                readyMap.zoomIntoPublicItemCluster(clusterPoint)
-                return@OnMapClickListener true
-            }
             landmarkAt(readyMap, screenPoint)?.let { landmark ->
                 centerLandmark(landmark)
                 return@OnMapClickListener true

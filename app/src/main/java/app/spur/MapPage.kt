@@ -1,7 +1,6 @@
 package app.spur
 
 import android.media.MediaPlayer
-import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -39,7 +38,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -105,24 +103,6 @@ internal fun MapPage(
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
-    val itemsApi = remember { ItemsApi() }
-    val itemRepositoryResult = remember {
-        runCatching { ItemRepository(ItemInventoryStore(context.applicationContext), itemsApi) }
-    }
-    val itemRepository = itemRepositoryResult.getOrNull()
-    LaunchedEffect(itemRepositoryResult) {
-        itemRepositoryResult.exceptionOrNull()?.let {
-            Log.e("SpurItems", "Encrypted inventory unavailable", it)
-        }
-    }
-    val inventory by itemRepository?.inventory?.collectAsState()
-        ?: remember { mutableStateOf(ItemInventory()) }
-    var itemMapBounds by remember { mutableStateOf<ItemMapBounds?>(null) }
-    var publicItemsPage by remember { mutableStateOf(PublicItemsPage(emptyList(), emptyList())) }
-    var itemWorldRefreshGeneration by remember { mutableLongStateOf(0L) }
-    var selectedPublicItem by remember { mutableStateOf<PublicItem?>(null) }
-    var itemTarget by remember { mutableStateOf<PublicItem?>(null) }
-    var showInventoryPage by rememberSaveable { mutableStateOf(false) }
     var isHomeSelectionMode by rememberSaveable { mutableStateOf(false) }
     var homeSelectionStep by rememberSaveable {
         mutableStateOf(HomeSelectionStep.BUILDING)
@@ -309,22 +289,10 @@ internal fun MapPage(
         rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val aboutBottomSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val publicItemSheetState =
-        rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val tourDeleteSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val tourEndSheetState =
         rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    LaunchedEffect(itemRepository) {
-        runCatching { itemRepository?.resumeTransfers() }
-        itemWorldRefreshGeneration++
-    }
-    LaunchedEffect(itemMapBounds, mapViewport?.zoom, itemWorldRefreshGeneration) {
-        val bounds = itemMapBounds ?: return@LaunchedEffect
-        delay(300)
-        runCatching { itemsApi.list(bounds, mapViewport?.zoom ?: defaultMapZoom) }
-            .onSuccess { publicItemsPage = it }
-    }
     LaunchedEffect(isDisplayedActiveTour) {
         if (!isDisplayedActiveTour) showTourEndConfirmation = false
     }
@@ -570,8 +538,6 @@ internal fun MapPage(
                 mapSettingsVisible = showDirectionBottomSheet,
                 landmarks = landmarks,
                 mapMoments = renderedMapMoments,
-                publicItemsPage = publicItemsPage,
-                selectedPublicItemId = itemTarget?.id,
                 momentImageRevision = photoRevision,
                 routePoints = mapRoutePoints,
                 preparedTourRoute = preparedTourRoute,
@@ -638,11 +604,6 @@ internal fun MapPage(
                         MomentType.EMOJI -> Unit
                     }
                 },
-                onPublicItemClick = { item ->
-                    itemTarget = item
-                    selectedPublicItem = item
-                },
-                onItemBoundsChanged = { itemMapBounds = it },
                 onLocationClick = followOwnLocation,
                 onBuildingClick = {
                     if (
@@ -1162,14 +1123,6 @@ internal fun MapPage(
                         .zIndex(3f),
                 )
             }
-            if (showInventoryPage) {
-                InventoryPage(
-                    inventory = inventory,
-                    onBack = { showInventoryPage = false },
-                    modifier = Modifier.zIndex(10f),
-                    available = itemRepository != null,
-                )
-            }
         }
     }
 
@@ -1200,13 +1153,6 @@ internal fun MapPage(
             sheetState = mainMenuState,
         ) {
             MainMenu(
-                onOpenInventory = {
-                    scope.launch {
-                        mainMenuState.hide()
-                        showMainMenu = false
-                        showInventoryPage = true
-                    }
-                },
                 onOpenSettings = {
                     scope.swapBottomSheets(
                         currentState = mainMenuState,
@@ -1288,15 +1234,6 @@ internal fun MapPage(
                     }
                 },
             )
-        }
-    }
-
-    selectedPublicItem?.let { item ->
-        SpurModalBottomSheet(
-            onDismissRequest = { selectedPublicItem = null },
-            sheetState = publicItemSheetState,
-        ) {
-            PublicItemDetails(item = item)
         }
     }
 
