@@ -649,6 +649,10 @@ private val LandmarkMarkerOutlineWidth = 3.dp
 private val LandmarkIndicatorGap = 6.dp
 internal const val LandmarkEdgeInsetDp = 24f
 internal const val LocationEdgeInsetDp = 12f
+
+// Keeps right-edge indicators clear of the map control rail.
+internal const val LandmarkRightEdgeInsetDp =
+    (MapControlHorizontalPaddingDp + MapControlSizeDp + MapControlGapDp).toFloat()
 internal const val LandmarkMinimumSeparationDp = 112f
 internal const val LandmarkMaximumVisibleCount = 5
 internal const val LandmarkIndicatorHideDelayMillis = 2_000L

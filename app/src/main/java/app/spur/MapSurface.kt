@@ -680,7 +680,7 @@ internal fun MapSurface(
                 top = (systemInsets?.top ?: 0) + edgeInset,
                 right = mapView.width -
                     (systemInsets?.right ?: 0) -
-                    edgeInset,
+                    LandmarkRightEdgeInsetDp * density,
                 bottom = mapView.height -
                     (systemInsets?.bottom ?: 0) -
                     edgeInset,

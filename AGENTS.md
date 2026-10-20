@@ -163,7 +163,9 @@ and set `ANDROID_SERIAL` for Gradle device tests.
 - Keep every map edge indicator tappable while it is shown. A landmark
   indicator centers the map on its landmark; the own-location `Ich` indicator
   runs the same follow action as the location/follow control. Forward drags
-  that start on an indicator to the map so they still pan it.
+  that start on an indicator to the map so they still pan it. Clamp
+  indicators on the right edge inside the map control rail so the controls
+  never cover them.
 - Resolve exact-location map-moment clusters at a bounded street-level zoom
   where marker fan-out takes over; never zoom indefinitely toward coincident
   coordinates.
