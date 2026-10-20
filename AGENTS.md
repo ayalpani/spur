@@ -160,6 +160,17 @@ and set `ANDROID_SERIAL` for Gradle device tests.
   complete cell. React to later road-source updates, wait for the next idle,
   and merge that rendered viewport once per source revision so parent-tile
   fallbacks cannot permanently hide roads from subsequently loaded ideal tiles.
+- Keep every map edge indicator tappable while it is shown. A landmark
+  indicator centers the map on its landmark; the own-location `Ich` indicator
+  runs the same follow action as the location/follow control. Forward drags
+  that start on an indicator to the map so they still pan it. Keep
+  each indicator block (marker and label) clear of the measured bounds of the
+  map chrome registered with `mapObstruction` (tour header, top buttons,
+  control rail, bottom controls, waypoint rail) and of indicators placed
+  before it, `Ich` first. Move a blocked block the shortest way, preferring a
+  slide along its screen edge; never shrink a whole side for a corner button
+  and never estimate chrome sizes. A landmark indicator on top of `Ich` yields
+  to it.
 - Resolve exact-location map-moment clusters at a bounded street-level zoom
   where marker fan-out takes over; never zoom indefinitely toward coincident
   coordinates.

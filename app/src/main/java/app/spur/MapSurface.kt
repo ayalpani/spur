@@ -27,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -97,6 +98,7 @@ internal fun MapSurface(
     tourEntryContentReady: Boolean,
     followRequest: Int,
     tourOverviewRequest: Int,
+    mapObstructions: MapObstructions,
     isFollowingLocation: Boolean,
     locationPulseGeneration: Long,
     isSatelliteView: Boolean,
@@ -229,6 +231,25 @@ internal fun MapSurface(
     val locationEdgeIndicator = remember {
         mutableStateOf<LocationEdgeIndicator?>(null)
     }
+    val landmarkIndicatorArea = remember {
+        mutableStateOf<LandmarkIndicatorBounds?>(null)
+    }
+    val landmarkIndicatorMapOffset = remember { mutableStateOf(IntArray(2)) }
+    // Map chrome in map coordinates; each indicator block slides clear of it.
+    val landmarkIndicatorObstacles = remember(mapObstructions) {
+        derivedStateOf {
+            val offset = landmarkIndicatorMapOffset.value
+            mapObstructions.windowBounds().map { rect ->
+                LandmarkIndicatorBounds(
+                    left = rect.left - offset[0],
+                    top = rect.top - offset[1],
+                    right = rect.right - offset[0],
+                    bottom = rect.bottom - offset[1],
+                )
+            }
+        }
+    }
+    val edgeIndicatorPlacements = remember { EdgeIndicatorPlacements() }
     var landmarkIndicatorsVisible by remember { mutableStateOf(false) }
     var previewCameraPosition by remember {
         mutableStateOf<org.maplibre.android.camera.CameraPosition?>(null)
@@ -675,22 +696,18 @@ internal fun MapSurface(
             val locationEdgeInset = LocationEdgeInsetDp * density
             val systemInsets = ViewCompat.getRootWindowInsets(mapView)
                 ?.getInsets(WindowInsetsCompat.Type.systemBars())
-            val bounds = LandmarkIndicatorBounds(
-                left = (systemInsets?.left ?: 0) + edgeInset,
-                top = (systemInsets?.top ?: 0) + edgeInset,
-                right = mapView.width -
-                    (systemInsets?.right ?: 0) -
-                    edgeInset,
-                bottom = mapView.height -
-                    (systemInsets?.bottom ?: 0) -
-                    edgeInset,
-            )
+            val mapWindowLocation = IntArray(2).also(mapView::getLocationInWindow)
             val viewportBounds = LandmarkIndicatorBounds(
                 left = (systemInsets?.left ?: 0).toFloat(),
                 top = (systemInsets?.top ?: 0).toFloat(),
                 right = (mapView.width - (systemInsets?.right ?: 0)).toFloat(),
                 bottom = (mapView.height - (systemInsets?.bottom ?: 0)).toFloat(),
             )
+            if (!mapWindowLocation.contentEquals(landmarkIndicatorMapOffset.value)) {
+                landmarkIndicatorMapOffset.value = mapWindowLocation
+            }
+            landmarkIndicatorArea.value = viewportBounds
+            val bounds = viewportBounds.inset(edgeInset)
             val retainedIds = retainedLandmarkIds
             locationEdgeIndicator.value = effectiveLocationIndicatorCoordinate(
                 gpsLocation = currentGpsLocation,
@@ -727,27 +744,30 @@ internal fun MapSurface(
                     )
                 }
                 .toList()
-            landmarkIndicators.value = if (retainedIds == null) {
-                landmarkEdgeIndicators(
-                    projected = projected,
-                    bounds = bounds,
-                    minimumSeparation = LandmarkMinimumSeparationDp * density,
-                    maximumCount = LandmarkMaximumVisibleCount,
-                ).also { selected ->
-                    val selectedIds = selected.mapTo(linkedSetOf()) { it.landmark.id }
-                    retainedLandmarkIds = selectedIds
-                    readyMap.style?.setMapLandmarkSelection(selectedIds)
-                    outsideLandmarkIndicators(selected, projected, viewportBounds)
+            val locationIndicator = locationEdgeIndicator.value
+            landmarkIndicators.value = (
+                if (retainedIds == null) {
+                    landmarkEdgeIndicators(
+                        projected = projected,
+                        bounds = bounds,
+                        minimumSeparation = LandmarkMinimumSeparationDp * density,
+                        maximumCount = LandmarkMaximumVisibleCount,
+                    ).also { selected ->
+                        val selectedIds = selected.mapTo(linkedSetOf()) { it.landmark.id }
+                        retainedLandmarkIds = selectedIds
+                        readyMap.style?.setMapLandmarkSelection(selectedIds)
+                        outsideLandmarkIndicators(selected, projected, viewportBounds)
+                    }
+                } else {
+                    retainedLandmarkEdgeIndicators(
+                        projected = projected,
+                        bounds = bounds,
+                        landmarkIds = retainedIds,
+                    ).let { selected ->
+                        outsideLandmarkIndicators(selected, projected, viewportBounds)
+                    }
                 }
-            } else {
-                retainedLandmarkEdgeIndicators(
-                    projected = projected,
-                    bounds = bounds,
-                    landmarkIds = retainedIds,
-                ).let { selected ->
-                    outsideLandmarkIndicators(selected, projected, viewportBounds)
-                }
-            }
+            ).withoutOverlapping(locationIndicator, LocationOverlapDp * density)
         }
 
         fun scheduleLandmarkPublish() {
@@ -2048,6 +2068,22 @@ internal fun MapSurface(
         }
     }
 
+    val forwardEdgeIndicatorTouch: (MotionEvent, Boolean) -> Unit = { event, cancelClick ->
+        val mapLocation = IntArray(2)
+        mapView.getLocationOnScreen(mapLocation)
+        MotionEvent.obtain(event).also { forwarded ->
+            forwarded.setLocation(
+                event.rawX - mapLocation[0],
+                event.rawY - mapLocation[1],
+            )
+            if (cancelClick && forwarded.actionMasked == MotionEvent.ACTION_UP) {
+                forwarded.action = MotionEvent.ACTION_CANCEL
+            }
+            mapView.dispatchTouchEvent(forwarded)
+            forwarded.recycle()
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         AndroidView(
             factory = { mapView },
@@ -2063,24 +2099,27 @@ internal fun MapSurface(
                 },
         )
 
+        // Placed first so landmark indicators can make room for the own location.
+        LocationEdgeOverlay(
+            indicator = locationEdgeIndicator,
+            area = landmarkIndicatorArea,
+            obstacles = landmarkIndicatorObstacles,
+            placements = edgeIndicatorPlacements,
+            visible = landmarkIndicatorsVisible,
+            colors = locationMarkerColors,
+            pulseColor = trailColors.stroke,
+            onForwardMapTouch = forwardEdgeIndicatorTouch,
+            onLocationTap = { currentOnLocationClick() },
+            modifier = Modifier.fillMaxSize(),
+        )
+
         LandmarkEdgeOverlay(
             indicators = landmarkIndicators,
+            area = landmarkIndicatorArea,
+            obstacles = landmarkIndicatorObstacles,
+            placements = edgeIndicatorPlacements,
             visible = landmarkIndicatorsVisible,
-            onForwardMapTouch = { event, cancelClick ->
-                val mapLocation = IntArray(2)
-                mapView.getLocationOnScreen(mapLocation)
-                MotionEvent.obtain(event).also { forwarded ->
-                    forwarded.setLocation(
-                        event.rawX - mapLocation[0],
-                        event.rawY - mapLocation[1],
-                    )
-                    if (cancelClick && forwarded.actionMasked == MotionEvent.ACTION_UP) {
-                        forwarded.action = MotionEvent.ACTION_CANCEL
-                    }
-                    mapView.dispatchTouchEvent(forwarded)
-                    forwarded.recycle()
-                }
-            },
+            onForwardMapTouch = forwardEdgeIndicatorTouch,
             onLandmarkTap = { landmark ->
                 mapView.getMapAsync { map ->
                     map.animateCamera(
@@ -2094,14 +2133,6 @@ internal fun MapSurface(
                     )
                 }
             },
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        LocationEdgeOverlay(
-            indicator = locationEdgeIndicator,
-            visible = landmarkIndicatorsVisible,
-            colors = locationMarkerColors,
-            pulseColor = trailColors.stroke,
             modifier = Modifier.fillMaxSize(),
         )
 
