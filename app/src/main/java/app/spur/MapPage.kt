@@ -528,6 +528,11 @@ internal fun MapPage(
                 tourEntryContentReady = isTourPresentationReady,
                 followRequest = followRequest,
                 tourOverviewRequest = tourOverviewRequest,
+                // Keep edge indicators clear of the tour header and bottom controls.
+                edgeIndicatorTopInsetDp =
+                    if (hasTourModeHeader) TourModeHeaderHeight.value else 0f,
+                edgeIndicatorBottomInsetDp =
+                    (mapActionsBottomPadding + MapControlSize).value,
                 isFollowingLocation = isFollowingLocation,
                 locationPulseGeneration = requestedLocationPulseGeneration,
                 isSatelliteView = isSatelliteView,

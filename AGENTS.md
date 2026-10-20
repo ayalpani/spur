@@ -164,8 +164,8 @@ and set `ANDROID_SERIAL` for Gradle device tests.
   indicator centers the map on its landmark; the own-location `Ich` indicator
   runs the same follow action as the location/follow control. Forward drags
   that start on an indicator to the map so they still pan it. Clamp
-  indicators on the right edge inside the map control rail so the controls
-  never cover them.
+  indicators inside the right control rail, the tour header, and the bottom
+  map controls so no control ever covers them.
 - Resolve exact-location map-moment clusters at a bounded street-level zoom
   where marker fan-out takes over; never zoom indefinitely toward coincident
   coordinates.

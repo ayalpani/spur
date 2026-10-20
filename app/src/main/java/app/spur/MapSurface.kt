@@ -97,6 +97,8 @@ internal fun MapSurface(
     tourEntryContentReady: Boolean,
     followRequest: Int,
     tourOverviewRequest: Int,
+    edgeIndicatorTopInsetDp: Float,
+    edgeIndicatorBottomInsetDp: Float,
     isFollowingLocation: Boolean,
     locationPulseGeneration: Long,
     isSatelliteView: Boolean,
@@ -180,6 +182,8 @@ internal fun MapSurface(
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
     val currentTourOverviewRequest by rememberUpdatedState(tourOverviewRequest)
+    val currentEdgeIndicatorTopInsetDp by rememberUpdatedState(edgeIndicatorTopInsetDp)
+    val currentEdgeIndicatorBottomInsetDp by rememberUpdatedState(edgeIndicatorBottomInsetDp)
     val currentZoomRequest by rememberUpdatedState(zoomRequest)
     val currentDefaultMapZoom by rememberUpdatedState(defaultMapZoom)
     val currentLocationPulseGeneration by rememberUpdatedState(locationPulseGeneration)
@@ -677,12 +681,15 @@ internal fun MapSurface(
                 ?.getInsets(WindowInsetsCompat.Type.systemBars())
             val bounds = LandmarkIndicatorBounds(
                 left = (systemInsets?.left ?: 0) + edgeInset,
-                top = (systemInsets?.top ?: 0) + edgeInset,
+                top = (systemInsets?.top ?: 0) +
+                    currentEdgeIndicatorTopInsetDp * density +
+                    edgeInset,
                 right = mapView.width -
                     (systemInsets?.right ?: 0) -
                     LandmarkRightEdgeInsetDp * density,
                 bottom = mapView.height -
                     (systemInsets?.bottom ?: 0) -
+                    currentEdgeIndicatorBottomInsetDp * density -
                     edgeInset,
             )
             val viewportBounds = LandmarkIndicatorBounds(
