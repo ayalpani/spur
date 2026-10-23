@@ -114,7 +114,7 @@ internal fun PhotoLocationMetadata(
         )
         Column(
             modifier = Modifier
-                .widthIn(max = 228.dp)
+                .widthIn(max = 260.dp)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.Center,
         ) {
@@ -129,7 +129,7 @@ internal fun PhotoLocationMetadata(
                     text = description.replaceFirst(", ", "\n"),
                     color = Color.White.copy(alpha = 0.72f),
                     style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 2,
+                    maxLines = 3,
                 )
             }
             if (onTourClick != null) {

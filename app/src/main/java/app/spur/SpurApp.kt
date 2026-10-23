@@ -721,6 +721,9 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                             canShowInTour = { historyPhotoTourId != null },
                             onShowInTour = { media ->
                                 historyPhotoTourId?.let { tourId ->
+                                    if (openingTourId != null && openingTourId != tourId) {
+                                        cancelHomeTourOpening()
+                                    }
                                     momentFocusRequest = MomentFocusRequest(tourId, media)
                                     openHomeTour(tourId)
                                 }

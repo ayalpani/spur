@@ -65,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -573,6 +574,18 @@ internal fun PhotoDetailPage(
                         )
                     }
                 }
+                // Keeps the light status bar icons readable over bright media.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(96.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Black.copy(alpha = 0.5f), Color.Transparent),
+                            ),
+                        ),
+                )
                 val thumbnail = openingThumbnail
                 if (openOrigin != null && thumbnail != null) {
                     val density = LocalDensity.current

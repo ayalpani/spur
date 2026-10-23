@@ -236,7 +236,7 @@ internal fun HomeScreen(
                                 onOpenPhoto = { photo ->
                                     onOpenPhoto(
                                         photo,
-                                        orderedMediaMoments(item.moments),
+                                        item.moments,
                                         item.tour.id,
                                     )
                                 },
