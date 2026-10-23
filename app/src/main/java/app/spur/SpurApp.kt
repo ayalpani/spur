@@ -97,6 +97,8 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     var photoRevision by remember { mutableLongStateOf(0L) }
     var historyPhotoDetail by remember { mutableStateOf<MapMoment?>(null) }
     var historyPhotos by remember { mutableStateOf(emptyList<MapMoment>()) }
+    var historyPhotoTourId by remember { mutableStateOf<Long?>(null) }
+    var momentFocusRequest by remember { mutableStateOf<MomentFocusRequest?>(null) }
     var openingTourId by remember { mutableStateOf<Long?>(null) }
     var homeTourPreparationGeneration by remember { mutableLongStateOf(0L) }
     var homeTourPreparationRequest by remember { mutableLongStateOf(-1L) }
@@ -134,6 +136,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
     }
     val cancelHomeTourOpening = {
         openingTourId = null
+        momentFocusRequest = null
         homeTourPreparationRequest = -1L
         homeTourMapSnapshot?.let { snapshot ->
             displayedTourRevision = snapshot.revision
@@ -143,6 +146,75 @@ internal fun SpurApp(splashExitComplete: Boolean) {
             preparedDisplayedTourRoute = snapshot.preparedRoute
         }
         homeTourMapSnapshot = null
+    }
+
+    val openHomeTour: (Long) -> Unit = { id ->
+        if (openingTourId == null) {
+            openingTourId = id
+            scope.launch {
+                val loadedTour = withContext(Dispatchers.IO) {
+                    store.tourRevision(id)?.let { revision ->
+                        revision to store.points(id)
+                    }
+                }
+                val preparedRoute = loadedTour?.let {
+                    withContext(Dispatchers.Default) {
+                        prepareTourRoute(it.second)
+                    }
+                }
+                if (
+                    openingTourId != id ||
+                    navController.currentDestination?.route !=
+                    SpurRoute.HOME
+                ) {
+                    if (openingTourId == id) openingTourId = null
+                    return@launch
+                }
+                if (loadedTour == null) {
+                    openingTourId = null
+                    showFeedbackNotice(
+                        FeedbackNoticeKind.ERROR,
+                        "Tour konnte nicht geöffnet werden.",
+                    )
+                    return@launch
+                }
+                homeTourMapSnapshot = HomeTourMapSnapshot(
+                    revision = displayedTourRevision,
+                    tour = displayedTour,
+                    tourId = displayedTourId,
+                    routePoints = routePoints,
+                    preparedRoute = preparedDisplayedTourRoute,
+                )
+                displayedTourRevision = loadedTour.first
+                displayedTour = loadedTour.first.asTour()
+                displayedTourId = id
+                routePoints = loadedTour.second
+                preparedDisplayedTourRoute = preparedRoute
+                homeTourPreparationGeneration++
+                homeTourPreparationRequest =
+                    homeTourPreparationGeneration
+            }
+        }
+    }
+    val openTourFromMap: (Long, MapMoment) -> Unit = { id, moment ->
+        scope.launch {
+            val loadedTour = withContext(Dispatchers.IO) {
+                store.tourRevision(id)?.let { revision -> revision to store.points(id) }
+            }
+            if (loadedTour == null) {
+                showFeedbackNotice(
+                    FeedbackNoticeKind.ERROR,
+                    "Tour konnte nicht geöffnet werden.",
+                )
+                return@launch
+            }
+            momentFocusRequest = MomentFocusRequest(tourId = id, moment = moment)
+            displayedTourRevision = loadedTour.first
+            displayedTour = loadedTour.first.asTour()
+            displayedTourId = id
+            routePoints = loadedTour.second
+            displayedTourRequest++
+        }
     }
 
     LaunchedEffect(initialMapLoadingComplete) {
@@ -511,6 +583,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                             }
                         },
                         onCloseDisplayedTour = {
+                            momentFocusRequest = null
                             val returnToHome =
                                 navController.previousBackStackEntry
                                     ?.destination
@@ -549,6 +622,17 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                         onInitialLoadingComplete = {
                             initialMapLoadingComplete = true
                         },
+                        momentFocusRequest = momentFocusRequest,
+                        onMomentFocusHandled = { momentFocusRequest = null },
+                        resolveMomentTourId = { moment ->
+                            withContext(Dispatchers.IO) {
+                                moment.tourId?.takeIf { store.tour(it) != null }
+                                    ?: store.tours().firstOrNull { tour ->
+                                        momentBelongsToTour(moment, tour)
+                                    }?.id
+                            }
+                        },
+                        onOpenTourAtMoment = openTourFromMap,
                         onTourEntryPrepared = { request ->
                             if (
                                 request == homeTourPreparationRequest &&
@@ -589,56 +673,13 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                     navController.popBackStack()
                                 },
                                 onOpenTour = { id ->
-                                    if (openingTourId == null) {
-                                        openingTourId = id
-                                        scope.launch {
-                                            val loadedTour = withContext(Dispatchers.IO) {
-                                                store.tourRevision(id)?.let { revision ->
-                                                    revision to store.points(id)
-                                                }
-                                            }
-                                            val preparedRoute = loadedTour?.let {
-                                                withContext(Dispatchers.Default) {
-                                                    prepareTourRoute(it.second)
-                                                }
-                                            }
-                                            if (
-                                                openingTourId != id ||
-                                                navController.currentDestination?.route !=
-                                                SpurRoute.HOME
-                                            ) {
-                                                if (openingTourId == id) openingTourId = null
-                                                return@launch
-                                            }
-                                            if (loadedTour == null) {
-                                                openingTourId = null
-                                                showFeedbackNotice(
-                                                    FeedbackNoticeKind.ERROR,
-                                                    "Tour konnte nicht geöffnet werden.",
-                                                )
-                                                return@launch
-                                            }
-                                            homeTourMapSnapshot = HomeTourMapSnapshot(
-                                                revision = displayedTourRevision,
-                                                tour = displayedTour,
-                                                tourId = displayedTourId,
-                                                routePoints = routePoints,
-                                                preparedRoute = preparedDisplayedTourRoute,
-                                            )
-                                            displayedTourRevision = loadedTour.first
-                                            displayedTour = loadedTour.first.asTour()
-                                            displayedTourId = id
-                                            routePoints = loadedTour.second
-                                            preparedDisplayedTourRoute = preparedRoute
-                                            homeTourPreparationGeneration++
-                                            homeTourPreparationRequest =
-                                                homeTourPreparationGeneration
-                                        }
-                                    }
+                                    momentFocusRequest = null
+                                    openHomeTour(id)
                                 },
-                                onOpenPhoto = { photo, photos ->
+                                onOpenPhoto = { photo, photos, tourId ->
                                     if (openingTourId == null) {
                                         historyPhotos = photos
+                                        historyPhotoTourId = tourId
                                         historyPhotoDetail = photo
                                     }
                                 },
@@ -665,7 +706,7 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                                     if (updatedMoments == null) {
                                         showFeedbackNotice(
                                             FeedbackNoticeKind.ERROR,
-                                            "Das Bild konnte nicht gelöscht werden.",
+                                            momentDeleteErrorMessage(deletedPhoto),
                                         )
                                     } else {
                                         photoRevision++
@@ -676,6 +717,13 @@ internal fun SpurApp(splashExitComplete: Boolean) {
                             onDismiss = {
                                 historyPhotoDetail = null
                                 historyPhotos = emptyList()
+                            },
+                            canShowInTour = { historyPhotoTourId != null },
+                            onShowInTour = { media ->
+                                historyPhotoTourId?.let { tourId ->
+                                    momentFocusRequest = MomentFocusRequest(tourId, media)
+                                    openHomeTour(tourId)
+                                }
                             },
                         )
                     }

@@ -89,7 +89,7 @@ internal fun HomeScreen(
     openingTourId: Long? = null,
     onBack: () -> Unit,
     onOpenTour: (Long) -> Unit,
-    onOpenPhoto: (MapMoment, List<MapMoment>) -> Unit,
+    onOpenPhoto: (MapMoment, List<MapMoment>, Long) -> Unit,
 ) {
     val context = LocalContext.current
     var items by remember { mutableStateOf(emptyList<HistoryTourItem>()) }
@@ -236,7 +236,8 @@ internal fun HomeScreen(
                                 onOpenPhoto = { photo ->
                                     onOpenPhoto(
                                         photo,
-                                        orderedPhotoMoments(item.moments),
+                                        orderedMediaMoments(item.moments),
+                                        item.tour.id,
                                     )
                                 },
                             )
@@ -443,15 +444,15 @@ private fun HistoryMomentThumbnail(
             .size(HistoryThumbnailSize)
             .clip(if (moment.isRoundVideo) CircleShape else RoundedCornerShape(10.dp))
             .then(
-                if (moment.type == MomentType.PHOTO) {
-                    Modifier.clickable(
-                        enabled = enabled,
-                        onClickLabel = "Foto öffnen",
-                        onClick = { onOpenPhoto(moment) },
-                    )
-                } else {
-                    Modifier
-                },
+                Modifier.clickable(
+                    enabled = enabled,
+                    onClickLabel = if (moment.type == MomentType.VIDEO) {
+                        "Video öffnen"
+                    } else {
+                        "Foto öffnen"
+                    },
+                    onClick = { onOpenPhoto(moment) },
+                ),
             ),
     )
 }

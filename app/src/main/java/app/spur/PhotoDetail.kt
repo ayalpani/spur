@@ -3,6 +3,10 @@ package app.spur
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.MediaController
+import android.widget.VideoView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -52,6 +56,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -77,11 +82,13 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.content.ContextCompat
+import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -175,6 +182,8 @@ internal fun PhotoDetailPage(
     onPhotoRotated: () -> Unit = {},
     onPhotoDeleted: (MapMoment) -> Unit,
     onDismiss: () -> Unit,
+    canShowInTour: suspend (MapMoment) -> Boolean = { false },
+    onShowInTour: (MapMoment) -> Unit = {},
 ) {
     if (photos.isEmpty()) return
     val context = LocalContext.current
@@ -191,6 +200,10 @@ internal fun PhotoDetailPage(
     val currentOnPhotoChanged by rememberUpdatedState(onPhotoChanged)
     val currentOnPhotoRotated by rememberUpdatedState(onPhotoRotated)
     val currentOnPhotoDeleted by rememberUpdatedState(onPhotoDeleted)
+    val currentCanShowInTour by rememberUpdatedState(canShowInTour)
+    val currentOnShowInTour by rememberUpdatedState(onShowInTour)
+    val selectedIsVideo = selectedPhoto.type == MomentType.VIDEO
+    val tourAvailability = remember { mutableStateMapOf<String, Boolean>() }
     val rotationMutex = remember { Mutex() }
     var imageRevision by remember(photoRevision) { mutableLongStateOf(photoRevision) }
     var hasRotatedPhoto by remember { mutableStateOf(false) }
@@ -233,6 +246,18 @@ internal fun PhotoDetailPage(
         }
     }
 
+    fun showInTourAnimated(moment: MapMoment) {
+        if (isClosing) return
+        isClosing = true
+        isVisible = false
+        scope.launch {
+            delay(MotionDurationDefaultMillis.toLong())
+            if (hasRotatedPhoto) currentOnPhotoRotated()
+            onDismiss()
+            currentOnShowInTour(moment)
+        }
+    }
+
     fun openLocationMap(photo: MapMoment) {
         if (locationMapPhoto != null || locationMapBounds == null) return
         locationMapReady = false
@@ -271,25 +296,35 @@ internal fun PhotoDetailPage(
     }
 
     fun savePhoto() {
+        val moment = currentPhoto
         scope.launch {
             val saved = withContext(Dispatchers.IO) {
-                context.savePhotoToGallery(File(currentPhoto.payload))
+                context.saveMomentMediaToGallery(moment)
             }
             if (!saved) {
                 showFeedbackNotice(
                     FeedbackNoticeKind.ERROR,
-                    "Foto konnte nicht gespeichert werden.",
+                    if (moment.type == MomentType.VIDEO) {
+                        "Video konnte nicht gespeichert werden."
+                    } else {
+                        "Foto konnte nicht gespeichert werden."
+                    },
                 )
             }
         }
     }
 
     fun sharePhoto() {
-        val shared = context.sharePhoto(File(currentPhoto.payload))
+        val moment = currentPhoto
+        val shared = context.shareMomentMedia(moment)
         if (!shared) {
             showFeedbackNotice(
                 FeedbackNoticeKind.ERROR,
-                "Das Foto konnte nicht geteilt werden.",
+                if (moment.type == MomentType.VIDEO) {
+                    "Das Video konnte nicht geteilt werden."
+                } else {
+                    "Das Foto konnte nicht geteilt werden."
+                },
             )
         }
     }
@@ -378,6 +413,11 @@ internal fun PhotoDetailPage(
         }
     }
 
+    LaunchedEffect(selectedPhoto.id) {
+        if (tourAvailability.containsKey(selectedPhoto.id)) return@LaunchedEffect
+        tourAvailability[selectedPhoto.id] = currentCanShowInTour(selectedPhoto)
+    }
+
     LaunchedEffect(locationMapPhoto?.id, locationMapReady) {
         if (locationMapPhoto == null || !locationMapReady) return@LaunchedEffect
         locationMapTransitioning = true
@@ -462,9 +502,32 @@ internal fun PhotoDetailPage(
                 ) { page ->
                     val photo = photos[page]
                     val imageKey = "${photo.id}:$imageRevision"
-                    val imageRequest = remember(photo.payload, imageRevision, openOrigin) {
+                    val isVideo = photo.type == MomentType.VIDEO
+                    val videoThumbnailReady by produceState(
+                        initialValue = !isVideo ||
+                            videoThumbnailFile(File(photo.payload)).isFile,
+                        photo.payload,
+                    ) {
+                        if (!value) {
+                            value = withContext(Dispatchers.IO) {
+                                ensureVideoThumbnail(File(photo.payload)) != null
+                            }
+                        }
+                    }
+                    val imageRequest = remember(
+                        photo.payload,
+                        imageRevision,
+                        openOrigin,
+                        videoThumbnailReady,
+                    ) {
                         ImageRequest.Builder(context)
-                            .data(File(photo.payload))
+                            .data(
+                                if (isVideo) {
+                                    videoThumbnailFile(File(photo.payload))
+                                } else {
+                                    File(photo.payload)
+                                },
+                            )
                             .memoryCacheKey("${photo.payload}:$imageRevision")
                             .diskCachePolicy(CachePolicy.DISABLED)
                             .listener(
@@ -483,16 +546,32 @@ internal fun PhotoDetailPage(
                             }
                             .build()
                     }
-                    ZoomableAsyncImage(
-                        model = imageRequest,
-                        contentDescription = if (page == pagerState.currentPage) {
-                            "Foto ${page + 1} von ${photos.size}"
-                        } else {
-                            null
-                        },
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    if (isVideo) {
+                        MomentVideoPage(
+                            video = photo,
+                            thumbnail = imageRequest,
+                            playing =
+                                page == pagerState.settledPage &&
+                                    openingAnimationFinished &&
+                                    !isClosing,
+                            contentDescription = if (page == pagerState.currentPage) {
+                                "Video ${page + 1} von ${photos.size}"
+                            } else {
+                                null
+                            },
+                        )
+                    } else {
+                        ZoomableAsyncImage(
+                            model = imageRequest,
+                            contentDescription = if (page == pagerState.currentPage) {
+                                "Foto ${page + 1} von ${photos.size}"
+                            } else {
+                                null
+                            },
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
                 val thumbnail = openingThumbnail
                 if (openOrigin != null && thumbnail != null) {
@@ -560,6 +639,11 @@ internal fun PhotoDetailPage(
                             photo = selectedPhoto,
                             onMapClick = { openLocationMap(selectedPhoto) },
                             onMapBoundsChanged = { locationMapBounds = it },
+                            onTourClick = if (tourAvailability[selectedPhoto.id] == true) {
+                                { showInTourAnimated(selectedPhoto) }
+                            } else {
+                                null
+                            },
                             modifier = Modifier
                                 .align(Alignment.TopStart)
                                 .statusBarsPadding()
@@ -614,20 +698,30 @@ internal fun PhotoDetailPage(
                             horizontalArrangement = Arrangement.spacedBy(MapControlGap),
                         ) {
                             PhotoActionButton(
-                                contentDescription = "Bildaktionen öffnen",
+                                contentDescription = if (selectedIsVideo) {
+                                    "Videoaktionen öffnen"
+                                } else {
+                                    "Bildaktionen öffnen"
+                                },
                                 onClick = { showPhotoActionsSheet = true },
                             ) {
                                 PhotoMoreIcon()
                             }
-                            PhotoActionButton(
-                                contentDescription = "Foto 90 Grad nach links drehen",
-                                onClick = ::rotatePhotoLeft,
-                            ) {
-                                PhotoRotateCcwSquareIcon()
+                            if (!selectedIsVideo) {
+                                PhotoActionButton(
+                                    contentDescription = "Foto 90 Grad nach links drehen",
+                                    onClick = ::rotatePhotoLeft,
+                                ) {
+                                    PhotoRotateCcwSquareIcon()
+                                }
                             }
                         }
                         PhotoActionButton(
-                            contentDescription = "Foto schließen",
+                            contentDescription = if (selectedIsVideo) {
+                                "Video schließen"
+                            } else {
+                                "Foto schließen"
+                            },
                             onClick = ::dismissAnimated,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
@@ -653,7 +747,7 @@ internal fun PhotoDetailPage(
                     .padding(bottom = 24.dp),
             ) {
                 BottomSheetHeader(
-                    title = "Bildaktionen",
+                    title = if (selectedIsVideo) "Videoaktionen" else "Bildaktionen",
                     modifier = Modifier.padding(horizontal = 24.dp),
                 )
                 SheetMenuActionItem(
@@ -679,7 +773,7 @@ internal fun PhotoDetailPage(
                     },
                 )
                 SheetMenuActionItem(
-                    label = "Bild löschen",
+                    label = if (selectedIsVideo) "Video löschen" else "Bild löschen",
                     destructive = true,
                     icon = { PhotoDeleteIcon(color = StopRed) },
                     onClick = {
@@ -708,16 +802,26 @@ internal fun PhotoDetailPage(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                BottomSheetHeader(title = "Bild löschen")
+                BottomSheetHeader(
+                    title = if (selectedIsVideo) "Video löschen" else "Bild löschen",
+                )
                 Text(
-                    text = "Das Bild wird dauerhaft aus Spur und vom Gerät entfernt.",
+                    text = if (selectedIsVideo) {
+                        "Das Video wird dauerhaft aus Spur und vom Gerät entfernt."
+                    } else {
+                        "Das Bild wird dauerhaft aus Spur und vom Gerät entfernt."
+                    },
                     color = Ink.copy(alpha = 0.68f),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 SpurPrimaryButton(
-                    label = "Bild endgültig löschen",
+                    label = if (selectedIsVideo) {
+                        "Video endgültig löschen"
+                    } else {
+                        "Bild endgültig löschen"
+                    },
                     onClick = { deleteAnimated(currentPhoto) },
                     destructive = true,
                 )
@@ -725,6 +829,77 @@ internal fun PhotoDetailPage(
                     label = "Abbrechen",
                     onClick = { showDeletePhotoSheet = false },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MomentVideoPage(
+    video: MapMoment,
+    thumbnail: ImageRequest,
+    playing: Boolean,
+    contentDescription: String?,
+) {
+    val context = LocalContext.current
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val frameModifier = if (video.isRoundVideo) {
+            Modifier
+                .fillMaxWidth(0.86f)
+                .aspectRatio(1f)
+                .clip(CircleShape)
+        } else {
+            Modifier.fillMaxSize()
+        }
+        Box(
+            modifier = frameModifier.then(
+                if (contentDescription != null) {
+                    Modifier.semantics { this.contentDescription = contentDescription }
+                } else {
+                    Modifier
+                },
+            ),
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = thumbnail,
+                contentDescription = null,
+                contentScale = if (video.isRoundVideo) ContentScale.Crop else ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (playing) {
+                var videoView by remember { mutableStateOf<VideoView?>(null) }
+                AndroidView(
+                    factory = { viewContext ->
+                        FrameLayout(viewContext).apply {
+                            val player = VideoView(viewContext)
+                            addView(
+                                player,
+                                FrameLayout.LayoutParams(
+                                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                                    Gravity.CENTER,
+                                ),
+                            )
+                            val controls = MediaController(context)
+                            controls.setAnchorView(player)
+                            player.setMediaController(controls)
+                            player.setVideoPath(video.payload)
+                            player.setOnPreparedListener { mediaPlayer ->
+                                mediaPlayer.isLooping = false
+                                player.start()
+                            }
+                            videoView = player
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                DisposableEffect(video.id) {
+                    onDispose {
+                        runCatching { videoView?.stopPlayback() }
+                        videoView = null
+                    }
+                }
             }
         }
     }

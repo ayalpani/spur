@@ -374,6 +374,17 @@ internal fun ChevronLeftIcon() = LucideIcon(
 )
 
 @Composable
+internal fun ChevronRightIcon(
+    color: Color = LocalContentColor.current,
+    modifier: Modifier = Modifier.size(24.dp),
+) = LucideIcon(
+    paths = listOf("m9 18 6-6-6-6"),
+    color = color,
+    strokeWidth = LucideBoldStrokeWidth,
+    modifier = modifier,
+)
+
+@Composable
 internal fun ChevronUpIcon() = LucideIcon(
     paths = listOf("m18 15-6-6-6 6"),
     strokeWidth = LucideBoldStrokeWidth,
