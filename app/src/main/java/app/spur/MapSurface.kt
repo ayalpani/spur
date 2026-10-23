@@ -120,8 +120,11 @@ internal fun MapSurface(
     isBuildingSelectionMode: Boolean,
     isHomeStartPointSelection: Boolean,
     homeStartPointFocus: SpurCoordinate?,
-    selectedTrackPoint: TrackPoint?,
-    selectedTrackPointRequest: Long,
+    /**
+     * Der in der Leiste angesteuerte Punkt, erst hier gelesen: Ein Schritt in der Leiste setzt so
+     * nur die Karte neu zusammen, nicht die ganze Kartenseite darum.
+     */
+    trackPointSelection: () -> TrackPointSelection,
     momentToPlace: PendingMapMoment?,
     focusedMoment: MapMoment?,
     activeVoiceMoment: MapMoment?,
@@ -178,6 +181,9 @@ internal fun MapSurface(
     val currentSelectedBuilding by rememberUpdatedState(selectedBuilding)
     val currentIsBuildingSelectionMode by rememberUpdatedState(isBuildingSelectionMode)
     val currentIsHomeStartPointSelection by rememberUpdatedState(isHomeStartPointSelection)
+    val selection = trackPointSelection()
+    val selectedTrackPoint = selection.point
+    val selectedTrackPointRequest = selection.request
     val currentSelectedTrackPoint by rememberUpdatedState(selectedTrackPoint)
     val currentManualLocation by rememberUpdatedState(manualLocation)
     val currentFollowRequest by rememberUpdatedState(followRequest)
@@ -1407,7 +1413,7 @@ internal fun MapSurface(
         preparedMapMoments,
         currentLocation,
         manualLocation,
-        selectedTrackPoint,
+        selectedTrackPoint == null,
     ) {
         userSpotMomentIds(
             moments = preparedMapMoments?.moments.orEmpty(),
@@ -2137,7 +2143,7 @@ internal fun MapSurface(
         )
 
         val density = LocalDensity.current
-        selectedTrackPoint?.let {
+        if (selectedTrackPoint != null) {
             AnimatedVisibility(
                 visible = isSelectedTrackPointVisible,
                 modifier = Modifier.align(Alignment.Center),

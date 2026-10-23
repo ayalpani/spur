@@ -62,6 +62,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
@@ -163,10 +164,12 @@ internal fun WaypointRail(
     } else {
         selectedPointId ?: locations.last().point.id
     }
-    val initialIndex = locations.indexOfFirst {
-        it.point.id == resolvedSelectedPointId
+    // Einmal je Liste gerechnet: Ein Schritt in der Leiste schlägt den Index nur nach, statt
+    // über alle Punkte zu laufen.
+    val indexByPointId = remember(locations) {
+        locations.withIndex().associate { (index, location) -> location.point.id to index }
     }
-        .coerceAtLeast(0)
+    val initialIndex = indexByPointId[resolvedSelectedPointId] ?: 0
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val currentOnScrollInProgressChanged by rememberUpdatedState(
         onScrollInProgressChanged,
@@ -270,6 +273,8 @@ internal fun WaypointRail(
         }
     }
 
+    val currentSelectAndCenter by rememberUpdatedState<(Int) -> Unit> { selectAndCenter(it) }
+
     LaunchedEffect(state, locations.size) {
         isProgrammaticScroll = true
         try {
@@ -291,9 +296,7 @@ internal fun WaypointRail(
 
     LaunchedEffect(state, focusRequest) {
         if (focusRequest == 0L) return@LaunchedEffect
-        val index = locations.indexOfFirst {
-            it.point.id == selectedPointId
-        }.takeIf { it >= 0 } ?: return@LaunchedEffect
+        val index = indexByPointId[selectedPointId] ?: return@LaunchedEffect
         isProgrammaticScroll = true
         try {
             centerVisibleItem(index, animated = true)
@@ -333,9 +336,7 @@ internal fun WaypointRail(
             .height(WaypointRailHeight)
             .background(backgroundColor),
     ) {
-        val selectedIndex = locations.indexOfFirst {
-            it.point.id == resolvedSelectedPointId
-        }.coerceAtLeast(0)
+        val selectedIndex = indexByPointId[resolvedSelectedPointId] ?: 0
         val itemWidth = 10.dp
         val edgePadding = (maxWidth - itemWidth) / 2
         val endpointOffsets by remember(
@@ -405,58 +406,14 @@ internal fun WaypointRail(
                 count = locations.size,
                 key = { locations[it].point.id },
             ) { index ->
-                val location = locations[index]
-                val interactionSource = remember(location.point.id) {
-                    MutableInteractionSource()
-                }
-                val isPressed by interactionSource.collectIsPressedAsState()
-                Box(
-                    modifier = Modifier
-                        .width(itemWidth)
-                        .fillMaxHeight()
-                        .clickable(
-                            interactionSource = interactionSource,
-                            indication = null,
-                            onClick = { selectAndCenter(index) },
-                        )
-                        .semantics {
-                            contentDescription =
-                                "Wegpunkt ${index + 1} von ${locations.size}"
-                        },
-                    contentAlignment = Alignment.BottomCenter,
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                    ) {
-                        if (location.moments.isNotEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .size(4.dp)
-                                    .background(Moss, CircleShape),
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .padding(bottom = 14.dp)
-                                .width(6.dp)
-                                .height(22.dp)
-                                .border(
-                                    width = 1.dp,
-                                    color = Ink.copy(alpha = if (isPressed) 0.46f else 0f),
-                                    shape = CircleShape,
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(2.dp)
-                                    .height(20.dp)
-                                    .background(Ink.copy(alpha = 0.16f), CircleShape),
-                            )
-                        }
-                    }
-                }
+                // Gleiche Eingaben wie im letzten Schritt: Der Strich wird übersprungen, statt
+                // bei jedem Schritt alle sichtbaren Striche neu aufzubauen.
+                WaypointTick(
+                    location = locations[index],
+                    description = "Wegpunkt ${index + 1} von ${locations.size}",
+                    width = itemWidth,
+                    onClick = { currentSelectAndCenter(index) },
+                )
             }
         }
         WaypointEndpointLabel(
@@ -491,6 +448,61 @@ internal fun WaypointRail(
                 .height(32.dp)
                 .background(Ink, CircleShape),
         )
+    }
+}
+
+@Composable
+private fun WaypointTick(
+    location: EditorLocation,
+    description: String,
+    width: Dp,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember(location.point.id) { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    Box(
+        modifier = Modifier
+            .width(width)
+            .fillMaxHeight()
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            )
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            if (location.moments.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .background(Moss, CircleShape),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .padding(bottom = 14.dp)
+                    .width(6.dp)
+                    .height(22.dp)
+                    .border(
+                        width = 1.dp,
+                        color = Ink.copy(alpha = if (isPressed) 0.46f else 0f),
+                        shape = CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(2.dp)
+                        .height(20.dp)
+                        .background(Ink.copy(alpha = 0.16f), CircleShape),
+                )
+            }
+        }
     }
 }
 
