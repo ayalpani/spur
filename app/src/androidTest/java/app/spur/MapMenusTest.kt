@@ -83,6 +83,7 @@ class MapMenusTest {
                     onOpenBackup = {},
                     onOpenTheme = {},
                     onOpenDirection = {},
+                    onOpenLandmarks = {},
                 )
             }
         }
