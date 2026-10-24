@@ -26,3 +26,6 @@ signing.properties
 id_rsa
 id_ecdsa
 id_ed25519
+
+# Local device configuration for spurctl.
+.agents/skills/spur-control/device.local.env

@@ -52,7 +52,7 @@ with one synthetic location change every four seconds. A separate 15,000-point
 SQLite run is retained as a scaling stress case. Measurements include complete
 point reload count and time, road-fingerprint work, runtime GC signals, and
 Android frame statistics. The comparison image is generated outside the
-repository and contains no Galaxy A54 data.
+repository and contains no device data.
 
 The instrumentation was applied only to disposable benchmark builds. It is not
 part of the application or this branch. Both phases began after the map and
@@ -90,7 +90,7 @@ tour on the emulator without an ANR or application crash.
 ## Device verification
 
 The exact branch build was installed data-preservingly with `scripts/spurctl
-start` on the registered Galaxy A54. The smoke test covered a manual tour start,
+start` on the registered test phone. The smoke test covered a manual tour start,
 multiple stored location fixes, the waypoint rail, the foreground notification,
 background/foreground restoration with the tracking service still active, the
 moment composer and an emoji moment, live CameraX preview, JPEG capture and

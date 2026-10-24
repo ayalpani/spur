@@ -79,11 +79,11 @@ risk; do not turn irrelevant items into ceremony.
 - Use only the existing named Spur color tokens for UI changes. Never introduce
   an ad-hoc color value or apply an existing palette color to a new semantic
   role merely because it looks suitable. If the palette has no clearly
-  established token for the requested role, stop and ask Arash to choose the
+  established token for the requested role, stop and ask the user to choose the
   color before implementing it. Alpha variants of an established token are
   allowed only when they preserve that token's existing semantic role.
 - Inspect every UI diff for new `Color(...)` values and for existing colors
-  reused in a new context. Treat either as unfinished unless Arash explicitly
+  reused in a new context. Treat either as unfinished unless the user explicitly
   approved the color decision.
 - Keep the change scoped, remove obsolete code and dependencies, preserve
   naming and architecture conventions, and inspect adjacent callers for the
