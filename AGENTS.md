@@ -5,23 +5,23 @@
 Run these commands from the repository root before handing off a change:
 
 ```sh
-ANDROID_HOME=/Users/ayalpani/Library/Android/sdk ./gradlew testDebugUnitTest
-ANDROID_HOME=/Users/ayalpani/Library/Android/sdk ./gradlew assembleDebug
-ANDROID_HOME=/Users/ayalpani/Library/Android/sdk ./gradlew lintDebug
+ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew testDebugUnitTest
+ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew assembleDebug
+ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew lintDebug
 ```
 
 For changes to Compose, MapLibre, tracking, camera, audio, video, permissions, or
-persistence, also install the exact branch build on the registered Galaxy A54
+persistence, also install the exact branch build on the registered test phone
 and exercise the affected flow. Do not replace device checks with screenshots
 of unrelated screens or with an emulator-only result.
 
 Never run `connectedDebugAndroidTest` or another uninstalling/clearing test task
-on the personal Galaxy A54 while it contains local Spur data. Android
+on the registered test phone while it contains local Spur data. Android
 instrumentation tests must run on a disposable emulator or a dedicated test
-profile. Use only `adb install -r`/`scripts/spurctl start` for the personal device after
+profile. Use only `adb install -r`/`scripts/spurctl start` for that phone after
 confirming that the command preserves app data.
 
-Spur must never use `LoveDoves_API_36` or select an emulator by a volatile serial
+Spur must never use another project's AVD or select an emulator by a volatile serial
 such as `emulator-5554` alone. If an emulator is required, use a dedicated
 `Spur_API_36` AVD, verify `ro.boot.qemu.avd_name` before every mutating command,
 and set `ANDROID_SERIAL` for Gradle device tests.
@@ -220,7 +220,7 @@ and set `ANDROID_SERIAL` for Gradle device tests.
 
 - Make one behavior-neutral extraction per commit.
 - Compile and run JVM tests after every extraction commit.
-- Run lint and a focused Galaxy-A54 smoke test at each larger checkpoint.
+- Run lint and a focused test-phone smoke test at each larger checkpoint.
 - Keep `MainActivity` limited to Android activity lifecycle and the app entry.
 - Prefer files below 500 lines. Document a deliberate exception when a cohesive
   screen coordinator is larger.

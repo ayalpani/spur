@@ -274,11 +274,11 @@ class MapMomentTest {
 
         assertEquals(1_700_000_000_000, photo.captureTimeMillis())
         assertEquals(
-            "Metzer Straße 12, Prenzlauer Berg",
+            "Beispielstraße 1, Mitte",
             shortPlaceDescription(
-                thoroughfare = "Metzer Straße",
-                streetNumber = "12",
-                district = "Prenzlauer Berg",
+                thoroughfare = "Beispielstraße",
+                streetNumber = "1",
+                district = "Mitte",
                 locality = "Berlin",
                 region = "Berlin",
                 featureName = null,

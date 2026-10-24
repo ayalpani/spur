@@ -7,7 +7,7 @@
 - Baseline size: **9,403 lines**
 - JVM test files: **15**
 - Baseline checks: `testDebugUnitTest`, `assembleDebug`, and `lintDebug` passed
-- Device: Galaxy A54 (`SM-A546B`)
+- Device: registered test phone
 
 The baseline device smoke test covered map startup, street/satellite styles,
 follow and overview modes, controls, tour start/stop, background tracking,
@@ -56,19 +56,19 @@ thumbnails can contain private location data.
 Each extraction is mechanical and behavior-neutral. The original declaration
 body is moved without changing its logic; only required top-level visibility
 and imports may change. JVM tests and `assembleDebug` run after every extraction
-commit. Lint and the Galaxy-A54 smoke test run at larger map/media/editor
+commit. Lint and the test-phone smoke test run at larger map/media/editor
 checkpoints. Results and any deliberate file-size exception are recorded here.
 
 ## Results
 
 | Checkpoint | Result |
 | --- | --- |
-| TourEditor-v2 baseline on `main` | JVM tests, build, lint, and Galaxy-A54 smoke test passed |
+| TourEditor-v2 baseline on `main` | JVM tests, build, lint, and test-phone smoke test passed |
 | Mechanical top-level extraction | `MainActivity.kt` reduced from 9,403 to 37 lines; JVM tests and build passed |
-| Compose characterization | 2 onboarding instrumentation tests passed on Galaxy A54 |
+| Compose characterization | 2 onboarding instrumentation tests passed on the test phone |
 | Final automated gate | declaration-body comparison, JVM tests, debug build, and lint passed |
 | Final branch device smoke test | map/style/follow, tour start/stop, process restart, new history/editor entry, and moment composer passed |
-| Media confirmation follow-up | CameraX photo viewport matches saved framing; full-aspect photo/video previews, synchronized 420 ms preview/panel transition, action panel above Android navigation, video play/pause/progress, and discard flow passed on Galaxy A54; JVM tests, build, and lint passed |
+| Media confirmation follow-up | CameraX photo viewport matches saved framing; full-aspect photo/video previews, synchronized 420 ms preview/panel transition, action panel above Android navigation, video play/pause/progress, and discard flow passed on the test phone; JVM tests, build, and lint passed |
 
 Four cohesive declarations remain deliberately above the usual 500-line
 guideline: `MapPage` (screen/state coordinator), `MapSurface` (single MapLibre
@@ -78,11 +78,11 @@ structural pass; they are recorded candidates for later focused refactors.
 
 ### Device-test incident
 
-Running `connectedDebugAndroidTest` on the personal Galaxy A54 reset the Spur
+Running `connectedDebugAndroidTest` on the data-bearing test phone reset the Spur
 application sandbox. The previously inspected local tours and app-private
 moments were lost and no restorable backup had been created. This was a test
 procedure failure, not an application migration. The repository rule now
-forbids instrumentation tasks on a data-bearing personal device; those tests
+forbids instrumentation tasks on a data-bearing device; those tests
 must use a disposable emulator or dedicated test profile. Normal branch
 deployment continues through the data-preserving `scripts/spurctl start` path.
 

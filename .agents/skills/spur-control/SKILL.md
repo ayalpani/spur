@@ -1,6 +1,6 @@
 ---
 name: spur-control
-description: Control the Spur Android app on Arash's registered Galaxy A54 over Wi-Fi ADB. Use for requests such as "Starte Spur", "Zeig's mir", "Spiel das raus", "Spiel diese Version aufs Handy", "Fahre Spur runter", "Öffne Spur", "Starte Spur neu", deployment of the current thread or worktree to the phone, app lifecycle control, installation status, or evolving the project's device-control rules.
+description: Control the Spur Android app on the registered test phone over Wi-Fi ADB. Use for requests such as "Starte Spur", "Zeig's mir", "Spiel das raus", "Spiel diese Version aufs Handy", "Fahre Spur runter", "Öffne Spur", "Starte Spur neu", deployment of the current thread or worktree to the phone, app lifecycle control, installation status, or evolving the project's device-control rules.
 ---
 
 # Spur Control
@@ -49,33 +49,32 @@ which device checks passed and which could not be performed.
 
 ## Registered device
 
-- Device: Samsung Galaxy A54, model `SM_A546B`
 - Transport: Wi-Fi ADB
-- Static Wi-Fi IP: `192.168.178.162`
 - Application ID: `app.spur`
 - Launcher: `app.spur/.MainActivity`
+- Device model, static Wi-Fi IP, and paired ADB service name live in
+  `.agents/skills/spur-control/device.local.env` in the main checkout. Git
+  ignores that file; `device.example.env` shows its keys. Never commit these
+  values, an IP, a serial number, or a connection port.
 
-Arash has confirmed that the device IP does not change. Prefer an already-online
-transport for the registered model. Otherwise use ADB mDNS discovery. The
-Wi-Fi debugging port changes and must never be committed to this repository.
-If ADB's own mDNS listing is empty, resolve the registered device's existing
+Prefer an already-online transport for the registered model. Otherwise use ADB
+mDNS discovery. If ADB's own mDNS listing is empty, resolve the configured
 `_adb-tls-connect` service through macOS DNS-SD and connect its current port at
-the static IP automatically. Do not ask Arash to read out the ordinary changing
-connection port while this paired service can be resolved.
+the configured static IP automatically. Do not ask the user to read out the
+changing connection port while this paired service can be resolved.
 For the exceptional case where automatic discovery fails, accept a temporary
-override such as `SPUR_ADB_ENDPOINT=192.168.178.162:<port> scripts/spurctl status`.
+override such as `SPUR_ADB_ENDPOINT=<ip>:<port> scripts/spurctl status`.
 
-On this Galaxy A54 running Android 16, the system has been observed disabling
-wireless ADB after a Wi-Fi network-change event, even without a reboot or a
-manual toggle. A static IP does not prevent this. When the ADB listener is off,
-the phone must enable Wireless debugging again before host-side discovery can
-recover.
+On Android 16, the system has been observed disabling wireless ADB after a
+Wi-Fi network-change event, even without a reboot or a manual toggle. When the
+ADB listener is off, the phone must enable Wireless debugging again before
+host-side discovery can recover.
 
 ## Durable rules
 
 - After completing and checking a requested Spur code or UI change, deploy the
   current worktree to the registered phone and launch it by default. Skip this
-  automatic deployment only when Arash explicitly asks not to deploy, requests
+  automatic deployment only when the user explicitly asks not to deploy, requests
   analysis without implementation, or the device is unreachable.
 - Keep exactly one Spur installation. Do not create `.debug` or other parallel application IDs.
 - Let the most recently deployed thread replace the prior thread's build on the
@@ -93,7 +92,7 @@ recover.
 
 ## Evolving the control plane
 
-When Arash establishes a recurring Spur-control preference, update this skill
+When the user establishes a recurring Spur-control preference, update this skill
 and, when execution behavior changes, the implementation at
 `.agents/skills/spur-control/scripts/spurctl`. Keep the public command at
 `scripts/spurctl`, device-specific facts here, and deterministic operations in
