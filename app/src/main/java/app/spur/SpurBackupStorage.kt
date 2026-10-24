@@ -2,12 +2,15 @@ package app.spur
 
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -26,6 +29,7 @@ internal data class SpurBackupSettings(
     val latestDocumentUri: Uri?,
     val lastSuccessAt: Long?,
     val lastError: String?,
+    val waitingForWifi: Boolean,
 )
 
 internal fun Context.loadSpurBackupSettings(): SpurBackupSettings {
@@ -37,6 +41,7 @@ internal fun Context.loadSpurBackupSettings(): SpurBackupSettings {
         latestDocumentUri = preferences.getString(BackupDocumentUri, null)?.let(Uri::parse),
         lastSuccessAt = preferences.getLong(BackupLastSuccessAt, 0L).takeIf { it > 0L },
         lastError = preferences.getString(BackupLastError, null),
+        waitingForWifi = preferences.getBoolean(BackupWaitingForWifi, false),
     )
 }
 
@@ -51,6 +56,7 @@ internal fun Context.selectSpurBackupFolder(uri: Uri) {
         .putString(BackupDestinationName, backupDestinationName(uri))
         .remove(BackupDocumentUri)
         .remove(BackupLastError)
+        .remove(BackupWaitingForWifi)
         .apply()
 }
 
@@ -71,12 +77,19 @@ internal fun Context.setAutomaticBackupEnabled(enabled: Boolean) {
 internal fun Context.scheduleAutomaticBackup(delaySeconds: Long = 20L) {
     val settings = loadSpurBackupSettings()
     if (!settings.automatic || settings.treeUri == null) return
+    if (settings.treeUri.isGoogleDriveDestination() && !hasBackupWifiConnection()) {
+        recordBackupWaitingForWifi()
+    }
+    val constraints = Constraints.Builder()
+        .setRequiresStorageNotLow(true)
+        .apply {
+            if (settings.treeUri.isGoogleDriveDestination()) {
+                setRequiredNetworkType(NetworkType.UNMETERED)
+            }
+        }
+        .build()
     val request = OneTimeWorkRequestBuilder<SpurBackupWorker>()
-        .setConstraints(
-            Constraints.Builder()
-                .setRequiresStorageNotLow(true)
-                .build(),
-        )
+        .setConstraints(constraints)
         .setInitialDelay(delaySeconds, TimeUnit.SECONDS)
         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
         .build()
@@ -92,6 +105,10 @@ internal suspend fun Context.createBackupInSelectedFolder(): SpurBackupInfo =
         val appContext = applicationContext
         val settings = appContext.loadSpurBackupSettings()
         val treeUri = requireNotNull(settings.treeUri) { "Bitte zuerst einen Speicherort wählen." }
+        if (backupNeedsWifi(treeUri.isGoogleDriveDestination(), appContext.hasBackupWifiConnection())) {
+            appContext.recordBackupWaitingForWifi()
+            throw BackupWaitingForWifiException()
+        }
         val local = File.createTempFile("spur-backup-", SpurBackupExtension, appContext.cacheDir)
         var newDocument: Uri? = null
         try {
@@ -120,9 +137,11 @@ internal suspend fun Context.createBackupInSelectedFolder(): SpurBackupInfo =
                 .putString(BackupDocumentUri, newDocument.toString())
                 .putLong(BackupLastSuccessAt, info.createdAt)
                 .remove(BackupLastError)
+                .remove(BackupWaitingForWifi)
                 .commit()) { "Der Backupstatus konnte nicht gespeichert werden." }
             settings.latestDocumentUri
                 ?.takeIf { it != newDocument }
+                ?.takeUnless { treeUri.isGoogleDriveDestination() }
                 ?.let { old ->
                     runCatching {
                         DocumentsContract.deleteDocument(appContext.contentResolver, old)
@@ -135,7 +154,9 @@ internal suspend fun Context.createBackupInSelectedFolder(): SpurBackupInfo =
                     DocumentsContract.deleteDocument(appContext.contentResolver, document)
                 }
             }
-            appContext.recordBackupError(error)
+            if (error !is BackupWaitingForWifiException) {
+                appContext.recordBackupError(error)
+            }
             throw error
         } finally {
             local.delete()
@@ -152,12 +173,30 @@ class SpurBackupWorker(
         return try {
             applicationContext.createBackupInSelectedFolder()
             Result.success()
+        } catch (_: BackupWaitingForWifiException) {
+            Result.retry()
         } catch (_: SecurityException) {
             Result.failure()
         } catch (_: Exception) {
             if (runAttemptCount < 3) Result.retry() else Result.failure()
         }
     }
+}
+
+internal class BackupWaitingForWifiException : Exception()
+
+internal fun backupNeedsWifi(
+    isGoogleDriveDestination: Boolean,
+    wifiConnected: Boolean,
+): Boolean = isGoogleDriveDestination && !wifiConnected
+
+internal fun Uri.isGoogleDriveDestination(): Boolean = authority == GoogleDriveDocumentsAuthority
+
+internal fun Context.hasBackupWifiConnection(): Boolean {
+    val manager = getSystemService(ConnectivityManager::class.java)
+    val capabilities = manager.getNetworkCapabilities(manager.activeNetwork)
+    return capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true &&
+        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
 }
 
 private fun Context.backupDestinationName(uri: Uri): String {
@@ -190,6 +229,15 @@ private fun Context.recordBackupError(error: Exception) {
     getSharedPreferences(BackupSettingsPreferences, Context.MODE_PRIVATE)
         .edit()
         .putString(BackupLastError, message)
+        .remove(BackupWaitingForWifi)
+        .apply()
+}
+
+private fun Context.recordBackupWaitingForWifi() {
+    getSharedPreferences(BackupSettingsPreferences, Context.MODE_PRIVATE)
+        .edit()
+        .putBoolean(BackupWaitingForWifi, true)
+        .remove(BackupLastError)
         .apply()
 }
 
@@ -206,4 +254,6 @@ private const val BackupAutomatic = "automatic"
 private const val BackupDocumentUri = "document-uri"
 private const val BackupLastSuccessAt = "last-success-at"
 private const val BackupLastError = "last-error"
+private const val BackupWaitingForWifi = "waiting-for-wifi"
 private const val AutomaticBackupWorkName = "spur-automatic-backup"
+private const val GoogleDriveDocumentsAuthority = "com.google.android.apps.docs.storage"
