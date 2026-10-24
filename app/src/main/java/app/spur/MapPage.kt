@@ -236,9 +236,13 @@ internal fun MapPage(
         normalizedHomeMoments(presentation.mapMoments, homeSettings)
     }
     val editorLocations = presentation.editorLocations
-    val selectedEditorLocation = selectedEditorPointId
-        ?.let(presentation.editorLocationsByPointId::get)
-        ?: editorLocations.lastOrNull()
+    // Nur als Funktion lesen: Ein Schritt in der Leiste ändert die Auswahl, und gelesen im Rumpf
+    // von MapPage würde jeder Schritt die ganze Kartenseite neu aufbauen, messen und zeichnen.
+    val selectedEditorLocation: () -> EditorLocation? = {
+        selectedEditorPointId
+            ?.let(presentation.editorLocationsByPointId::get)
+            ?: presentation.editorLocations.lastOrNull()
+    }
     val focusMomentInTour: (MapMoment) -> Unit = focus@{ moment ->
         val location = momentEditorLocation(editorLocations, moment) ?: return@focus
         isFollowingLocation = false
@@ -588,10 +592,14 @@ internal fun MapPage(
                     isHomeSelectionMode &&
                         homeSelectionStep == HomeSelectionStep.START_POINT,
                 homeStartPointFocus = homeSelectionCandidate?.coordinate,
-                selectedTrackPoint = selectedEditorLocation?.point?.takeIf {
-                    editorFocusRequest > 0L
+                trackPointSelection = {
+                    TrackPointSelection(
+                        point = selectedEditorLocation()?.point?.takeIf {
+                            editorFocusRequest > 0L
+                        },
+                        request = editorFocusRequest,
+                    )
                 },
-                selectedTrackPointRequest = editorFocusRequest,
                 momentToPlace = pendingMoment,
                 focusedMoment = focusedPhoto,
                 activeVoiceMoment = activeVoiceMoment,
@@ -789,21 +797,21 @@ internal fun MapPage(
                         selected = isFollowingLocation,
                         pulseGeneration = activeLocationPulseGeneration,
                     )
-                    if (selectedEditorLocation != null && routePoints.size > 1) {
+                    if (editorLocations.isNotEmpty() && routePoints.size > 1) {
                         MapIconButton(
                             contentDescription = "Wegpunkt löschen",
-                            onClick = { waypointToDelete = selectedEditorLocation.point },
+                            onClick = { waypointToDelete = selectedEditorLocation()?.point },
                             secondary = true,
                         ) {
                             PhotoDeleteIcon()
                         }
                     }
-                    val focusedWaypoint = selectedEditorLocation?.takeIf {
-                        editorFocusRequest > 0L
-                    }
                     MapIconButton(
                         contentDescription = "Moment hinzufügen",
                         onClick = {
+                            val focusedWaypoint = selectedEditorLocation()?.takeIf {
+                                editorFocusRequest > 0L
+                            }
                             momentTarget = if (focusedWaypoint != null && tour != null) {
                                 isFollowingLocation = false
                                 isTourOverview = false
@@ -993,7 +1001,7 @@ internal fun MapPage(
                             }
                             mapStyleControl()
                         }
-                        val focusedWaypoint = selectedEditorLocation?.takeIf {
+                        val focusedWaypoint = selectedEditorLocation()?.takeIf {
                             editorFocusRequest > 0L
                         }
                         if (tour != null && focusedWaypoint != null) {
@@ -1826,3 +1834,9 @@ internal fun isTourPresentationReadyForEntry(
 private fun ActiveTourNavigationBar(active: Boolean) {
     if (active) ActivityNavigationBar(backgroundColor = GameRoadSurface)
 }
+
+/** Der in der Leiste angesteuerte Punkt; [request] 0 heißt: keiner angesteuert. */
+internal data class TrackPointSelection(
+    val point: TrackPoint? = null,
+    val request: Long = 0L,
+)

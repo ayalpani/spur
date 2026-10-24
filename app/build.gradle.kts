@@ -26,6 +26,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    buildTypes {
+        // Das A54 bekommt den Debug-Build. Als debuggable rechnet ART die Oberfläche etwa
+        // 2,5-mal langsamer (am A54 in MelchGPS gemessen: Verlauf scrubben 55 statt 20 ms
+        // je Bild), daher aus.
+        getByName("debug") { isDebuggable = false }
+    }
+
     kotlinOptions {
         jvmTarget = "17"
     }
