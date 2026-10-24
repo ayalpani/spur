@@ -80,6 +80,33 @@ class StopSwipeTest {
     }
 
     @Test
+    fun focusedWaypointSuppliesTheRunningPlayersValues() {
+        val tour = Tour(
+            id = 1,
+            startedAt = 1_000L,
+            endedAt = null,
+            distanceMeters = 1_234.0,
+            pointCount = 2,
+        )
+        val focusedWaypoint = EditorLocation(
+            point = TrackPoint(2, 52.0, 13.0, recordedAt = 126_000L),
+            routeIndex = 1,
+            distanceFromStartMeters = 420.0,
+            elapsedMillis = 125_000L,
+            moments = emptyList(),
+        )
+
+        assertEquals(
+            "420 m",
+            runningTourPlayerText(tour, emptyList(), focusedWaypoint, false),
+        )
+        assertEquals(
+            "2m 5s",
+            runningTourPlayerText(tour, emptyList(), focusedWaypoint, true),
+        )
+    }
+
+    @Test
     fun recentSpeedWaitsForEnoughMovement() {
         val points = listOf(
             TrackPoint(1, 52.0, 13.0, recordedAt = 0L),

@@ -106,20 +106,28 @@ internal fun TourPlayer(
     tour: Tour,
     routePoints: List<TrackPoint>,
     onStop: () -> Unit,
+    focusedWaypoint: EditorLocation? = null,
     modifier: Modifier = Modifier,
 ) {
     val controlColors = secondaryMapControlStyle(LocalMapControlColors.current).colors
     var armed by remember(tour.id) { mutableStateOf(false) }
-    var showRecentSpeed by rememberSaveable(tour.id) { mutableStateOf(false) }
+    var showAlternateValue by rememberSaveable(tour.id) { mutableStateOf(false) }
     var dragOffset by remember(tour.id) { mutableFloatStateOf(0f) }
     var dragStartX by remember(tour.id) { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
     val mainControlHeight = 60.dp
-    val playerText = remember(tour.distanceMeters, routePoints, showRecentSpeed) {
-        activeTourPlayerText(
+    val showsFocusedTime = focusedWaypoint != null && showAlternateValue
+    val playerText = remember(
+        tour.distanceMeters,
+        routePoints,
+        focusedWaypoint,
+        showAlternateValue,
+    ) {
+        runningTourPlayerText(
             tour = tour,
             routePoints = routePoints,
-            showRecentSpeed = showRecentSpeed,
+            focusedWaypoint = focusedWaypoint,
+            showAlternateValue = showAlternateValue,
         )
     }
 
@@ -173,21 +181,29 @@ internal fun TourPlayer(
                                 .fillMaxSize()
                                 .padding(start = 68.dp, end = 12.dp)
                                 .clickable(
-                                    onClickLabel = if (showRecentSpeed) {
-                                        "Distanz anzeigen"
-                                    } else {
-                                        "Geschwindigkeit anzeigen"
+                                    onClickLabel = when {
+                                        showAlternateValue -> "Distanz anzeigen"
+                                        focusedWaypoint != null -> "Tour-Dauer anzeigen"
+                                        else -> "Geschwindigkeit anzeigen"
                                     },
                                 ) {
-                                    showRecentSpeed = !showRecentSpeed
+                                    showAlternateValue = !showAlternateValue
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 text = playerText,
                                 color = controlColors.foreground,
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                fontSize = if (showsFocusedTime) {
+                                    18.sp
+                                } else {
+                                    28.sp
+                                },
+                                fontWeight = if (showsFocusedTime) {
+                                    FontWeight.Normal
+                                } else {
+                                    FontWeight.SemiBold
+                                },
                                 maxLines = 1,
                             )
                         }
@@ -327,6 +343,25 @@ internal fun formatKilometers(distanceMeters: Double): String =
 
 internal fun formatMeters(distanceMeters: Double): String =
     String.format(Locale.GERMANY, "%,.0f m", distanceMeters.coerceAtLeast(0.0))
+
+internal fun runningTourPlayerText(
+    tour: Tour,
+    routePoints: List<TrackPoint>,
+    focusedWaypoint: EditorLocation?,
+    showAlternateValue: Boolean,
+): String = if (focusedWaypoint != null) {
+    tourProgressPlayerText(
+        distanceMeters = focusedWaypoint.distanceFromStartMeters,
+        elapsedMillis = focusedWaypoint.elapsedMillis,
+        showTrackingTime = showAlternateValue,
+    )
+} else {
+    activeTourPlayerText(
+        tour = tour,
+        routePoints = routePoints,
+        showRecentSpeed = showAlternateValue,
+    )
+}
 
 internal fun activeTourPlayerText(
     tour: Tour,
