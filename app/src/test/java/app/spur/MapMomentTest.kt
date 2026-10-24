@@ -263,6 +263,78 @@ class MapMomentTest {
     }
 
     @Test
+    fun mediaViewerIncludesVideosInChronologicalOrder() {
+        val photo = MapMoment(
+            id = "photo-2000",
+            type = MomentType.PHOTO,
+            latitude = 0.0,
+            longitude = 0.0,
+            payload = "/photo.jpg",
+        )
+        val video = photo.copy(id = "video-1000", type = MomentType.VIDEO, payload = "/a.mp4")
+        val roundVideo = photo.copy(
+            id = "${RoundVideoIdPrefix}3000",
+            type = MomentType.VIDEO,
+            payload = "/b.mp4",
+        )
+        val voice = photo.copy(id = "voice-1500", type = MomentType.VOICE)
+
+        assertEquals(
+            listOf(video, photo, roundVideo),
+            orderedMediaMoments(listOf(roundVideo, voice, photo, video)),
+        )
+    }
+
+    @Test
+    fun momentBelongsToTourByIdOrCaptureTime() {
+        val tour = Tour(
+            id = 7,
+            startedAt = 1_000,
+            endedAt = 2_000,
+            distanceMeters = 0.0,
+            pointCount = 0,
+        )
+        val video = MapMoment(
+            id = "video-1500",
+            type = MomentType.VIDEO,
+            latitude = 0.0,
+            longitude = 0.0,
+            payload = "/a.mp4",
+        )
+
+        assertTrue(momentBelongsToTour(video, tour))
+        assertFalse(momentBelongsToTour(video.copy(id = "video-2500"), tour))
+        assertTrue(momentBelongsToTour(video.copy(id = "video-2500", tourId = 7), tour))
+    }
+
+    @Test
+    fun mediaJumpSelectsTheWaypointHoldingTheMoment() {
+        val moment = MapMoment(
+            id = "photo-1500",
+            type = MomentType.PHOTO,
+            latitude = 0.0,
+            longitude = 0.0,
+            payload = "/photo.jpg",
+        )
+        val near = EditorLocation(
+            point = TrackPoint(id = 1, latitude = 0.0, longitude = 0.0, recordedAt = 1_000),
+            routeIndex = 0,
+            distanceFromStartMeters = 0.0,
+            elapsedMillis = 0,
+            moments = emptyList(),
+        )
+        val holder = near.copy(
+            point = TrackPoint(id = 2, latitude = 1.0, longitude = 1.0, recordedAt = 2_000),
+            routeIndex = 1,
+            moments = listOf(moment),
+        )
+
+        assertEquals(holder, momentEditorLocation(listOf(near, holder), moment))
+        assertEquals(near, momentEditorLocation(listOf(near), moment))
+        assertNull(momentEditorLocation(emptyList(), moment))
+    }
+
+    @Test
     fun photoMetadataUsesCaptureTimestampAndShortPlaceDescription() {
         val photo = MapMoment(
             id = "photo-1700000000000",

@@ -102,8 +102,18 @@ private fun momentsForTour(
     .toList()
 
 internal fun orderedPhotoMoments(moments: List<MapMoment>): List<MapMoment> =
+    orderedMoments(moments.filter { it.type == MomentType.PHOTO })
+
+internal fun orderedMediaMoments(moments: List<MapMoment>): List<MapMoment> =
+    orderedMoments(
+        moments.filter { it.type == MomentType.PHOTO || it.type == MomentType.VIDEO },
+    )
+
+internal fun momentBelongsToTour(moment: MapMoment, tour: Tour): Boolean =
+    momentsForTour(listOf(moment), tour) { true }.isNotEmpty()
+
+private fun orderedMoments(moments: List<MapMoment>): List<MapMoment> =
     moments
-        .filter { it.type == MomentType.PHOTO }
         .sortedWith(
             compareBy<MapMoment> { it.captureTimeMillis() ?: Long.MAX_VALUE }
                 .thenBy(MapMoment::id),

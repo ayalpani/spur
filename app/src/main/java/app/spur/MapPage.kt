@@ -100,6 +100,10 @@ internal fun MapPage(
     splashExitComplete: Boolean = true,
     onInitialLoadingComplete: () -> Unit = {},
     onTourEntryPrepared: (Long) -> Unit = {},
+    momentFocusRequest: MomentFocusRequest? = null,
+    onMomentFocusHandled: () -> Unit = {},
+    resolveMomentTourId: suspend (MapMoment) -> Long? = { null },
+    onOpenTourAtMoment: (Long, MapMoment) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -187,7 +191,6 @@ internal fun MapPage(
     }
     var pendingMoment by remember { mutableStateOf<PendingMapMoment?>(null) }
     var photoDetail by remember { mutableStateOf<MapMoment?>(null) }
-    var mediaDetail by remember { mutableStateOf<MapMoment?>(null) }
     var photoDetailOrigin by remember { mutableStateOf<Offset?>(null) }
     var photoDetailPreview by remember { mutableStateOf<PhotoOpenPreview?>(null) }
     var focusedPhoto by remember { mutableStateOf<MapMoment?>(null) }
@@ -239,6 +242,33 @@ internal fun MapPage(
         selectedEditorPointId
             ?.let(presentation.editorLocationsByPointId::get)
             ?: presentation.editorLocations.lastOrNull()
+    }
+    val focusMomentInTour: (MapMoment) -> Unit = focus@{ moment ->
+        val location = momentEditorLocation(editorLocations, moment) ?: return@focus
+        isFollowingLocation = false
+        isTourOverview = false
+        selectedEditorPointId = location.point.id
+        editorFocusRequest++
+        waypointRailFocusRequest++
+    }
+    LaunchedEffect(
+        momentFocusRequest,
+        tour?.id,
+        isTourPresentationReady,
+        tourEntryPreparationRequest,
+    ) {
+        val request = momentFocusRequest ?: return@LaunchedEffect
+        if (
+            tour?.id != request.tourId ||
+            !isTourPresentationReady ||
+            tourEntryPreparationRequest != null
+        ) {
+            return@LaunchedEffect
+        }
+        // Let the route fit of the tour entry settle before moving to the moment.
+        delay(HomePanelMotionDurationMillis.toLong() + MotionDurationDefaultMillis)
+        focusMomentInTour(request.moment)
+        onMomentFocusHandled()
     }
     var activeVoiceMoment by remember { mutableStateOf<MapMoment?>(null) }
     var voicePlayer by remember { mutableStateOf<MediaPlayer?>(null) }
@@ -493,8 +523,7 @@ internal fun MapPage(
         !showThemePicker &&
         !showDirectionBottomSheet &&
         !showAboutBottomSheet &&
-        photoDetail == null &&
-        mediaDetail == null
+        photoDetail == null
     BackHandler(
         enabled = archivedTour != null && isTourBackNavigationAvailable,
         onBack = onCloseDisplayedTour,
@@ -608,7 +637,9 @@ internal fun MapPage(
                         }
                         MomentType.VIDEO -> {
                             activeVoiceMoment = null
-                            mediaDetail = moment
+                            photoDetailOrigin = null
+                            photoDetailPreview = null
+                            photoDetail = moment
                         }
                         MomentType.VOICE -> toggleVoicePlayback(moment)
                         MomentType.EMOJI -> Unit
@@ -1704,7 +1735,7 @@ internal fun MapPage(
 
     photoDetail?.let { moment ->
         val photos = remember(visibleMapMoments) {
-            orderedPhotoMoments(visibleMapMoments)
+            orderedMediaMoments(visibleMapMoments)
         }
         PhotoDetailPage(
             photos = photos,
@@ -1727,7 +1758,7 @@ internal fun MapPage(
                     if (updatedMoments == null) {
                         showFeedbackNotice(
                             FeedbackNoticeKind.ERROR,
-                            "Das Bild konnte nicht gelöscht werden.",
+                            momentDeleteErrorMessage(deletedPhoto),
                         )
                     } else {
                         mapMoments = updatedMoments
@@ -1744,16 +1775,48 @@ internal fun MapPage(
                 photoDetailPreview = null
                 focusedPhoto = null
             },
-        )
-    }
-
-    mediaDetail?.let { moment ->
-        MediaMomentDetailPage(
-            moment = moment,
-            onDismiss = { mediaDetail = null },
+            canShowInTour = { media ->
+                if (tour != null) {
+                    momentEditorLocation(editorLocations, media) != null
+                } else {
+                    resolveMomentTourId(media) != null
+                }
+            },
+            onShowInTour = { media ->
+                if (tour != null) {
+                    focusMomentInTour(media)
+                } else {
+                    scope.launch {
+                        resolveMomentTourId(media)?.let { onOpenTourAtMoment(it, media) }
+                    }
+                }
+            },
         )
     }
 }
+
+internal data class MomentFocusRequest(
+    val tourId: Long,
+    val moment: MapMoment,
+)
+
+internal fun momentEditorLocation(
+    locations: List<EditorLocation>,
+    moment: MapMoment,
+): EditorLocation? =
+    locations.firstOrNull { location -> location.moments.any { it.id == moment.id } }
+        ?: locations.minByOrNull { location ->
+            val latitude = location.point.latitude - moment.latitude
+            val longitude = location.point.longitude - moment.longitude
+            latitude * latitude + longitude * longitude
+        }
+
+internal fun momentDeleteErrorMessage(moment: MapMoment): String =
+    if (moment.type == MomentType.VIDEO) {
+        "Das Video konnte nicht gelöscht werden."
+    } else {
+        "Das Bild konnte nicht gelöscht werden."
+    }
 
 internal fun isTourPresentationReadyForEntry(
     presentedTourId: Long?,
