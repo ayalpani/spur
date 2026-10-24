@@ -60,7 +60,7 @@ private fun HomeScreenPreview() {
         backEnabled = true,
         onBack = {},
         onOpenTour = {},
-        onOpenPhoto = { _, _ -> },
+        onOpenPhoto = { _, _, _ -> },
     )
 }
 

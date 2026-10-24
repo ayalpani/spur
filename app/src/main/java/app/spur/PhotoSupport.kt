@@ -76,6 +76,7 @@ internal fun PhotoLocationMetadata(
     onMapClick: () -> Unit,
     onMapBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier,
+    onTourClick: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var place by remember(photo.id) {
@@ -91,17 +92,29 @@ internal fun PhotoLocationMetadata(
 
     Row(
         modifier = modifier
-            .background(Color.Black.copy(alpha = 0.58f)),
+            .background(Color.Black.copy(alpha = 0.58f))
+            .then(
+                if (onTourClick != null) {
+                    Modifier.clickable(
+                        role = Role.Button,
+                        onClickLabel = "In der Tour zeigen",
+                        onClick = onTourClick,
+                    )
+                } else {
+                    Modifier
+                },
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PhotoMapPreview(
             photo = photo,
-            onClick = onMapClick,
+            onClick = onTourClick ?: onMapClick,
             onBoundsChanged = onMapBoundsChanged,
+            opensTour = onTourClick != null,
         )
         Column(
             modifier = Modifier
-                .widthIn(max = 228.dp)
+                .widthIn(max = 260.dp)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.Center,
         ) {
@@ -116,8 +129,27 @@ internal fun PhotoLocationMetadata(
                     text = description.replaceFirst(", ", "\n"),
                     color = Color.White.copy(alpha = 0.72f),
                     style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 2,
+                    maxLines = 3,
                 )
+            }
+            if (onTourClick != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    WaypointsIcon(
+                        color = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "In der Tour zeigen",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    ChevronRightIcon(
+                        color = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     }
@@ -129,6 +161,7 @@ private fun PhotoMapPreview(
     onClick: () -> Unit,
     onBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier,
+    opensTour: Boolean = false,
 ) {
     val context = LocalContext.current
     val previewPixels = with(LocalDensity.current) {
@@ -171,10 +204,16 @@ private fun PhotoMapPreview(
             }
             .clickable(
                 role = Role.Button,
-                onClickLabel = "Karte öffnen",
+                onClickLabel = if (opensTour) "In der Tour zeigen" else "Karte öffnen",
                 onClick = onClick,
             )
-            .semantics { contentDescription = "Karte des Aufnahmeorts öffnen" },
+            .semantics {
+                contentDescription = if (opensTour) {
+                    "Aufnahmeort in der Tour zeigen"
+                } else {
+                    "Karte des Aufnahmeorts öffnen"
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
         preview?.let { bitmap ->
@@ -267,20 +306,24 @@ internal fun shortPlaceDescription(
         .ifEmpty { null }
 }
 
-internal fun Context.sharePhoto(source: File): Boolean = runCatching {
+internal fun Context.shareMomentMedia(moment: MapMoment): Boolean = runCatching {
+    val source = File(moment.payload)
     if (!source.isFile) return false
+    val isVideo = moment.type == MomentType.VIDEO
     val uri = FileProvider.getUriForFile(
         this,
         "$packageName.fileprovider",
         source,
     )
     val shareIntent = Intent(Intent.ACTION_SEND).apply {
-        type = "image/jpeg"
+        type = if (isVideo) "video/mp4" else "image/jpeg"
         putExtra(Intent.EXTRA_STREAM, uri)
-        clipData = ClipData.newRawUri("Spur Foto", uri)
+        clipData = ClipData.newRawUri(if (isVideo) "Spur Video" else "Spur Foto", uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    startActivity(Intent.createChooser(shareIntent, "Foto teilen"))
+    startActivity(
+        Intent.createChooser(shareIntent, if (isVideo) "Video teilen" else "Foto teilen"),
+    )
     true
 }.getOrDefault(false)
 
@@ -353,21 +396,40 @@ internal fun orientedPhotoAspectRatio(width: Int, height: Int, orientation: Int)
     }
 }
 
+internal fun Context.saveMomentMediaToGallery(moment: MapMoment): Boolean =
+    if (moment.type == MomentType.VIDEO) {
+        saveMediaToGallery(
+            source = File(moment.payload),
+            collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            mimeType = "video/mp4",
+            directory = Environment.DIRECTORY_MOVIES,
+        )
+    } else {
+        saveMediaToGallery(
+            source = File(moment.payload),
+            collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            mimeType = "image/jpeg",
+            directory = Environment.DIRECTORY_PICTURES,
+        )
+    }
+
 @Suppress("DEPRECATION")
-internal fun Context.savePhotoToGallery(source: File): Boolean = runCatching {
+private fun Context.saveMediaToGallery(
+    source: File,
+    collection: android.net.Uri,
+    mimeType: String,
+    directory: String,
+): Boolean = runCatching {
     if (!source.isFile) return false
     val resolver = contentResolver
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, source.name)
-            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-            put(
-                MediaStore.Images.Media.RELATIVE_PATH,
-                "${Environment.DIRECTORY_PICTURES}/Spur",
-            )
-            put(MediaStore.Images.Media.IS_PENDING, 1)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, source.name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "$directory/Spur")
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
-        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        val uri = resolver.insert(collection, values)
             ?: error("Could not create gallery entry")
         try {
             resolver.openOutputStream(uri)?.use { output ->
@@ -375,7 +437,7 @@ internal fun Context.savePhotoToGallery(source: File): Boolean = runCatching {
             } ?: error("Could not open gallery entry")
             resolver.update(
                 uri,
-                ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) },
+                ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
                 null,
                 null,
             )
@@ -384,18 +446,18 @@ internal fun Context.savePhotoToGallery(source: File): Boolean = runCatching {
             throw error
         }
     } else {
-        val directory = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+        val target = File(
+            Environment.getExternalStoragePublicDirectory(directory),
             "Spur",
         ).apply { mkdirs() }
-        val destination = File(directory, source.name)
+        val destination = File(target, source.name)
         source.copyTo(destination, overwrite = true)
         resolver.insert(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            collection,
             ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, destination.name)
-                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                put(MediaStore.Images.Media.DATA, destination.absolutePath)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, destination.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.DATA, destination.absolutePath)
             },
         )
     }
